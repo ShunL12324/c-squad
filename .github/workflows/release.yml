@@ -20,14 +20,12 @@ jobs:
       - name: Check release prerequisites
         env:
           TAG: ${{ github.ref_name }}
-          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           APT_KEY: ${{ secrets.APT_SIGNING_KEY }}
           APT_FINGERPRINT: ${{ vars.APT_SIGNING_FINGERPRINT }}
         run: |
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Use a stable vX.Y.Z tag.' >&2; exit 1; }
           test "$(git rev-parse HEAD)" = "$(git rev-parse "$TAG^{commit}")"
           test -s LICENSE
-          test -n "$TAP_TOKEN" || { echo 'Set HOMEBREW_TAP_TOKEN.' >&2; exit 1; }
           test -n "$APT_KEY" || { echo 'Set APT_SIGNING_KEY.' >&2; exit 1; }
           test -n "$APT_FINGERPRINT" || { echo 'Set APT_SIGNING_FINGERPRINT.' >&2; exit 1; }
       - uses: actions/setup-go@v5
@@ -89,16 +87,20 @@ jobs:
   homebrew:
     needs: [release, homebrew-test]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: ${{ vars.HOMEBREW_TAP || 'ShunL12324/homebrew-tap' }}
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          # Release runs on a tag; publish the formula to the default branch.
+          ref: ${{ github.event.repository.default_branch }}
       - uses: actions/download-artifact@v4
         with:
           name: homebrew-formula
           path: Formula
-      - name: Update tap
+      - name: Update formula in this repository
+        env:
+          TARGET_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           ruby -c Formula/csquad.rb
           git config user.name 'github-actions[bot]'
@@ -106,7 +108,8 @@ jobs:
           git add Formula/csquad.rb
           if ! git diff --cached --quiet; then
             git commit -m 'Update csquad formula'
-            git push
+            git pull --rebase origin "$TARGET_BRANCH"
+            git push origin "HEAD:$TARGET_BRANCH"
           fi
   apt:
     needs: release

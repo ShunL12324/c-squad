@@ -13,7 +13,7 @@ fi
 # repository instead of initializing or committing the user's project directory.
 stage=$(mktemp -d "${TMPDIR:-/tmp}/csquad-snapshot.XXXXXX")
 trap 'rm -rf "$stage"' EXIT
-cp -R cmd internal docs scripts packaging .github "$stage/"
+cp -R cmd internal docs scripts Formula .github "$stage/"
 cp go.mod go.sum Makefile README.md CONTRIBUTING.md .goreleaser.yaml .golangci.yml .editorconfig .gitignore "$stage/"
 if [ -f LICENSE ]; then cp LICENSE "$stage/"; fi
 git -C "$stage" init -q

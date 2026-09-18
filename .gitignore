@@ -14,7 +14,8 @@
 
 # Local environment and editor/OS temporary files.
 .env
-.env.local
+.env.*
+!.env.example
 .DS_Store
 *.swp
 *.swo

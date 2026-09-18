@@ -1,14 +1,17 @@
 # Installation
 
 Package channels become available after the first public release. Until then,
-build from source with Go 1.26+: `make install`.
+follow the [source quick start](../README.md#get-started) with Go 1.26+.
 
 ## macOS / Homebrew
 
 ```sh
-brew install ShunL12324/tap/csquad
+brew tap ShunL12324/c-squad https://github.com/ShunL12324/c-squad
+brew install ShunL12324/c-squad/csquad
 ```
 
+The source repository also serves as the tap; no separate repository is needed.
+Run `brew tap` once, then use the normal install and upgrade commands.
 The tap uses a standard source-based Formula. Homebrew installs Go as a build
 dependency, compiles the CLI, and installs tmux, Git, and shell completions.
 The first installation may take a few minutes. It does not install or sign in to

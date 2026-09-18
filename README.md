@@ -3,13 +3,12 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-2456bf?style=flat-square"></a>
-  <img alt="Built with Go" src="https://img.shields.io/badge/built_with-Go-2456bf?style=flat-square">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-287d58?style=flat-square"></a>
+  <img alt="Built with Go" src="https://img.shields.io/badge/built_with-Go-287d58?style=flat-square">
   <img alt="Linux, macOS, WSL 2" src="https://img.shields.io/badge/platforms-Linux_%C2%B7_macOS_%C2%B7_WSL_2-52627a?style=flat-square">
 </p>
 
 <p align="center">
-  <img src="docs/assets/icon.png" alt="C Squad icon" width="80"><br>
   <strong>A local development team of Claude Code and Codex agents, coordinated from one terminal.</strong><br>
   让 Claude Code 和 Codex 在终端里组成开发小队。
 </p>
@@ -42,34 +41,42 @@ your existing native accounts and project configuration.
 
 ## Get started
 
-> **Pre-release:** source installation is available now. The Homebrew and APT
-> channels below require the first public tagged release and repository setup.
-
-**Homebrew** — after the first release:
-
-```sh
-brew install ShunL12324/tap/csquad
-```
-
-**Ubuntu / Debian** — add the [APT source](docs/install.md#ubuntu--debian) once, then:
+**Requirements:** Linux, macOS, or WSL 2; tmux; and an installed, signed-in
+Claude Code or Codex CLI. Code tasks also need Git. Building from source requires
+Go 1.26+.
 
 ```sh
-sudo apt install csquad
-```
-
-**From source** — Go 1.26+, tmux, and at least one native agent CLI:
-
-```sh
+git clone https://github.com/ShunL12324/c-squad.git
+cd c-squad
 make install
-# Ensure ~/.local/bin is on PATH.
-```
+export PATH="$HOME/.local/bin:$PATH"
 
-Sign in to Claude Code or Codex using its own CLI, then start in your project:
-
-```sh
+cd /path/to/your/project
 csquad doctor
 csquad start --name my-team
 ```
+
+`start` opens the Master in tmux. Choose its engine with `--engine claude` or
+`--engine codex`. Add the PATH entry to your shell configuration to keep it.
+
+<details>
+<summary>Homebrew and APT — available after the first tagged release</summary>
+
+The source repository doubles as the Homebrew tap:
+
+```sh
+brew tap ShunL12324/c-squad https://github.com/ShunL12324/c-squad
+brew install ShunL12324/c-squad/csquad
+```
+
+On Ubuntu / Debian, add the [signed APT source](docs/install.md#ubuntu--debian),
+then run `sudo apt install csquad`. Both package managers install tmux for you;
+agent installation and authentication remain separate.
+
+These channels are not live yet. See [Installation](docs/install.md) for package
+details and standalone archives.
+
+</details>
 
 Tell the Master what you want:
 
@@ -137,10 +144,11 @@ path. An optional project `.csquad.toml` overrides user settings by field.
 
 ```sh
 csquad start --engine claude --model opus
-csquad member add alice --engine codex --role 'Backend developer' \
-  --instructions 'Implement T1 and cover error paths with tests' --task T1
-csquad member add reviewer --engine claude --role 'Code reviewer' --task T1
+csquad start --engine codex
 ```
+
+The Master recruits members through `csquad member add`, supplying their name,
+engine, and role description. You can describe the team you want in plain language.
 
 Environment overrides work without account profiles:
 

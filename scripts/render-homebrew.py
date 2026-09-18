@@ -34,7 +34,7 @@ def main():
         "COMMIT": metadata["commit"],
         "DATE": metadata["date"],
     }
-    formula = (root / "packaging/homebrew/csquad.rb.in").read_text()
+    formula = (root / "Formula/csquad.rb.in").read_text()
     for key, value in values.items():
         formula = formula.replace(f"@{key}@", value)
     args.output.parent.mkdir(parents=True, exist_ok=True)

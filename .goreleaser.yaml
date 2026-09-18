@@ -32,9 +32,15 @@ archives:
     files:
       - LICENSE
       - README.md
+      - CONTRIBUTING.md
       - docs/install.md
+      - docs/usage.md
+      - docs/architecture.md
+      - docs/releasing.md
       - docs/assets/hero.png
       - docs/assets/icon.png
+      - docs/assets/demo.gif
+      - docs/assets/demo.png
       - src: dist/completions/*
         dst: completions
         strip_parent: true

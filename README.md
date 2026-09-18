@@ -8,215 +8,133 @@
   <img alt="Linux, macOS, WSL 2" src="https://img.shields.io/badge/platforms-Linux_%C2%B7_macOS_%C2%B7_WSL_2-52627a?style=flat-square">
 </p>
 
-<p align="center">
-  <strong>A local development team of Claude Code and Codex agents, coordinated from one terminal.</strong>
-</p>
+# Run Claude Code and Codex as one team
 
-<p align="center">
-  <a href="#get-started">Get started</a> ·
-  <a href="#how-it-works">How it works</a> ·
-  <a href="docs/install.md">Installation</a> ·
-  <a href="CONTRIBUTING.md">Contributing</a>
-</p>
+**C Squad is a CLI that lets you give work to one lead agent, then have it recruit
+and coordinate other Claude Code and Codex agents in your terminal.** The lead
+is called **Master**. You talk to it; it delegates work and reports back.
 
----
+For example, tell Master:
 
-You talk to the **Master**. It recruits agents, assigns work, coordinates reviews,
-and brings questions and results back to you. Each member runs the real Claude
-Code or Codex TUI in its own tmux session—you can switch in and inspect the work
-at any time.
+> Add a --done filter to this task-list CLI. Use Codex to implement and test it,
+> and Claude to review the change. Ask me before merging.
 
-**C** stands for **Claude Code** and **Codex**. Mix both engines in one team, using
-your existing native accounts and project configuration.
+Master creates the task, starts the members, and passes work between them. Each
+agent has its own tmux session. You can switch between them to see what they are
+doing, or stay with Master and ask for an update.
 
-| Capability | What you get |
-| --- | --- |
-| **Mixed-engine teams** | Choose an engine, model, and responsibility for each member. |
-| **Shared coordination** | A persistent task board, direct messages, broadcasts, and requests for help. |
-| **Isolated development** | One Git worktree per code task, with a designated writing owner. |
-| **Review before merge** | Review and test evidence tied to a commit; Master approves the merge. |
-| **Inspectable sessions** | Native TUIs, a team roster in tmux, and shortcuts between members. |
-| **Recoverable work** | Master exit cleans up the team; tasks, messages, and code remain for recovery. |
+![A real C Squad team in tmux: Master, Codex developer, and Claude reviewer](docs/assets/demo.gif)
 
-## Get started
+*A short tour assembled from real tmux captures: Claude Master delegates,
+Codex implements, and Claude reviews. [View a still image](docs/assets/demo.png).*
 
-**Requirements:** Linux, macOS, or WSL 2; tmux; and an installed, signed-in
-Claude Code or Codex CLI. Code tasks also need Git. Building from source requires
-Go 1.26+.
+## Why use it?
+
+When you already use coding agents, coordinating several of them becomes work:
+opening terminals, repeating context, passing review feedback around, and
+keeping track of who is waiting for whom. C Squad gives that coordination to
+Master.
+
+- **Delegate a whole workflow.** Ask for implementation, tests, and review in one
+  conversation. Members report results and blockers back to Master.
+- **Mix the tools you use.** Choose Claude Code or Codex for each member, with
+  your existing accounts and native CLI configuration.
+- **Keep code work separate.** Each development task gets a Git worktree, so
+  parallel tasks can be reviewed before they reach your main branch.
+- **See the work as it happens.** Open any member's native terminal session;
+  ask Master for progress without manually collecting every agent's response.
+
+It is most useful for work that benefits from separate implementation and review,
+or several independent tasks. For a small one-line fix, one agent is usually enough.
+Each running agent uses its own engine account's quota.
+
+## Quick start
+
+### 1. Install
+
+You need **Go 1.26+**, **Git**, **tmux**, and at least one installed, signed-in
+**Claude Code or Codex CLI**. To use both engines in one team, set up both.
+Run inside Linux, macOS, or WSL 2; native Windows is not supported.
 
 ```sh
 git clone https://github.com/ShunL12324/c-squad.git
 cd c-squad
 make install
 export PATH="$HOME/.local/bin:$PATH"
+```
 
+Add the PATH line to your shell configuration to keep it. Source installation
+is available now; [Homebrew, APT, and release archives](docs/install.md) become
+available after the first tagged release and package-channel setup.
+
+### 2. Start in your project
+
+```sh
 cd /path/to/your/project
 csquad doctor
-csquad start --name my-team
+csquad start --name my-team --engine claude
 ```
 
-`start` opens the Master in tmux. Choose its engine with `--engine claude` or
-`--engine codex`. Add the PATH entry to your shell configuration to keep it.
+Use `--engine codex` if you want Codex as Master. C Squad opens tmux for you;
+there is no separate server or tmux session to start by hand. For development
+tasks, your project must be a Git repository with at least one commit.
 
-<details>
-<summary>Homebrew and APT — available after the first tagged release</summary>
+### 3. Give Master a task
 
-The source repository doubles as the Homebrew tap:
+Type your request into the agent conversation that opens:
 
-```sh
-brew tap ShunL12324/c-squad https://github.com/ShunL12324/c-squad
-brew install ShunL12324/c-squad/csquad
-```
+> Fix the login bug described in issue 42. Have a developer implement the fix
+> and another member review it. Run the tests and ask me before merging.
 
-On Ubuntu / Debian, add the [signed APT source](docs/install.md#ubuntu--debian),
-then run `sudo apt install csquad`. Both package managers install tmux for you;
-agent installation and authentication remain separate.
+Master recruits the members and assigns the work. You do not need to create
+roles, send messages, or manage worktrees yourself. When you want an update,
+ask: **"Who is working on what, and is anyone blocked?"**
 
-These channels are not live yet. See [Installation](docs/install.md) for package
-details and standalone archives.
+By default, agents run with native permission prompts bypassed. Set
+`bypass_permissions = false` in the configuration to retain those approvals.
+See [configuration and behavior](docs/usage.md#configure-only-what-you-need).
 
-</details>
+## Move around your team
 
-Tell the Master what you want:
+The tmux status bar shows your members. These shortcuts stay local to the team:
 
-> Implement password reset. Have one developer build it, another agent review
-> it, and a third test the failure cases. Ask me before merging.
-
-C Squad injects its coordination instructions for you. There is no collaboration
-skill or MCP server to install, and no automatic opening user message. Your
-existing native MCP configuration stays under the engine's control.
-
-## How it works
-
-```text
-You ↔ Master
-         ├── Developer · Claude Code or Codex
-         ├── Reviewer  · Claude Code or Codex
-         └── Tester    · Claude Code or Codex
-                  ↕
-       Shared tasks, messages, and Git worktrees
-```
-
-Roles are descriptions you choose when recruiting members, not a fixed template
-system. A member can handle both review and testing. Agents communicate through
-the CLI; a SQLite ledger records tasks and messages, while native engine adapters
-deliver notifications.
-
-1. **Delegate.** Master creates a task and assigns members, or opens it for claiming.
-2. **Collaborate.** Members report progress, exchange messages, and escalate blockers.
-3. **Verify.** Review and test evidence refer to the exact candidate commit.
-4. **Merge.** Master approves and performs a fast-forward merge after validation.
-
-Each code task has a worktree from the start, even with a single developer. Only
-the task owner writes code there; parallel implementation uses separate tasks.
-Research tasks can run without Git. Code tasks require a repository with an
-existing commit.
-
-## Stay in control
-
-| Action | Shortcut or command |
+| What you want to do | How |
 | --- | --- |
-| Switch team members | `Alt+←` / `Alt+→` |
-| Return to Master | `Ctrl-b 0` |
-| Open a numbered member | `Ctrl-b 1` … `Ctrl-b 9` |
-| Detach and leave the team running | `Ctrl-b d` |
-| Start without taking over your terminal | `csquad start --detach` |
-| Inspect progress | `csquad board` |
-| Restart a member | `csquad member restart alice` |
+| See the next or previous member | `Alt+Right` / `Alt+Left` |
+| Go back to Master | Press `Ctrl-b`, then `0` |
+| Open a numbered member | Press `Ctrl-b`, then its number |
+| Leave the terminal and keep the team running | Press `Ctrl-b`, then `d` |
+| Reattach from the same project | `csquad attach` |
 | Stop the team | `csquad stop` |
-| Recover an interrupted team | `csquad resume` |
+| Recover a stopped or interrupted team | `csquad resume` |
 
-Outside a team session, use `csquad --team /path/to/team COMMAND`; team state is
-normally in `.csquad/teams/<name>/`. Team shortcuts do not modify `~/.tmux.conf`.
-If your terminal captures Alt-arrow, use the numbered shortcuts.
+**Detaching keeps the team running. Exiting Master stops the team.** Task records
+and worktrees remain in `.csquad/` for recovery. If your terminal captures Alt-arrow,
+use the numbered shortcuts instead.
 
-Master process exit stops the team; detaching does not. Recovery preserves
-worktrees and uncommitted changes. `resume --fresh` starts new native sessions
-when old session history is unavailable. A machine shutdown cannot execute
-cleanup immediately; the next start/resume checks for remaining state.
+## Learn more
 
-## Configure only what you need
+- [Installation](docs/install.md): package managers, archives, and dependency checks.
+- [Using C Squad](docs/usage.md): configuration, completion, task coordination,
+  recovery, and compatibility limits.
+- [Contributing](CONTRIBUTING.md): local development and testing.
+- [Architecture](docs/architecture.md) and [Releasing](docs/releasing.md): internals
+  and release maintenance.
 
-The first configuration load creates `~/.config/csquad/config.toml` with detailed
-comments. Run `csquad config` to inspect the effective values and configuration
-path. An optional project `.csquad.toml` overrides user settings by field.
-
-```sh
-csquad start --engine claude --model opus
-csquad start --engine codex
-```
-
-The Master recruits members through `csquad member add`, supplying their name,
-engine, and role description. You can describe the team you want in plain language.
-
-Environment overrides work without account profiles:
-
-```sh
-csquad start --env CODEX_HOME=/absolute/path/to/codex-config
-```
-
-Precedence: inherited environment → configuration `env` → `start --env` →
-`member add --env`. Running teams retain their startup configuration. Member
-limits are configurable; there is no conversation-turn cap. A member's
-`generation` identifies its current process incarnation, not an iteration limit.
-
-**Agents bypass native approval prompts by default.** Set
-`bypass_permissions = false` to retain approvals. This does not log in, supply
-account quota, or override organization policy. Project files such as untracked
-MCP configuration are not automatically copied into worktrees.
-
-## Help and completion
-
-```sh
-csquad --help
-csquad task create --help
-csquad member add --help
-
-# Zsh
-autoload -Uz compinit && compinit
-source <(csquad completion zsh)
-
-# Bash
-source <(csquad completion bash)
-
-# Fish
-csquad completion fish | source
-```
-
-Completion includes commands, flags, and IDs from the current team. It reads the
-ledger without waking agents. `csquad help request` is a team escalation command;
-use `--help` or `csquad usage` for command documentation.
-
-## Status and boundaries
-
-- **Early-stage software.** Linux has been exercised with real Claude Code/Codex
-  sessions. macOS and Linux ARM64 builds exist; macOS/WSL runtime acceptance is
-  still pending. Native Windows is not supported.
-- **Native engine compatibility matters.** Prior manual checks used tmux 3.4,
-  Claude Code 2.1.276, and Codex 0.154.0. Engine updates may require adapter changes.
-- **Messages can be retried.** Delivery is not exactly-once; a transport acceptance
-  is different from an agent acknowledgement. Persistent failures appear on the board.
-- **Local state stays local.** `.csquad/` holds recovery data and should not be
-  committed. Use local disk for the SQLite ledger. A per-team runtime handles
-  delivery and cleanup; no system service is installed.
-- **Upgrades are explicit.** Stop running teams before replacing the CLI binary.
+**Early-stage software:** real Claude Code/Codex sessions have been exercised on
+Linux. macOS and WSL runtime acceptance is still pending. Native engine updates
+can require compatibility changes.
 
 ## Development
 
 ```sh
-make fmt             # Format Go code
-make check           # Formatting, lint, and race tests
-make build           # Local binary
-make snapshot        # Archives, source, and .deb packages; no publication
-make test-packaging  # Signed APT install/upgrade/removal in disposable Ubuntu
+make fmt    # Format Go code
+make check  # Formatting, lint, and race tests
+make build  # Build a local binary
 ```
 
-Tests use standard Go `testing`, with real Git/tmux integration and fake engine
-processes. They do not require model accounts. Ordinary pushes and PRs run no
-GitHub builds. A stable tag such as `v0.1.0` triggers checks and release automation.
-
-Read [Contributing](CONTRIBUTING.md), [Architecture](docs/architecture.md), or
-[Releasing](docs/releasing.md) for the relevant workflow.
+Ordinary pushes and PRs run no GitHub builds. A stable version tag such as
+`v0.1.0` triggers release checks and packaging.
 
 ## License
 

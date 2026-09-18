@@ -1,0 +1,116 @@
+# Using C Squad
+
+Start a team in your project with `csquad start --engine claude` or
+`csquad start --engine codex`. This opens the Master session. Tell it what you
+want built and how you want work divided; it recruits and coordinates members.
+
+The task board is primarily for agents. Master uses it to track ownership,
+progress, blockers, and review/test evidence. You can ask Master for a summary
+or inspect the underlying state with `csquad board`.
+
+| Action | Shortcut or command |
+| --- | --- |
+| Switch team members | `Alt+←` / `Alt+→` |
+| Return to Master | `Ctrl-b 0` |
+| Open a numbered member | `Ctrl-b 1` … `Ctrl-b 9` |
+| Detach and leave the team running | `Ctrl-b d` |
+| Start without taking over your terminal | `csquad start --detach` |
+| Inspect progress | `csquad board` |
+| Restart a member | `csquad member restart alice` |
+| Stop the team | `csquad stop` |
+| Recover an interrupted team | `csquad resume` |
+
+Outside a team session, use `csquad --team /path/to/team COMMAND`; team state is
+normally in `.csquad/teams/<name>/`. Team shortcuts do not modify `~/.tmux.conf`.
+If your terminal captures Alt-arrow, use the numbered shortcuts.
+
+Master process exit stops the team; detaching does not. Recovery preserves
+worktrees and uncommitted changes. `resume --fresh` starts new native sessions
+when old session history is unavailable. A machine shutdown cannot execute
+cleanup immediately; the next start/resume checks for remaining state.
+
+## Configure only what you need
+
+The first configuration load creates `~/.config/csquad/config.toml` with detailed
+comments. Run `csquad config` to inspect the effective values and configuration
+path. An optional project `.csquad.toml` overrides user settings by field.
+
+```sh
+csquad start --engine claude --model opus
+csquad start --engine codex
+```
+
+The Master recruits members through `csquad member add`, supplying their name,
+engine, and role description. You can describe the team you want in plain language.
+
+Environment overrides work without account profiles:
+
+```sh
+csquad start --env CODEX_HOME=/absolute/path/to/codex-config
+```
+
+Precedence: inherited environment → configuration `env` → `start --env` →
+`member add --env`. Running teams retain their startup configuration. Member
+limits are configurable; there is no conversation-turn cap. A member's
+`generation` identifies its current process incarnation, not an iteration limit.
+
+**Agents bypass native approval prompts by default.** Set
+`bypass_permissions = false` to retain approvals. This does not log in, supply
+account quota, or override organization policy. Project files such as untracked
+MCP configuration are not automatically copied into worktrees.
+
+## Help and completion
+
+```sh
+csquad --help
+csquad task create --help
+csquad member add --help
+
+# Zsh
+autoload -Uz compinit && compinit
+source <(csquad completion zsh)
+
+# Bash
+source <(csquad completion bash)
+
+# Fish
+csquad completion fish | source
+```
+
+Completion includes commands, flags, and IDs from the current team. It reads the
+ledger without waking agents. `csquad help request` is a team escalation command;
+use `--help` or `csquad usage` for command documentation.
+
+## Compatibility and limitations
+
+- **Early-stage software.** Linux has been exercised with real Claude Code/Codex
+  sessions. macOS and Linux ARM64 builds exist; macOS/WSL runtime acceptance is
+  still pending. Native Windows is not supported.
+- **Native engine compatibility matters.** Prior manual checks used tmux 3.4,
+  Claude Code 2.1.276, and Codex 0.154.0. Engine updates may require adapter changes.
+- **Messages can be retried.** Delivery is not exactly-once; a transport acceptance
+  is different from an agent acknowledgement. Persistent failures appear on the board.
+- **Local state stays local.** `.csquad/` holds recovery data and should not be
+  committed. Use local disk for the SQLite ledger. A per-team runtime handles
+  delivery and cleanup; no system service is installed.
+- **Upgrades are explicit.** Stop running teams before replacing the CLI binary.
+
+## How tasks are coordinated
+
+Members share a persistent task board and can send direct messages or broadcasts.
+They report meaningful milestones and ask Master for help when blocked. Master
+brings questions that need a human decision back to you.
+
+A code task gets a Git worktree, even when it has only one developer. Its owner
+writes the code; other members review or test it. Separate implementation tasks
+use separate worktrees. Code tasks require a Git repository with an existing
+commit; research tasks can run without Git.
+
+Review and test evidence refer to a specific candidate commit. Master approves
+and performs the merge through C Squad. If you want a human checkpoint, tell
+Master to ask you before merging.
+
+C Squad injects coordination instructions into native engine sessions. No extra
+collaboration skill or MCP server is required. Native MCP configuration and
+account authentication remain under each engine's control. The application uses
+a local SQLite ledger and a per-team runtime; it installs no system service.

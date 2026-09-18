@@ -1,7 +1,7 @@
 # Installation
 
 Package channels become available after the first public release. Until then,
-follow the [source quick start](../README.md#get-started) with Go 1.26+.
+follow the [source quick start](../README.md#quick-start) with Go 1.26+.
 
 ## macOS / Homebrew
 

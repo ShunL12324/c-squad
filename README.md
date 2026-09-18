@@ -23,10 +23,11 @@ Master creates the task, starts the members, and passes work between them. Each
 agent has its own tmux session. You can switch between them to see what they are
 doing, or stay with Master and ask for an update.
 
-![A real C Squad team in tmux: Master, Codex developer, and Claude reviewer](docs/assets/demo.gif)
+![Switching between five real tmux sessions: Master, developer, docs, reviewer, and tester](docs/assets/demo.gif)
 
-*A short tour assembled from real tmux captures: Claude Master delegates,
-Codex implements, and Claude reviews. [View a still image](docs/assets/demo.png).*
+*A real tmux recording: use Alt+Right to cycle through Master, developer, docs,
+reviewer, and tester to inspect their work. Each view stays on screen for about two
+seconds. [View a still image](docs/assets/demo.png).*
 
 ## Why use it?
 

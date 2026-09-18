@@ -15,8 +15,8 @@ func TestDynamicIdentitySurvivesSnapshotWithoutTemplates(t *testing.T) {
 	st := testStore(t)
 	must(t, st.update(func(s *State) error {
 		s.Config = &cfg
-		s.Members["a"].Role = "支付接口负责人"
-		s.Members["a"].Instructions = "实现退款接口并验证幂等性"
+		s.Members["a"].Role = "Payments API developer"
+		s.Members["a"].Instructions = "Implement the refund endpoint and verify idempotency"
 		return nil
 	}))
 	s, e := st.read()

@@ -2,13 +2,13 @@ package config
 
 import "github.com/pelletier/go-toml/v2"
 
-const documentHeader = `# C-Squad 配置（TOML）
-# 用户配置：$XDG_CONFIG_HOME/csquad/config.toml，默认 ~/.config/csquad/config.toml。
-# CSQUAD_CONFIG 可指定其他文件；项目 .csquad.toml 按字段覆盖用户配置。
-# 未填写的字段沿用默认值。命令行参数优先于对应配置字段。
-# 配置在团队启动时保存快照；修改文件不会改变已经运行的团队。
-# 无需定义角色模板或账号列表；原生 MCP 和登录仍由 Claude Code / Codex 管理。
-# TOML 中 [env] 后的键属于环境变量表；请将其他顶层配置放在 [env] 之前。
+const documentHeader = `# C-Squad configuration (TOML)
+# User configuration: $XDG_CONFIG_HOME/csquad/config.toml; defaults to ~/.config/csquad/config.toml.
+# CSQUAD_CONFIG selects another file. A project's .csquad.toml overrides user settings by field.
+# Omitted fields use defaults. Command-line options override their corresponding configuration fields.
+# Teams save a startup snapshot; editing this file does not change an already running team.
+# Role templates and account profiles are optional. Claude Code / Codex manage native MCP and authentication.
+# In TOML, keys after [env] belong to that table. Place other top-level settings before [env].
 
 `
 

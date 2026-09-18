@@ -15,25 +15,25 @@ import (
 
 // Template holds engine defaults and supports legacy named role configurations.
 type Template struct {
-	Env    map[string]string `json:"env,omitempty" toml:"env,omitempty" comment:"旧模板专用环境覆盖，优先于全局 env；推荐改用 member add --env。"`
-	Engine Engine            `json:"engine" toml:"engine" comment:"旧模板引擎，可选 claude 或 codex。"`
-	Model  string            `json:"model,omitempty" toml:"model,omitempty" comment:"旧模板模型，空字符串沿用原生默认模型。"`
-	Prompt string            `json:"prompt" toml:"prompt" comment:"旧模板职责说明，注入协作指令；推荐改用 member add --instructions。"`
+	Env    map[string]string `json:"env,omitempty" toml:"env,omitempty" comment:"Legacy template environment overrides; take precedence over global env. Prefer member add --env."`
+	Engine Engine            `json:"engine" toml:"engine" comment:"Legacy template engine: claude or codex."`
+	Model  string            `json:"model,omitempty" toml:"model,omitempty" comment:"Legacy template model. An empty string uses the native engine default."`
+	Prompt string            `json:"prompt" toml:"prompt" comment:"Legacy template responsibilities, injected into coordination instructions. Prefer member add --instructions."`
 }
 
 // Config holds engine defaults, team limits, and environment overrides.
 // A startup snapshot is stored with the team so later config edits do not change it.
 type Config struct {
-	Engine       Engine              `json:"engine" toml:"engine" comment:"普通成员默认引擎，可选 codex 或 claude；默认 codex。member add --engine 可覆盖。"`
-	Model        string              `json:"model,omitempty" toml:"model" comment:"普通成员默认模型，默认空字符串：使用原生引擎配置。填写所选引擎支持的模型名；member add --model 可覆盖。"`
-	MasterEngine Engine              `json:"master_engine" toml:"master_engine" comment:"Master 默认引擎，可选 codex 或 claude；默认 claude。start --engine 可覆盖。"`
-	MasterModel  string              `json:"master_model,omitempty" toml:"master_model" comment:"Master 默认模型，默认 opus（Claude）。切换 master_engine 时请同步修改模型，或设为空字符串使用原生默认值。"`
-	Env          map[string]string   `json:"env,omitempty" toml:"env" comment:"传给 Master 和所有成员的环境变量，默认不覆盖继承环境。值必须是字符串。\n优先级由低到高：继承环境 → env → start --env → member add --env。\n路径使用绝对路径，不展开 ~、$HOME 或命令替换。CODEX_HOME 可选择 Codex 配置目录。\nCLAUDE_CONFIG_DIR 可选择 Claude 配置目录；设为空字符串表示取消此变量。\n不要设置 CSQUAD_*、TMUX 或 TMUX_PANE，它们由程序管理。\n例如在下方 [env] 表内添加：CODEX_HOME = \"/home/yourname/.codex-alt\"。"`
-	StartupEnv   map[string]string   `json:"startup_env,omitempty" toml:"startup_env,omitempty" comment:"兼容字段：团队启动时保存的环境覆盖，优先于 env。通常不要手动配置，请使用 start --env KEY=VALUE。"`
-	Version      int                 `json:"version" toml:"version" comment:"配置格式版本，目前仅支持 1；不是程序版本，请勿修改。"`
-	Bypass       bool                `json:"bypass_permissions" toml:"bypass_permissions" comment:"是否跳过原生权限审批：true（默认）或 false。\ntrue 使用 Claude --dangerously-skip-permissions / Codex --yolo；false 保留原生审批，成员可能等待人工确认。\n此设置不会完成登录，也不能绕过账户额度或组织策略。"`
-	MaxMembers   int                 `json:"max_members" toml:"max_members" comment:"团队成员上限，包含 Master；默认 8，必须为大于等于 1 的整数。\n已移除成员不占名额；不是对话轮次或任务次数限制。"`
-	Templates    map[string]Template `json:"templates,omitempty" toml:"templates,omitempty" comment:"旧版本角色模板兼容字段；新配置不需要它。成员职责请用 member add --role 和 --instructions 定义。"`
+	Engine       Engine              `json:"engine" toml:"engine" comment:"Default worker engine: codex (default) or claude. Override with member add --engine."`
+	Model        string              `json:"model,omitempty" toml:"model" comment:"Default worker model. Empty by default to use native engine configuration. Use a model supported by the selected engine; override with member add --model."`
+	MasterEngine Engine              `json:"master_engine" toml:"master_engine" comment:"Default Master engine: claude (default) or codex. Override with start --engine."`
+	MasterModel  string              `json:"master_model,omitempty" toml:"master_model" comment:"Default Master model: opus (Claude). When changing master_engine, also change this model or set it to an empty string to use the native default."`
+	Env          map[string]string   `json:"env,omitempty" toml:"env" comment:"Environment overrides for Master and all members. Empty by default; values must be strings.\nPrecedence, lowest to highest: inherited environment -> env -> start --env -> member add --env.\nUse absolute paths. Paths do not expand ~, $HOME, or command substitutions. CODEX_HOME selects the Codex configuration directory.\nCLAUDE_CONFIG_DIR selects the Claude configuration directory. An empty value unsets the variable.\nCSQUAD_*, TMUX, and TMUX_PANE are managed by C Squad and cannot be overridden.\nExample entry in the [env] table below: CODEX_HOME = \"/home/yourname/.codex-alt\"."`
+	StartupEnv   map[string]string   `json:"startup_env,omitempty" toml:"startup_env,omitempty" comment:"Compatibility field for saved startup environment overrides; takes precedence over env. Normally set these through start --env KEY=VALUE rather than editing this field."`
+	Version      int                 `json:"version" toml:"version" comment:"Configuration schema version. Only 1 is supported. This is not the application version; do not change it."`
+	Bypass       bool                `json:"bypass_permissions" toml:"bypass_permissions" comment:"Bypass native permission approvals: true (default) or false.\nWhen true, uses Claude --dangerously-skip-permissions or Codex --yolo. When false, native approvals remain enabled and members may wait for human approval.\nThis does not authenticate accounts, supply quota, or override organization policy."`
+	MaxMembers   int                 `json:"max_members" toml:"max_members" comment:"Maximum team size, including Master. Default: 8; must be an integer of at least 1.\nRemoved members do not count. This does not limit conversation turns or task count."`
+	Templates    map[string]Template `json:"templates,omitempty" toml:"templates,omitempty" comment:"Legacy role template compatibility field; new configurations do not need it. Define member responsibilities with member add --role and --instructions."`
 }
 
 // Defaults returns the built-in settings before user and project overlays.

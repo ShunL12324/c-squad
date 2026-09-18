@@ -63,7 +63,7 @@ func TestGeneratedConfigIsDocumentedAndPreserved(t *testing.T) {
 	}
 	body, err := os.ReadFile(path)
 	must(t, err)
-	for _, text := range []string{"# C-Squad", "包含 Master", "\n[env]\n", "master_model", "不展开", "--env", "bypass_permissions"} {
+	for _, text := range []string{"# C-Squad", "including Master", "\n[env]\n", "master_model", "do not expand", "--env", "bypass_permissions"} {
 		if !strings.Contains(string(body), text) {
 			t.Errorf("generated configuration is missing %q", text)
 		}

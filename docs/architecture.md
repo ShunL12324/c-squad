@@ -1,67 +1,116 @@
-# 包边界与可靠性约束
+# Architecture and reliability contracts
 
-Go 的目录通常对应一个包。同一包中的文件可以共享未导出的实现，所以“拆成多个文件”只改善阅读，不建立访问边界。目录应该围绕职责和依赖划分，不按类名或文件大小划分。
-
-当前结构：
+Package boundaries follow responsibilities and dependencies. Files in a Go
+package share unexported implementations; splitting a file improves navigation
+but does not create an access boundary.
 
 ```text
-cmd/csquad/         程序入口和退出码
+cmd/csquad/         Entry point and exit handling
 internal/
-  cli/             Cobra 参数、帮助、补全与退出码
-  preflight/       运行依赖检查
-  buildinfo/       构建版本信息
-  squad/           团队编排：任务、消息、生命周期、引擎接入、账本事务
-  config/          TOML/旧 JSON 加载、迁移、默认值与覆盖
-  agentenv/        环境变量校验、覆盖、原生引擎 unset 语义
-  process/         辅助命令、进程快照、PID 身份校验和进程树终止
-  filelock/        Unix 跨进程互斥
-  tmux/            指定 socket 的命令执行与精确 session 解析
+  cli/             Cobra commands, arguments, help, completion, and exit codes
+  preflight/       Runtime dependency checks
+  buildinfo/       Build version metadata
+  squad/           Tasks, messages, lifecycle, engine adapters, and ledger transactions
+  config/          TOML and legacy JSON loading, migration, defaults, and overlays
+  agentenv/        Environment validation, overrides, and native unset semantics
+  process/         Helper commands, process snapshots, identity checks, and tree cleanup
+  filelock/        Unix interprocess locking
+  tmux/            Socket-scoped commands and exact session lookup
 ```
 
-依赖方向：`cmd → cli → squad → 底层包`；`config → agentenv`、`tmux → process → agentenv`。底层包不导入 `squad`，不读取任务、成员或团队数据库。没有为目录分层引入通用 Service/Repository 接口；当前只有一种实现的基础能力用具体类型和函数表达。
+Dependencies flow from `cmd` through `cli` and `squad` to supporting packages.
+Additional dependencies are `config -> agentenv` and `tmux -> process -> agentenv`.
+Supporting packages neither import `squad` nor read its task, member, or team
+ledger. Concrete types and functions represent capabilities with a single
+implementation; package separation alone does not require service or repository
+interfaces.
 
-## 调用契约
+## Runtime contracts
 
-- 配置加载负责文件覆盖和兼容迁移；运行中的团队使用启动快照。展示配置和决定何时加载仍由编排层负责。
-- tmux Client 只定位服务器和准确的目标，不决定会话是否归本团队所有。所有权校验、导航、删除权限属于编排层。
-- process.Command 管理可取消的辅助命令进程组；交互 Agent 的任务不受该辅助命令超时限制。
-- 进程身份由 PID 和启动时间共同确定。终止前检查身份，避免删除旧进程后误杀复用 PID 的进程。快照不是永久保证，系统级竞态仍然存在。
-- 停止进程树时暂时暂停进程以缩小子进程逃逸窗口。中途失败会再次验证身份并恢复仍然存活的暂停进程；若恢复快照也失败，返回合并错误，由上层保留待清理状态。
-- 文件锁只提供互斥；锁顺序由业务层约定。生命周期操作保持 team-lifecycle → member，防止替换进程与旧代次写入并发发生。
-- SQLite 状态是任务与消息的持久事实来源。消息写入成功只代表进入 outbox，不代表投递或确认成功。
+- Configuration loading handles overlays and compatibility migrations. Running
+  teams use their startup snapshot. The orchestration layer decides when to load
+  configuration and how to display it.
+- The tmux client resolves servers and exact targets. Team ownership checks,
+  navigation, and authorization to remove sessions belong to orchestration.
+- `process.Command` manages cancellable helper-command process groups. Its
+  timeout does not limit interactive agent tasks.
+- Process identity combines PID and start time. Cleanup checks both before
+  termination to reduce the risk of acting on a reused PID. A snapshot cannot
+  eliminate all operating-system races.
+- Tree cleanup temporarily suspends processes to reduce the opportunity for
+  children to escape. On failure, it revalidates identity and resumes surviving
+  suspended processes. If a recovery snapshot also fails, it returns joined
+  errors so orchestration can retain the pending-cleanup state.
+- File locks provide mutual exclusion. Lifecycle operations acquire locks in
+  `team-lifecycle -> member` order to coordinate process replacement and writes
+  from previous generations.
+- SQLite is the durable source of truth for tasks and messages. Writing a
+  message to the outbox does not mean it was delivered or acknowledged.
 
-## 注释标准
+## CLI, state, and errors
 
-公共接口注释解释输入、输出、副作用和调用方责任；复杂流程解释不变量、锁顺序、恢复路径和平台限制。简单私有函数不机械补写逐行翻译。原生引擎特殊行为注明适用背景，避免写成普遍协议保证。revive 负责形式检查，review 负责语义准确性。
+The Cobra command catalog defines help, flags, required arguments, and
+completion. It passes parsed commands to `squad.Execute` without constructing
+shell commands. Internal native-engine arguments are passed as separate argv
+entries; arguments after `--` are not interpreted by C Squad.
 
-## 尚未拆开的边界
+Task, message, member, team, checkpoint, and question states use distinct string
+types and constants, as do dispatch modes, evidence kinds, and engines. String
+encoding preserves existing JSON/TOML compatibility. Go constants are not closed
+enums, so inputs still require validation. Native waiting reasons can extend the
+`waiting_` family. Model names, user roles, message bodies, and event descriptions
+remain open-ended values.
 
-`squad` 仍是较大的应用包。CLI 输出、业务规则与 SQLite 事务尚未完全分离，Claude/Codex 启动适配也仍在应用包中。下一步适合先让用例返回结构化结果，再把 CLI 展示与账本存储分开；不能仅把 Store 导出后搬到另一个目录，就声称已经解耦。
+Repeated business failures that callers must distinguish use sentinel errors:
+stopped teams, stale generations, missing resources, Master-only operations, and
+member limits. Operations wrap context with `%w` and preserve multiple failures
+with `errors.Join`. Error text is not a protocol. The CLI handles exit codes and
+recovery hints centrally; operation-specific error messages stay near the code
+that produces them.
 
-生产可用性还需要真实引擎版本兼容验收、Linux/macOS/WSL 运行验证、故障可观察性和发布流程。目录与注释改善不构成这些验证的替代。
+`preflight` checks executable availability, not authentication, quota, or every
+engine-version combination. Installation checks complement runtime checks.
+Research tasks can run without Git; code tasks must check Git availability.
+Checks do not install software or launch engines during help or completion.
 
-## CLI、状态类型与错误契约
+## Comments and remaining boundaries
 
-`cmd/csquad → internal/cli → squad`：Cobra 的命令目录集中定义帮助、参数、必填项和补全。CLI 将解析后的命令和选项交给 `squad.Execute`，不会把文本重新拼成 shell 命令。运行时内部的原生参数以独立 argv 传递，`--` 后内容不被 csquad 解释。
+Exported API comments describe inputs, outputs, side effects, and caller
+responsibilities. Complex paths document invariants, lock order, recovery, and
+platform limits. Comments on native-engine behavior identify the relevant
+context instead of implying a universal protocol guarantee. The revive linter
+checks form; review checks accuracy.
 
-任务、消息、成员、团队、检查点、问题状态，以及分发模式、证据类型、引擎类型使用各自的字符串类型和常量。保留字符串编码兼容现有 JSON/TOML；Go 的类型化常量不是封闭枚举，输入边界仍需验证。原生引擎等待原因可以扩展 `waiting_` 值；模型名称、用户角色、消息正文、事件描述不是固定枚举。
+`squad` remains a substantial application package: CLI output, business rules,
+SQLite transactions, and native launch adapters are not fully separated. A
+useful next boundary is structured use-case results, followed by presentation
+and storage separation. Moving an exported Store type to another directory would
+not, by itself, decouple those responsibilities.
 
-重复且需要程序判断的业务失败使用 sentinel error（团队停止、代次过期、资源不存在、master 权限、成员上限）；操作上下文用 `%w` 包装，多个失败用 `errors.Join` 保留。错误文本不作为协议；CLI 集中处理退出码和恢复提示。单一调用点的详细报错保留在操作附近，不建立脱离上下文的全局错误文案表。
+Production readiness also requires native-engine compatibility acceptance,
+Linux/macOS/WSL runtime validation, observable failures, and verified releases.
+Package structure and comments do not replace those checks.
 
-`preflight` 只检查依赖可执行文件，不验证账户登录、额度或所有版本兼容性。安装检查和执行前检查互补。缺少 Git 不阻止研究任务；创建代码任务时必须检查 Git。检查不自动安装软件，也不在帮助或补全过程启动原生引擎。
+## Development and testing
 
-## 开发与测试
+`make fmt` formats code. `make check` runs formatting checks, golangci-lint, and
+`go test -race ./...`. Development tools use pinned versions in the ignored
+`.tools/` directory. `make snapshot` uses a pinned GoReleaser to build Linux and
+macOS packages for amd64 and arm64, including completions and checksums, without
+publishing. When Git metadata is absent, it stages a temporary source repository
+instead of modifying the original directory.
 
-`make fmt` 格式化，`make check` 执行格式检查、golangci-lint 和 `go test -race ./...`。
-检查工具固定版本，下载到被忽略的 `.tools/`。`make snapshot` 使用固定版本的 GoReleaser
-构建 Linux/macOS 的 amd64/arm64 包，包含补全脚本及校验和；仅生成本地包，不发布。
-源码目录没有 Git 元数据时，在临时目录建立构建副本，不修改原目录的 Git 状态。
+Tests use standard Go `testing`. Keep `*_test.go` beside the code it exercises;
+normal builds exclude these files. Table-driven tests cover arguments and state
+transitions. Isolate files, environment, and processes with `t.TempDir`,
+`t.Setenv`, and `t.Cleanup`. Tests that change environment variables must not use
+`t.Parallel`. Assert behavior, state, exit codes, and `errors.Is` rather than
+complete error messages.
 
-使用标准库 `testing`；`*_test.go` 放在对应包旁边，普通构建不会包含测试。
-表格测试覆盖参数和状态转换；文件、环境及进程通过 `t.TempDir`、`t.Setenv`、`t.Cleanup` 隔离。
-修改环境变量的测试不使用 `t.Parallel`。断言关注行为、状态、退出码和 `errors.Is`，不依赖错误全文。
-
-集成测试使用真实 Git、tmux 和 CLI 子进程，原生引擎用测试替身，不消耗模型额度。
-缺少 tmux 时相关测试会跳过，因此完整检查环境和 发布 CI 必须安装 tmux。
-真实 Claude/Codex 验收需另行运行：检查启动、消息往返、任务交付和 Master 崩溃后的清理恢复。
-自动测试通过不等于原生引擎兼容验收通过。macOS/WSL 仍需实机验收；交叉编译只验证可构建性。
+Integration tests use real Git, tmux, and CLI subprocesses with fake native
+engines, so they do not consume model quota. Tests that need tmux skip when it is
+absent; full validation and release CI must install it. Real Claude Code/Codex
+acceptance is separate: check startup, message round trips, task delivery, and
+cleanup/recovery after Master failure. Passing automated tests does not establish
+native-engine compatibility. macOS and WSL still need runtime acceptance;
+cross-compilation only establishes buildability.

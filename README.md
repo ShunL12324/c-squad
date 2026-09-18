@@ -9,8 +9,7 @@
 </p>
 
 <p align="center">
-  <strong>A local development team of Claude Code and Codex agents, coordinated from one terminal.</strong><br>
-  让 Claude Code 和 Codex 在终端里组成开发小队。
+  <strong>A local development team of Claude Code and Codex agents, coordinated from one terminal.</strong>
 </p>
 
 <p align="center">

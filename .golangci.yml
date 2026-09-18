@@ -1,0 +1,34 @@
+version: "2"
+run:
+  timeout: 5m
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - errorlint
+    - revive
+  settings:
+    revive:
+      enable-default-rules: false
+      rules:
+        - name: exported
+          arguments: [check-private-receivers, check-public-interface]
+        - name: package-comments
+        - name: comment-spacings
+  exclusions:
+    rules:
+      # Test cleanup deliberately tolerates already-stopped processes/resources.
+      - path: _test\.go$
+        linters: [errcheck]
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/ShunL12324/c-squad

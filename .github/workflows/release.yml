@@ -1,0 +1,123 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+      - name: Check release prerequisites
+        env:
+          TAG: ${{ github.ref_name }}
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          APT_KEY: ${{ secrets.APT_SIGNING_KEY }}
+          APT_FINGERPRINT: ${{ vars.APT_SIGNING_FINGERPRINT }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Use a stable vX.Y.Z tag.' >&2; exit 1; }
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "$TAG^{commit}")"
+          test -s LICENSE
+          test -n "$TAP_TOKEN" || { echo 'Set HOMEBREW_TAP_TOKEN.' >&2; exit 1; }
+          test -n "$APT_KEY" || { echo 'Set APT_SIGNING_KEY.' >&2; exit 1; }
+          test -n "$APT_FINGERPRINT" || { echo 'Set APT_SIGNING_FINGERPRINT.' >&2; exit 1; }
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.0'
+          cache: true
+      - run: sudo apt-get update && sudo apt-get install -y tmux apt-utils
+      - run: make check
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: v2.18.2
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSQUAD_PUBLISH: 'true'
+      - run: make test-packaging
+      - name: Generate Homebrew formula
+        run: python3 scripts/render-homebrew.py --repository "$GITHUB_REPOSITORY" --license MIT --output dist/tap/Formula/csquad.rb
+      - name: Build signed APT repository
+        env:
+          APT_KEY: ${{ secrets.APT_SIGNING_KEY }}
+          APT_FINGERPRINT: ${{ vars.APT_SIGNING_FINGERPRINT }}
+        run: |
+          export GNUPGHOME
+          GNUPGHOME=$(mktemp -d)
+          trap 'gpgconf --kill gpg-agent; rm -rf "$GNUPGHOME"' EXIT
+          printf '%s' "$APT_KEY" | gpg --batch --import
+          bash scripts/build-apt-repo.sh dist/release dist/site/apt "$APT_FINGERPRINT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: homebrew-formula
+          path: dist/tap/Formula/csquad.rb
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/site
+      - name: Publish verified release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: gh release edit "$TAG" --draft=false
+
+  homebrew-test:
+    needs: release
+    runs-on: macos-14
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: homebrew-formula
+          path: formula
+      - name: Install and test the release with Homebrew
+        run: |
+          tap="$(brew --repository)/Library/Taps/c-squad/homebrew-ci"
+          mkdir -p "$tap/Formula"
+          cp formula/csquad.rb "$tap/Formula/"
+          git -C "$tap" init
+          brew install --build-from-source c-squad/ci/csquad
+          brew test c-squad/ci/csquad
+          brew uninstall csquad
+  homebrew:
+    needs: [release, homebrew-test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.HOMEBREW_TAP || 'ShunL12324/homebrew-tap' }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: homebrew-formula
+          path: Formula
+      - name: Update tap
+        run: |
+          ruby -c Formula/csquad.rb
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Formula/csquad.rb
+          if ! git diff --cached --quiet; then
+            git commit -m 'Update csquad formula'
+            git push
+          fi
+  apt:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy APT repository
+        id: deployment
+        uses: actions/deploy-pages@v4

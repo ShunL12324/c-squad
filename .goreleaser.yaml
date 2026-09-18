@@ -1,0 +1,87 @@
+version: 2
+project_name: csquad
+dist: dist/release
+before:
+  hooks:
+    - make completions
+builds:
+  - id: csquad
+    main: ./cmd/csquad
+    binary: csquad
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+      - -mod=readonly
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/ShunL12324/c-squad/internal/buildinfo.Version={{ .Version }}
+        -X github.com/ShunL12324/c-squad/internal/buildinfo.Commit={{ .Commit }}
+        -X github.com/ShunL12324/c-squad/internal/buildinfo.Date={{ .Date }}
+archives:
+  - id: csquad
+    formats: [tar.gz]
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    files:
+      - LICENSE
+      - README.md
+      - docs/install.md
+      - docs/assets/hero.png
+      - docs/assets/icon.png
+      - src: dist/completions/*
+        dst: completions
+        strip_parent: true
+checksum:
+  name_template: checksums.txt
+snapshot:
+  version_template: '{{ .Version }}-dev.{{ .ShortCommit }}'
+changelog:
+  disable: true
+release:
+  # Publishing is explicitly enabled only by the release workflow.
+  disable: '{{ ne (index .Env "CSQUAD_PUBLISH") "true" }}'
+  draft: true
+  replace_existing_draft: true
+  prerelease: auto
+
+# Standard source packages keep the Homebrew formula eligible for future core review.
+source:
+  enabled: true
+  name_template: '{{ .ProjectName }}_{{ .Version }}_source'
+  prefix_template: '{{ .ProjectName }}-{{ .Version }}/'
+nfpms:
+  - id: deb
+    package_name: csquad
+    formats: [deb]
+    file_name_template: '{{ .ConventionalFileName }}'
+    homepage: https://github.com/ShunL12324/c-squad
+    maintainer: ShunL12324 <ShunL12324@users.noreply.github.com>
+    license: MIT
+    description: Coordinate Claude Code and Codex teams in tmux
+    section: devel
+    priority: optional
+    dependencies:
+      - tmux
+      - procps
+    recommends:
+      - git
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/csquad/copyright
+      - src: dist/completions/csquad.bash
+        dst: /usr/share/bash-completion/completions/csquad
+      - src: dist/completions/_csquad
+        dst: /usr/share/zsh/vendor-completions/_csquad
+      - src: dist/completions/csquad.fish
+        dst: /usr/share/fish/vendor_completions.d/csquad.fish
+      - src: README.md
+        dst: /usr/share/doc/csquad/README.md
+      - src: docs/install.md
+        dst: /usr/share/doc/csquad/install.md

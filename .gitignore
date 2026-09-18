@@ -1,0 +1,24 @@
+# Generated binaries, release packages, and development tools.
+/bin/
+/dist/
+/.tools/
+
+# Local team ledger, recovery data, and task worktrees.
+.csquad/
+
+# Go test and profiling output. Keep test fixtures trackable.
+/coverage.out
+/coverage.html
+*.test
+*.prof
+
+# Local environment and editor/OS temporary files.
+.env
+.env.local
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Python release-tool cache.
+__pycache__/

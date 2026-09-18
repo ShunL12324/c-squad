@@ -1,0 +1,31 @@
+class Csquad < Formula
+  desc "Coordinate Claude Code and Codex teams in tmux"
+  homepage "https://github.com/@REPOSITORY@"
+  url "https://github.com/@REPOSITORY@/releases/download/v@VERSION@/csquad_@VERSION@_source.tar.gz"
+  sha256 "@SHA256@"
+  license "@LICENSE@"
+
+  depends_on "go" => :build
+  depends_on "tmux"
+  depends_on "git"
+
+  def install
+    ENV["CGO_ENABLED"] = "0"
+    ldflags = %W[
+      -s -w
+      -X @MODULE@/internal/buildinfo.Version=#{version}
+      -X @MODULE@/internal/buildinfo.Commit=@COMMIT@
+      -X @MODULE@/internal/buildinfo.Date=@DATE@
+    ]
+    system "go", "build", *std_go_args(ldflags: ldflags), "./cmd/csquad"
+    generate_completions_from_executable(bin/"csquad", "completion")
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/csquad version")
+    assert_match "Usage:", shell_output("#{bin}/csquad --help")
+    ENV["CSQUAD_CONFIG"] = (testpath/"config.toml").to_s
+    shell_output("#{bin}/csquad config")
+    assert_path_exists testpath/"config.toml"
+  end
+end

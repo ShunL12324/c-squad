@@ -25,9 +25,7 @@ doing, or stay with Master and ask for an update.
 
 ![Switching between five real tmux sessions: Master, developer, docs, reviewer, and tester](docs/assets/demo.gif)
 
-*A real tmux recording at 1.25× speed: use Alt+Right to cycle through Master,
-developer, docs, reviewer, and tester. Each view stays on screen for about 1.6
-seconds. [View a still image](docs/assets/demo.png).*
+*Switch between team members to see their work. [View screenshot](docs/assets/demo.png).*
 
 ## Why use it?
 

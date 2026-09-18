@@ -57,7 +57,7 @@ release:
   replace_existing_draft: true
   prerelease: auto
 
-# Standard source packages keep the Homebrew formula eligible for future core review.
+# Include source archives for contributors and downstream packagers.
 source:
   enabled: true
   name_template: '{{ .ProjectName }}_{{ .Version }}_source'

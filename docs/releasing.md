@@ -4,7 +4,7 @@ Only stable version tags trigger CI. Ordinary pushes and pull requests do not
 start a build.
 
 The repository builds archives, a source tarball, and Debian packages with a pinned
-GoReleaser version. Homebrew uses a source-based Formula; APT uses signed static
+GoReleaser version. Homebrew installs precompiled release archives; APT uses signed static
 metadata hosted on GitHub Pages. Neither channel requires a running server.
 
 ## One-time setup

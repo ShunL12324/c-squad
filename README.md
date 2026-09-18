@@ -51,20 +51,29 @@ Each running agent uses its own engine account's quota.
 
 ### 1. Install
 
-You need **Go 1.26+**, **Git**, **tmux**, and at least one installed, signed-in
-**Claude Code or Codex CLI**. To use both engines in one team, set up both.
-Run inside Linux, macOS, or WSL 2; native Windows is not supported.
+**macOS / Homebrew**
 
 ```sh
-git clone https://github.com/ShunL12324/c-squad.git
-cd c-squad
-make install
-export PATH="$HOME/.local/bin:$PATH"
+brew tap ShunL12324/c-squad https://github.com/ShunL12324/c-squad
+brew install ShunL12324/c-squad/csquad
 ```
 
-Add the PATH line to your shell configuration to keep it. Source installation
-is available now; [Homebrew, APT, and release archives](docs/install.md) become
-available after the first tagged release and package-channel setup.
+**Ubuntu / Debian / WSL 2** — [add the APT repository once](docs/install.md#ubuntu--debian), then:
+
+```sh
+sudo apt update
+sudo apt install csquad
+```
+
+Both install a precompiled C Squad binary and tmux. You also need an installed,
+signed-in **Claude Code or Codex CLI**; set up both to use a mixed-engine team.
+Code tasks need Git, which Homebrew installs and APT normally installs as a
+recommended dependency.
+
+Prefer a manual install? Download a package for your platform from
+[Releases](https://github.com/ShunL12324/c-squad/releases/latest).
+See [Installation](docs/install.md) for details. Native Windows is not supported;
+use WSL 2 instead.
 
 ### 2. Start in your project
 

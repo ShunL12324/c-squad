@@ -81,7 +81,7 @@ jobs:
           mkdir -p "$tap/Formula"
           cp formula/csquad.rb "$tap/Formula/"
           git -C "$tap" init
-          brew install --build-from-source c-squad/ci/csquad
+          brew install c-squad/ci/csquad
           brew test c-squad/ci/csquad
           brew uninstall csquad
   homebrew:

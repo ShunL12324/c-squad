@@ -1,24 +1,37 @@
 class Csquad < Formula
   desc "Coordinate Claude Code and Codex teams in tmux"
   homepage "https://github.com/@REPOSITORY@"
-  url "https://github.com/@REPOSITORY@/releases/download/v@VERSION@/csquad_@VERSION@_source.tar.gz"
-  sha256 "@SHA256@"
+  version "@VERSION@"
   license "@LICENSE@"
 
-  depends_on "go" => :build
+  on_macos do
+    if Hardware::CPU.arm?
+      url "https://github.com/@REPOSITORY@/releases/download/v@VERSION@/csquad_@VERSION@_darwin_arm64.tar.gz"
+      sha256 "@SHA256_DARWIN_ARM64@"
+    else
+      url "https://github.com/@REPOSITORY@/releases/download/v@VERSION@/csquad_@VERSION@_darwin_amd64.tar.gz"
+      sha256 "@SHA256_DARWIN_AMD64@"
+    end
+  end
+
+  on_linux do
+    if Hardware::CPU.arm?
+      url "https://github.com/@REPOSITORY@/releases/download/v@VERSION@/csquad_@VERSION@_linux_arm64.tar.gz"
+      sha256 "@SHA256_LINUX_ARM64@"
+    else
+      url "https://github.com/@REPOSITORY@/releases/download/v@VERSION@/csquad_@VERSION@_linux_amd64.tar.gz"
+      sha256 "@SHA256_LINUX_AMD64@"
+    end
+  end
+
   depends_on "tmux"
   depends_on "git"
 
   def install
-    ENV["CGO_ENABLED"] = "0"
-    ldflags = %W[
-      -s -w
-      -X @MODULE@/internal/buildinfo.Version=#{version}
-      -X @MODULE@/internal/buildinfo.Commit=@COMMIT@
-      -X @MODULE@/internal/buildinfo.Date=@DATE@
-    ]
-    system "go", "build", *std_go_args(ldflags: ldflags), "./cmd/csquad"
-    generate_completions_from_executable(bin/"csquad", "completion")
+    bin.install "csquad"
+    bash_completion.install "completions/csquad.bash" => "csquad"
+    zsh_completion.install "completions/_csquad"
+    fish_completion.install "completions/csquad.fish"
   end
 
   test do

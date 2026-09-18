@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render a source-based Homebrew formula from a GoReleaser source artifact."""
+"""Render a Homebrew formula that installs precompiled GoReleaser archives."""
 
 import argparse
 import hashlib
@@ -24,16 +24,15 @@ def main():
     if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?", version):
         parser.error("unsupported release version")
     root = Path(__file__).resolve().parent.parent
-    source = args.dist / f"csquad_{version}_source.tar.gz"
     values = {
         "REPOSITORY": args.repository,
         "VERSION": version,
         "LICENSE": args.license,
-        "SHA256": hashlib.sha256(source.read_bytes()).hexdigest(),
-        "MODULE": (root / "go.mod").read_text().split()[1],
-        "COMMIT": metadata["commit"],
-        "DATE": metadata["date"],
     }
+    for system in ("darwin", "linux"):
+        for arch in ("amd64", "arm64"):
+            archive = args.dist / f"csquad_{version}_{system}_{arch}.tar.gz"
+            values[f"SHA256_{system.upper()}_{arch.upper()}"] = hashlib.sha256(archive.read_bytes()).hexdigest()
     formula = (root / "Formula/csquad.rb.in").read_text()
     for key, value in values.items():
         formula = formula.replace(f"@{key}@", value)

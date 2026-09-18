@@ -8,10 +8,15 @@ that behavior predictable, observable, and recoverable.
 Use Go 1.26+, Git, and tmux on Linux, macOS, or WSL 2.
 
 ```sh
+git clone https://github.com/ShunL12324/c-squad.git
+cd c-squad
 make fmt
 make check
 make build
 ```
+
+Run `bin/csquad` to try your build. Use `make install` to install it under
+`~/.local/bin`; add that directory to your PATH.
 
 Tests use Go's standard `testing` package. Keep unit tests beside the code they
 exercise. Use temporary directories and cleanup handlers; never point tests at a

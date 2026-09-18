@@ -1,7 +1,8 @@
 # Installation
 
-Package channels become available after the first public release. Until then,
-follow the [source quick start](../README.md#quick-start) with Go 1.26+.
+Install a precompiled package with Homebrew, APT, or a download from
+[GitHub Releases](https://github.com/ShunL12324/c-squad/releases/latest).
+You do not need Go or a compiler.
 
 ## macOS / Homebrew
 
@@ -12,9 +13,8 @@ brew install ShunL12324/c-squad/csquad
 
 The source repository also serves as the tap; no separate repository is needed.
 Run `brew tap` once, then use the normal install and upgrade commands.
-The tap uses a standard source-based Formula. Homebrew installs Go as a build
-dependency, compiles the CLI, and installs tmux, Git, and shell completions.
-The first installation may take a few minutes. It does not install or sign in to
+The tap downloads the release binary for your OS and CPU architecture, then
+installs tmux, Git, and shell completions. It does not install or sign in to
 Claude Code or Codex.
 
 ```sh
@@ -66,7 +66,7 @@ sudo apt remove csquad
 The repository tracks the current stable release. It is a third-party source,
 not part of Ubuntu's or Debian's official archive.
 
-Alternatively, download a `.deb` from GitHub Releases and install it locally:
+Alternatively, download a `.deb` from [GitHub Releases](https://github.com/ShunL12324/c-squad/releases/latest) and install it locally:
 
 ```sh
 sudo apt install ./csquad_VERSION_amd64.deb
@@ -103,3 +103,8 @@ account quota. `--help` and completion generation work without engine binaries.
 Stop teams before upgrading. Uninstalling the program preserves user
 configuration and project `.csquad/` recovery data. Delete those separately only
 when you no longer need them.
+
+## Building from source
+
+Source builds are for contributors or users testing unreleased changes. See
+[Contributing](../CONTRIBUTING.md#development) for the Go toolchain and build steps.

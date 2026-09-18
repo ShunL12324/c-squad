@@ -25,6 +25,7 @@ func TestSyntaxErrorsNeverReachTeamOperations(t *testing.T) {
 		{"task", "evidence", "T1", "--kind", "review", "--sha", "abc", "--passed", "typo", "--summary", "checked"},
 		{"member", "missing"},
 		{"board", "unexpected"},
+		{"navigate", "--client", "/dev/pts/1", "--direction", "left"},
 	}
 	for _, args := range cases {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
@@ -68,6 +69,35 @@ func TestParsedValuesPreserveOpaqueTextAndNativeArguments(t *testing.T) {
 			}
 			if !called {
 				t.Fatal("backend was not called")
+			}
+		})
+	}
+}
+
+// Navigation bindings invoke the CLI, so accepted flag values must match the
+// backend protocol rather than the labels printed in the shortcut hint.
+func TestNavigationBindingsReachBackend(t *testing.T) {
+	for _, flags := range [][]string{
+		{"--direction", "next"},
+		{"--direction", "previous"},
+		{"--index", "1"},
+	} {
+		t.Run(strings.Join(flags, " "), func(t *testing.T) {
+			called := false
+			root := newCommand(func(path []string, values map[string]string, _ []string) error {
+				called = true
+				if !reflect.DeepEqual(path, []string{"navigate"}) || values["client"] != "/dev/pts/1" || values[strings.TrimPrefix(flags[0], "--")] != flags[1] {
+					t.Fatalf("unexpected navigation: %v %v", path, values)
+				}
+				return nil
+			})
+			args := []string{"--member", "master", "--generation", "0", "navigate", "--client", "/dev/pts/1"}
+			root.SetArgs(append(args, flags...))
+			if err := root.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			if !called {
+				t.Fatal("navigation did not reach the backend")
 			}
 		})
 	}

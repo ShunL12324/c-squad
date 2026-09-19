@@ -1,26 +1,26 @@
 class Csquad < Formula
   desc "Coordinate Claude Code and Codex teams in tmux"
   homepage "https://github.com/ShunL12324/c-squad"
-  version "0.1.0"
+  version "0.2.0"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/ShunL12324/c-squad/releases/download/v0.1.0/csquad_0.1.0_darwin_arm64.tar.gz"
-      sha256 "88fe961a987d0d6c0fca5fabd82434e530972dc5f9ab75b36822a410d983b006"
+      url "https://github.com/ShunL12324/c-squad/releases/download/v0.2.0/csquad_0.2.0_darwin_arm64.tar.gz"
+      sha256 "7ee8bdfab74b2019eab1749b8268dd145e0022b3ddb79ca845fe12db56169492"
     else
-      url "https://github.com/ShunL12324/c-squad/releases/download/v0.1.0/csquad_0.1.0_darwin_amd64.tar.gz"
-      sha256 "2b26d7a089273ec33c826d2666c02722fb4f5f11036d98ed1abe9706954d15a5"
+      url "https://github.com/ShunL12324/c-squad/releases/download/v0.2.0/csquad_0.2.0_darwin_amd64.tar.gz"
+      sha256 "3c9ac20dc7d724b8735b7693f2ff8b9dc9b35910927a269f8a54f40ef74c3e3c"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "https://github.com/ShunL12324/c-squad/releases/download/v0.1.0/csquad_0.1.0_linux_arm64.tar.gz"
-      sha256 "790e9fd3c8b9149cd3d28e842b2e5a48b5e9683da0f047e7cd206e5a2435aa1c"
+      url "https://github.com/ShunL12324/c-squad/releases/download/v0.2.0/csquad_0.2.0_linux_arm64.tar.gz"
+      sha256 "6f82e8b68347cf5e15af9f282c0c768abb14f76daca01a31df8835740f84a3cc"
     else
-      url "https://github.com/ShunL12324/c-squad/releases/download/v0.1.0/csquad_0.1.0_linux_amd64.tar.gz"
-      sha256 "52a30d18b41c2ed5e4478e4e283d4c8d4c0161af594285c52b79645a577fa00c"
+      url "https://github.com/ShunL12324/c-squad/releases/download/v0.2.0/csquad_0.2.0_linux_amd64.tar.gz"
+      sha256 "c86ee86c416a484f1227134aa086c3671bff44f17a859351a9c9ec7f87233e6a"
     end
   end
 

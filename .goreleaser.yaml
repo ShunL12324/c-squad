@@ -79,6 +79,7 @@ nfpms:
       - procps
     recommends:
       - git
+      - bash-completion
     contents:
       - src: LICENSE
         dst: /usr/share/doc/csquad/copyright

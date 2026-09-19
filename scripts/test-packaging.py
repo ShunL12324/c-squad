@@ -50,12 +50,13 @@ def main():
 set -eu
 printf '%s\n' 'deb [signed-by=/repo1/key.asc] file:/repo1 stable main' > /etc/apt/sources.list.d/csquad.list
 apt-get update -qq
-DEBIAN_FRONTEND=noninteractive apt-get install -y -qq csquad
+DEBIAN_FRONTEND=noninteractive apt-get install -y -qq csquad zsh python3
 csquad version
 csquad --help >/dev/null
 command -v tmux
 command -v ps
 for f in /usr/share/bash-completion/completions/csquad /usr/share/zsh/vendor-completions/_csquad /usr/share/fish/vendor_completions.d/csquad.fish /usr/share/doc/csquad/copyright; do test -s "$f"; done
+python3 /test-shell-completion.py
 # Package installation must not eagerly create user configuration.
 test ! -e /root/.config/csquad/config.toml
 csquad config >/dev/null
@@ -75,7 +76,8 @@ test -s /tmp/project/.csquad/sentinel
 printf 'PASS: signed APT install, upgrade, purge, config and recovery preservation\n'
 '''
             run("docker", "run", "--rm", "-v", f"{stage / 'repo1'}:/repo1:ro",
-                "-v", f"{stage / 'repo2'}:/repo2:ro", args.image, "bash", "-c", script)
+                "-v", f"{stage / 'repo2'}:/repo2:ro",
+                "-v", f"{root / 'scripts/test-shell-completion.py'}:/test-shell-completion.py:ro", args.image, "bash", "-c", script)
         finally:
             subprocess.run(["gpgconf", "--kill", "gpg-agent"], env=env, check=False)
 

@@ -81,17 +81,12 @@ MCP configuration are not automatically copied into worktrees.
 csquad --help
 csquad task create --help
 csquad member add --help
-
-# Zsh
-autoload -Uz compinit && compinit
-source <(csquad completion zsh)
-
-# Bash
-source <(csquad completion bash)
-
-# Fish
-csquad completion fish | source
 ```
+
+Homebrew and APT install Bash, Zsh, and Fish completions automatically. In a new
+terminal, type `csquad sta` and press **Tab** to complete `csquad start`. No
+`csquad completion` setup command is needed. Your shell must have its normal
+completion system enabled (for example, Oh My Zsh already enables Zsh completion).
 
 Completion includes commands, flags, and IDs from the current team. It reads the
 ledger without waking agents. `csquad help request` is a team escalation command;

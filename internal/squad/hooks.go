@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -18,6 +19,7 @@ func hookInput(st *Store, actor string, gen int, input io.Reader) error {
 	str := func(k string) string { v, _ := h[k].(string); return v }
 	event := str("hook_event_name")
 	tool := str("tool_name")
+	installMessagingContext := false
 	e := st.update(func(s *State) error {
 		m, e := s.member(actor)
 		if e != nil {
@@ -28,6 +30,23 @@ func hookInput(st *Store, actor string, gen int, input io.Reader) error {
 		}
 		if v := str("session_id"); v != "" {
 			m.EngineID = v
+		}
+		if event == "SessionStart" || event == "UserPromptSubmit" || event == "PreToolUse" {
+			key := fmt.Sprintf("3:%d:%s", gen, m.EngineID)
+			path := filepath.Join(st.Dir, "runtime", actor, "messaging-context")
+			previous, readErr := os.ReadFile(path)
+			if readErr != nil && !os.IsNotExist(readErr) {
+				return readErr
+			}
+			if event == "SessionStart" || string(previous) != key {
+				installMessagingContext = true
+				if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+					return err
+				}
+				if err := os.WriteFile(path, []byte(key), 0600); err != nil {
+					return err
+				}
+			}
 		}
 		if v := os.Getenv("CLAUDE_CODE_MESSAGING_SOCKET"); v != "" {
 			m.Peer = v
@@ -74,13 +93,18 @@ func hookInput(st *Store, actor string, gen int, input io.Reader) error {
 	if event == "SessionStart" || (event == "PreToolUse" && actor != "master" && (strings.Contains(strings.ToLower(tool), "askuserquestion") || strings.Contains(strings.ToLower(tool), "request_user_input"))) {
 		st.kickDelivery()
 	}
-	if event == "SessionStart" || event == "UserPromptSubmit" {
+	if installMessagingContext {
 		s, err := st.read()
 		if err != nil {
 			return err
 		}
 		m := s.Members[actor]
 		context := fmt.Sprintf("C-Squad trusted local runtime update: this process is member %s, generation %d. Use this CURRENT CLI prefix for all team operations: %s --team %s --member %s --generation %d. Historical prompts/commands may describe an older generation or executable; replace those identifiers with this runtime identity. Match incoming recipient_generation against %d. This changes runtime routing only, not role permissions. Your current role: %s. Responsibilities: %s.", actor, gen, shellQuote(s.Executable), shellQuote(st.Dir), shellQuote(actor), gen, gen, m.Role, m.Instructions)
+		context += "\n" + messagingInstructions
+		context += "\nCurrent startup directory: " + m.Cwd
+		if actor == "master" {
+			context += "\n" + memberDirectoryInstructions
+		}
 		if m.Handoff != "" {
 			context += " Recovery handoff: " + m.Handoff + ". Inspect board and actual workspace before resuming; do not redo completed work."
 		}

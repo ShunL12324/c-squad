@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ShunL12324/c-squad/internal/agentenv"
+	"github.com/ShunL12324/c-squad/internal/config"
 	"github.com/ShunL12324/c-squad/internal/process"
 )
 
@@ -88,7 +89,17 @@ func runEngine(st *Store, actor string, gen int, args []string) error {
 			_ = c.Wait()
 			return err
 		}
+		startupDone := make(chan struct{})
+		startupFinished := make(chan struct{})
+		cfg, cfgErr := s.effectiveConfig()
+		if cfgErr == nil && cfg.Bypass && m.Engine == config.Claude {
+			go func() { defer close(startupFinished); st.monitorClaudeStartup(actor, gen, startupDone) }()
+		} else {
+			close(startupFinished)
+		}
 		e = c.Wait()
+		close(startupDone)
+		<-startupFinished
 	}
 	state := MemberStateStopped
 	if e != nil {

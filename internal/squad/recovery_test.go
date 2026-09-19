@@ -80,7 +80,24 @@ func TestCrashCleanupAndProjectResume(t *testing.T) {
 		t.Fatalf("timeout: %s", b)
 		return nil
 	}
-	cli("member", "add", "alice", "--engine", "claude", "--role", "custom role", "--instructions", "preserve my work")
+	project := filepath.Join(temp, "member project")
+	must(t, os.Mkdir(project, 0700))
+	cli("member", "add", "alice", "--engine", "claude", "--role", "custom role", "--instructions", "preserve my work", "--cwd", project)
+	wait(func(s *State) bool { return s.Members["alice"].EnginePID > 0 })
+	assertDirectory := func(want string) {
+		t.Helper()
+		s := read()
+		got, e := tm(s, "display-message", "-p", "-t", s.Members["alice"].Pane, "#{pane_current_path}")
+		must(t, e)
+		if got != want || s.Members["alice"].Cwd != want {
+			t.Fatalf("member directory: process=%q ledger=%q want=%q", got, s.Members["alice"].Cwd, want)
+		}
+	}
+	assertDirectory(project)
+	cli("member", "restart", "alice", "--cwd", root)
+	wait(func(s *State) bool { return s.Members["alice"].EnginePID > 0 })
+	assertDirectory(root)
+
 	cli("task", "create", "code", "--code", "--acceptance", "preserve edits")
 	s := read()
 	var taskID, workspace string

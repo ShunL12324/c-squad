@@ -8,6 +8,8 @@ import (
 	"github.com/ShunL12324/c-squad/internal/filelock"
 )
 
+const runtimeProtocol = "3"
+
 func runtimeName(s *State) string { return "csq-" + s.ID + "-runtime" }
 func (st *Store) startRuntime() error {
 	unlock, e := filelock.Acquire(st.Dir, "runtime-start", false)
@@ -32,7 +34,7 @@ func (st *Store) startRuntime() error {
 	if dead, err := tm(s, "display-message", "-p", "-t", "="+name+":", "#{pane_dead}"); err == nil {
 		if dead == "0" {
 			protocol, _ := tm(s, "show-options", "-v", "-t", "="+name, "@csquad_runtime_protocol")
-			if protocol == "2" {
+			if protocol == runtimeProtocol {
 				return nil
 			}
 		}
@@ -42,7 +44,7 @@ func (st *Store) startRuntime() error {
 	}
 	_, e = tm(s, "new-session", "-d", "-s", name, "-c", s.Root, s.Executable, "--team", st.Dir, "--member", "master", "--generation", "0", "runtime")
 	if e == nil {
-		_, e = tm(s, "set-option", "-t", "="+name, "@csquad_runtime_protocol", "2")
+		_, e = tm(s, "set-option", "-t", "="+name, "@csquad_runtime_protocol", runtimeProtocol)
 	}
 	return e
 }

@@ -155,6 +155,13 @@ func execute(run runner, path []string) func(*cobra.Command, []string) error {
 				values[flag.Name] = flag.Value.String()
 			}
 		})
+		if path[0] == "resume" && len(args) == 1 {
+			if values["name"] != "" || values["team"] != "" {
+				return &usageError{fmt.Errorf("specify the team once: resume TEAM, --name TEAM, or --team DIR"), cmd.CommandPath()}
+			}
+			values["name"] = args[0]
+			args = nil
+		}
 		for _, name := range []string{"generation", "epoch", "expected-generation"} {
 			if value, ok := values[name]; ok {
 				n, err := strconv.Atoi(value)
@@ -164,6 +171,9 @@ func execute(run runner, path []string) func(*cobra.Command, []string) error {
 			}
 		}
 		for name, choices := range flagChoices {
+			if path[0] == "ui-panel" && name == "view" && values[name] == "header" {
+				continue
+			}
 			if value, ok := values[name]; ok && !contains(choices, value) {
 				return &usageError{fmt.Errorf("invalid --%s %q; choose %s", name, value, strings.Join(choices, "|")), cmd.CommandPath()}
 			}

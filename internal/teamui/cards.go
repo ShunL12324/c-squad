@@ -7,32 +7,49 @@ import (
 )
 
 // cardHit uses the same rendered bounds for pointer input and viewport selection.
-type cardHit struct{ index, start, end int }
+type cardHit struct{ index, start, end, button int }
 
 func (m model) taskCards() ([]string, []cardHit) {
-	if len(m.data.Tasks) == 0 {
-		return []string{" No tasks yet.", " Ask Master to plan work."}, nil
+	if len(m.tasks()) == 0 {
+		if m.completed {
+			return block([]string{textStyle("No completed tasks", foreground, true), "", textStyle("Finished work will appear here.", muted, false)}, m.width, surface, ""), nil
+		}
+		return block([]string{textStyle("Nothing in progress", foreground, true), "", textStyle("Tasks from Master appear here.", muted, false), textStyle("Past work is under Done.", muted, false)}, m.width, surface, ""), nil
 	}
-	available := max(0, m.height-4)
+	available := max(0, m.height-taskHeaderRows-2)
 	var lines []string
 	var hits []cardHit
-	for i := m.top; i < len(m.data.Tasks) && len(lines) < available; i++ {
+	for i := m.top; i < len(m.tasks()); i++ {
 		card := m.taskCard(i)
-		// Keep subsequent cards whole so their titles and metadata stay together.
-		if len(lines) > 0 && len(lines)+len(card) > available {
-			break
-		}
 		start := len(lines)
-		lines = append(lines, card[:min(len(card), available-start)]...)
-		hits = append(hits, cardHit{i, start, len(lines)})
+		lines = append(lines, card...)
+		hits = append(hits, cardHit{i, start, len(lines), start + len(card) - 3})
 	}
+	offset := min(m.offset, max(0, len(lines)-available))
+	end := min(len(lines), offset+available)
+	lines = lines[offset:end]
+	visible := hits[:0]
+	for _, hit := range hits {
+		if hit.end <= offset || hit.start >= end {
+			continue
+		}
+		hit.start = max(0, hit.start-offset)
+		hit.end = min(available, hit.end-offset)
+		hit.button -= offset
+		visible = append(visible, hit)
+	}
+	hits = visible
 	return lines, hits
 }
 
 func (m model) taskCard(index int) []string {
-	task := m.data.Tasks[index]
+	task := m.tasks()[index]
 	selected := index == m.selected
-	width := max(1, m.width-4)
+	bg, stripe := surface, ""
+	if selected {
+		bg, stripe = selectedSurface, task.Color
+	}
+	width := max(1, m.width-6)
 	wrap := func(text string, limit int) []string {
 		rows := strings.Split(lipgloss.NewStyle().Width(width).Render(clean(text)), "\n")
 		if len(rows) > limit {
@@ -41,34 +58,25 @@ func (m model) taskCard(index int) []string {
 		}
 		return rows
 	}
-	content := wrap(task.ID+"  "+task.Title, 2)
+	content := wrap(task.Title, 2)
 	for i := range content {
-		content[i] = paint(content[i], task.Color, selected)
+		content[i] = textStyle(content[i], foreground, true)
 	}
 	owner := task.Owner
 	if owner == "" {
 		owner = "Unassigned"
 	}
-	content = append(content, paint(line(task.State, width), task.Color, false), line("Owner: "+owner, width), "")
+	content = append([]string{spread(textStyle(task.ID, accent, true), badge(task.State), width, bg), ""}, content...)
+	content = append(content, textStyle(line("Owner: "+owner, width), muted, false))
 	progress := task.Progress
-	if progress == "" {
-		progress = "No progress update yet."
+	content = append(content, "", textStyle(strings.Repeat("─", width), "240", false))
+	content = append(content, milestoneLines(task.Milestones, width, 3)...)
+	if progress != "" {
+		content = append(content, "")
+		content = append(content, textStyle("LATEST UPDATE", muted, true))
+		content = append(content, wrap(progress, 2)...)
+		content = append(content, "")
 	}
-	content = append(content, wrap(progress, 2)...)
-	if selected && task.Detail != "" {
-		content = append(content, "", paint("DETAILS", task.Color, true))
-		rows := strings.Split(lipgloss.NewStyle().Width(width).Render(clean(task.Detail)), "\n")
-		count := max(1, min(7, m.height-len(content)-7))
-		offset := min(m.offset, max(0, len(rows)-count))
-		content = append(content, rows[offset:min(len(rows), offset+count)]...)
-	}
-	if m.width < 6 {
-		return content
-	}
-	style := lipgloss.NewStyle().Width(m.width-2).Padding(0, 1).
-		Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("240"))
-	if selected {
-		style = style.BorderForeground(lipgloss.Color(task.Color))
-	}
-	return strings.Split(style.Render(strings.Join(content, "\n")), "\n")
+	content = append(content, "", paint(" View details › ", accent, true))
+	return block(content, m.width, bg, stripe)
 }

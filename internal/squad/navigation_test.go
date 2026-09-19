@@ -85,10 +85,15 @@ func TestNavigationIsScopedAndRefreshesRoster(t *testing.T) {
 	}
 	must(t, st.update(func(s *State) error { s.Members["a"].State = MemberStateRemoved; return nil }))
 	must(t, st.configureNavigation())
-	labels, e := tm(s, "show-options", "-v", "-t", "=team-master", "status-format[0]")
+	labels, e := tm(s, "show-options", "-v", "-t", "=team-master", "status-format[1]")
 	must(t, e)
-	if strings.Contains(labels, "range=user") || strings.Contains(labels, "master") || strings.Contains(labels, "1:b") {
+	if strings.Contains(labels, "master") || strings.Contains(labels, "1:b") {
 		t.Fatal("status bar still contains the member roster:", labels)
+	}
+	for _, action := range []string{"tasks", "detach"} {
+		if !strings.Contains(labels, "range=user|"+action+",") {
+			t.Fatalf("missing status button: %s", action)
+		}
 	}
 	st.clearNavigation(s)
 	if _, e = tm(s, "list-keys", "-T", root); e == nil {

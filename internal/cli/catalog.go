@@ -19,6 +19,7 @@ type definition struct {
 var startupFlags = []string{"name", "engine", "model", "env", "detach", "color"}
 var flagChoices = map[string][]string{"view": {"members", "tasks", "both", "hide"}, "color": tmux.ColorNames(), "engine": {string(config.Claude), string(config.Codex)}, "dispatch": {"assigned", "open"}, "kind": {"review", "test"}, "passed": {"true", "false"}, "direction": {"previous", "next"}}
 var flagDescriptions = map[string]string{
+	"cwd":  "Member startup directory; relative paths resolve from the calling directory",
 	"view": "Visible panels: members, tasks, both or hide", "popup": "Render a temporary popup panel",
 	"color": "Member label color (random when omitted): " + strings.Join(tmux.ColorNames(), ", "), "name": "Team name or milestone name for this command", "engine": "Native agent engine", "model": "Native engine model name", "env": "Environment override KEY=VALUE; repeat for multiple values", "detach": "Start without attaching this terminal", "fresh": "Start new native conversations while retaining the team ledger", "full": "Include the full message and event history", "role": "Free-form member identity", "instructions": "Responsibilities injected into system/developer context", "task": "Task ID", "template": "Legacy role template name", "prompt": "Explicit opening user message (none by default)", "description": "Task description", "acceptance": "Verifiable task acceptance criteria", "code": "Create an isolated Git worktree for this task", "milestones": "Comma-separated reporting checkpoints", "gates": "Comma-separated checkpoints requiring master approval", "deps": "Comma-separated prerequisite task IDs", "dispatch": "Assign an owner or allow members to claim the task", "request-id": "Stable idempotency key for retries", "setup": "Workspace setup instructions", "owner": "Member responsible for writing task code", "to": "Comma-separated task participants", "text": "Message or progress text", "summary": "Result or evidence summary", "sha": "Candidate commit SHA", "kind": "Evidence category", "passed": "Whether verification passed", "all": "Broadcast to every available team member", "client": "tmux client identifier", "direction": "Member navigation direction", "index": "Member navigation index", "epoch": "Team incarnation for shutdown fencing", "expected-generation": "Master generation for shutdown fencing", "reason": "Shutdown reason", "strict": "Fail when required runtime tools are unavailable",
 }
@@ -38,6 +39,11 @@ func addFlags(cmd *cobra.Command, names []string) {
 			cmd.Flags().String(name, "", description)
 		}
 		completion := cobra.NoFileCompletions
+		if name == "cwd" {
+			completion = func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+				return nil, cobra.ShellCompDirectiveFilterDirs
+			}
+		}
 		if name == "name" && (cmd.Name() == "attach" || cmd.Name() == "resume" || cmd.Name() == "board" || cmd.Name() == "stop" || cmd.Name() == "ui") {
 			completion = completeResource("team")
 		}
@@ -66,7 +72,7 @@ func groupDescription(name string) string {
 func definitions() []definition {
 	defs := []definition{
 		{path: "start", summary: "Start a master session in tmux", flags: startupFlags, example: "  csquad start --name my-team --engine claude\n  csquad start --detach --env CODEX_HOME=/path/to/codex-home"},
-		{path: "resume", summary: "Recover a stopped team from its ledger", flags: []string{"name", "env", "fresh", "detach"}, example: "  csquad resume --name my-team\n  csquad resume --fresh --detach"},
+		{path: "resume", args: " [TEAM]", max: 1, complete: "team", summary: "Recover a stopped team from its ledger", flags: []string{"name", "env", "fresh", "detach"}, example: "  csquad resume my-team\n  csquad resume --fresh --detach"},
 		{path: "attach", args: " [TEAM_OR_MEMBER]", summary: "Enter a team, or select a member with --name TEAM", max: 1, complete: "team-or-member", flags: []string{"name"}, example: "  csquad attach research\n  csquad attach --name research reviewer"},
 		{path: "ui", summary: "Show team members and task panels", flags: []string{"view", "client", "name"}, example: "  csquad ui\n  csquad ui --view tasks\n  csquad ui --view hide"},
 		{path: "ui-layout", hidden: true},
@@ -81,7 +87,7 @@ func definitions() []definition {
 		{path: "sync", summary: "Retry pending message delivery"},
 		{path: "reconcile", summary: "Reconcile durable Git merge intents"},
 		{path: "recover", summary: "Restart master from an outside terminal", flags: []string{"fresh", "prompt"}},
-		{path: "member add", args: " NAME", summary: "Recruit a member with a task-specific identity", min: 1, max: 1, flags: []string{"role", "instructions", "engine", "model", "env", "task", "template", "prompt", "color"}, example: "  csquad member add reviewer --engine claude --role reviewer --instructions 'Review the candidate commit'"},
+		{path: "member add", args: " NAME", summary: "Recruit a member with a task-specific identity", min: 1, max: 1, flags: []string{"role", "instructions", "engine", "model", "env", "task", "template", "prompt", "color", "cwd"}, example: "  csquad member add reviewer --engine claude --role reviewer --instructions 'Review the candidate commit'"},
 		{path: "member list", summary: "List team members"},
 		{path: "task create", args: " TITLE...", summary: "Publish a task with acceptance criteria", min: 1, max: -1, flags: []string{"acceptance", "description", "code", "milestones", "gates", "deps", "dispatch", "request-id", "setup"}, required: []string{"acceptance"}, example: "  csquad task create 'Fix login' --code --acceptance 'Regression test passes' --request-id fix-login"},
 		{path: "task list", summary: "List tasks"},
@@ -102,7 +108,7 @@ func definitions() []definition {
 	for _, op := range []string{"inspect", "interrupt", "restart", "replace", "remove"} {
 		d := definition{path: "member " + op, args: " MEMBER", summary: map[string]string{"inspect": "Inspect member state and process identity", "interrupt": "Interrupt the current turn", "restart": "Restart a member and resume its conversation", "replace": "Replace a member with a fresh conversation", "remove": "Remove a member while preserving work"}[op], min: 1, max: 1, complete: "member"}
 		if op == "restart" || op == "replace" {
-			d.flags = []string{"prompt"}
+			d.flags = []string{"prompt", "cwd"}
 		}
 		defs = append(defs, d)
 	}

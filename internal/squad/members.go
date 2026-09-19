@@ -3,6 +3,8 @@ package squad
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/ShunL12324/c-squad/internal/agentenv"
 	"github.com/ShunL12324/c-squad/internal/config"
@@ -111,6 +113,10 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 				cwd = task.Workspace
 			}
 		}
+		cwd, e = memberDirectory(cwd, o["cwd"])
+		if e != nil {
+			return e
+		}
 		e = st.update(func(s *State) error {
 			if s.Members[id] != nil {
 				return errors.New("member exists; use replace")
@@ -161,5 +167,25 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 	if p[0] != "remove" && p[0] != "restart" && p[0] != "replace" {
 		return errors.New("unknown member operation")
 	}
-	return lifecycle(st, actor, p[0], id, o["prompt"])
+	return lifecycle(st, actor, p[0], id, o["prompt"], o["cwd"])
+}
+
+// memberDirectory resolves explicit paths in the caller's directory. An omitted
+// override retains the task workspace or the member's existing launch directory.
+func memberDirectory(fallback, override string) (string, error) {
+	if override == "" {
+		return fallback, nil
+	}
+	path, err := filepath.Abs(override)
+	if err != nil {
+		return "", fmt.Errorf("member working directory: %w", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("member working directory %q: %w", path, err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("member working directory %q is not a directory", path)
+	}
+	return path, nil
 }

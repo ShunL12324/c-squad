@@ -111,6 +111,7 @@ func (st *Store) launch(id string, resume bool, initial string) error {
 		if resume && m.EngineID != "" {
 			args = append(args, "resume", m.EngineID)
 		}
+		args = append(args, "--cd", m.Cwd)
 	default:
 		return fmt.Errorf("unsupported engine %q", m.Engine)
 	}
@@ -127,11 +128,6 @@ func (st *Store) launch(id string, resume bool, initial string) error {
 	ta := []string{"new-session", "-d", "-s", m.Session, "-c", m.Cwd, "-x", "140", "-y", "42", "-P", "-F", "#{pane_id}"}
 	for k, v := range map[string]string{"CSQUAD_STATE_DIR": st.Dir, "CSQUAD_MEMBER_ID": id, "CSQUAD_GENERATION": strconv.Itoa(m.Generation)} {
 		ta = append(ta, "-e", k+"="+v)
-	}
-	// Process-scoped workspace trust override; never persist trust for the user home.
-	// Claude Code 2.1.276 internal adapter, not an OS sandbox.
-	if m.Engine == config.Claude && cfg.Bypass {
-		ta = append(ta, "-e", "CLAUDE_CODE_SANDBOXED=1")
 	}
 	for k, v := range m.Env {
 		ta = append(ta, "-e", k+"="+v)

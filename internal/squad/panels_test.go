@@ -18,7 +18,7 @@ func TestResponsivePanelVisibility(t *testing.T) {
 		view           panelView
 		width          int
 		members, tasks bool
-	}{{"", 180, true, true}, {panelBoth, 180, true, true}, {panelBoth, 110, false, true}, {panelBoth, 80, false, false}, {panelMembers, 110, true, false}, {panelHidden, 180, false, false}} {
+	}{{"", 180, true, true}, {panelBoth, 180, true, true}, {panelBoth, 110, true, false}, {panelTasks, 110, true, false}, {panelBoth, 80, false, false}, {panelMembers, 110, true, false}, {panelHidden, 180, false, false}} {
 		m, b := panelVisibility(tt.view, tt.width)
 		if m != tt.members || b != tt.tasks {
 			t.Fatalf("%s at %d: %v %v", tt.view, tt.width, m, b)
@@ -26,6 +26,7 @@ func TestResponsivePanelVisibility(t *testing.T) {
 	}
 }
 func TestPanelsPreserveEngineAndMasterLifecycle(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux unavailable")
 	}
@@ -48,6 +49,7 @@ func TestPanelsPreserveEngineAndMasterLifecycle(t *testing.T) {
 		s.Socket = socket
 		s.Executable = binary
 		s.PanelView = panelBoth
+		s.Tasks["T1"] = &Task{ID: "T1", Title: "Verify task board", Owner: "a", State: TaskPhaseInProgress, Description: "Read the entire task detail", Milestones: []Milestone{{Name: "Investigate", State: MilestoneStateReported}, {Name: "Review", State: MilestoneStateAwaitingApproval, Gate: true}}}
 		s.Members["a"].Session = "panel-worker"
 		delete(s.Members, "b")
 		s.Members["master"].Session = "panel-master"
@@ -58,12 +60,15 @@ func TestPanelsPreserveEngineAndMasterLifecycle(t *testing.T) {
 	workerPane, err := tm(s, "new-session", "-d", "-s", "panel-worker", "-x", "180", "-y", "35", "-P", "-F", "#{pane_id}", "cat")
 	must(t, err)
 	must(t, st.update(func(s *State) error { s.Members["a"].Pane = workerPane; return nil }))
+	_, err = tm(s, "set-option", "-p", "-t", pane, "window-style", "bg=colour53")
+	must(t, err)
 	must(t, installMasterHook(st))
 	must(t, st.configureNavigation())
+
 	panes, err := tm(s, "list-panes", "-t", pane, "-F", "#{pane_id} #{@csquad_panel}")
 	must(t, err)
-	if len(strings.Split(panes, "\n")) != 3 {
-		t.Fatalf("expected three panes: %s", panes)
+	if len(strings.Split(panes, "\n")) != 4 {
+		t.Fatalf("expected four panes: %s", panes)
 	}
 	sidebar := ""
 	for _, line := range strings.Split(panes, "\n") {
@@ -74,6 +79,13 @@ func TestPanelsPreserveEngineAndMasterLifecycle(t *testing.T) {
 	if sidebar == "" {
 		t.Fatal("missing sidebar")
 	}
+	panelStyle, err := tm(s, "show-options", "-pv", "-t", sidebar, "window-style")
+	must(t, err)
+	engineStyle, err := tm(s, "show-options", "-pv", "-t", pane, "window-style")
+	must(t, err)
+	if panelStyle != "bg=colour234" || engineStyle != "bg=colour53" {
+		t.Fatalf("panel background leaked or engine theme changed: %s / %s", panelStyle, engineStyle)
+	}
 	if python, lookupErr := exec.LookPath("python3"); lookupErr == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -81,6 +93,17 @@ func TestPanelsPreserveEngineAndMasterLifecycle(t *testing.T) {
 		if clickErr != nil {
 			t.Fatalf("mouse navigation: %v\n%s", clickErr, output)
 		}
+	}
+	colored, err := tm(s, "capture-pane", "-e", "-p", "-t", sidebar)
+	must(t, err)
+	nameColored := false
+	for _, line := range strings.Split(colored, "\n") {
+		if strings.Contains(line, "master") && strings.Contains(line, "\x1b[") {
+			nameColored = true
+		}
+	}
+	if !nameColored {
+		t.Fatal("inherited NO_COLOR disabled member colors")
 	}
 	_, err = tm(s, "select-pane", "-t", sidebar)
 	must(t, err)
@@ -117,6 +140,19 @@ func TestPanelsPreserveEngineAndMasterLifecycle(t *testing.T) {
 	must(t, err)
 	if !current.Active {
 		t.Fatal("closing a sidebar stopped the team")
+	}
+	for _, size := range []struct{ width, height string }{{"110", "25"}, {"220", "80"}, {"100", "22"}, {"180", "40"}} {
+		_, err = tm(s, "resize-window", "-t", pane, "-x", size.width, "-y", size.height)
+		must(t, err)
+		must(t, st.setPanelView("both", false))
+		geometry, err := tm(s, "list-panes", "-t", pane, "-F", "#{@csquad_panel}:#{pane_width}:#{pane_height}")
+		must(t, err)
+		if !strings.Contains(geometry, "members:28:") || !strings.Contains(geometry, "header:"+size.width+":3") {
+			t.Fatalf("unstable chrome after resize to %v: %s", size, geometry)
+		}
+		if (size.width == "110" || size.width == "100") && strings.Contains(geometry, "tasks:") {
+			t.Fatalf("compact layout kept tasks instead of members: %s", geometry)
+		}
 	}
 	must(t, st.setPanelView("hide", false))
 	panes, err = tm(s, "list-panes", "-t", pane, "-F", "#{pane_id}")

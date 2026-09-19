@@ -396,7 +396,9 @@ func TestNativeConfigMetadataAndFailureExit(t *testing.T) {
 	dir := t.TempDir()
 	script := `#!/bin/sh
 while IFS= read -r line; do
-case "$line" in *'"config/read"'*)
+case "$line" in
+*'"initialize"'*) printf '%s\n' '{"id":1,"result":{}}' ;;
+*'"config/read"'*)
 printf '%s\n' '{"id":2,"result":{"config":{"developer_instructions":"ORIGINAL","hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"echo keep","timeout":3}]}],"state":{"native-id":{"trusted_hash":"opaque"}}}},"layers":[]}}'
 ;; esac
 done

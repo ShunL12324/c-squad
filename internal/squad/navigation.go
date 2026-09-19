@@ -92,7 +92,7 @@ func (st *Store) configureNavigation() error {
 	}
 
 	panelCmd := shellQuote(s.Executable) + " --team " + shellQuote(st.Dir) + " --member master --generation 0"
-	for key, view := range map[string]string{"b": "members", "t": "tasks"} {
+	for key, view := range map[string]string{"t": "tasks"} {
 		if _, err = tm(s, "bind-key", "-T", prefix, key, "run-shell", "-b", panelCmd+" ui-toggle --view "+view+" --client '#{client_name}'"); err != nil {
 			return err
 		}
@@ -107,6 +107,17 @@ func (st *Store) configureNavigation() error {
 			fallback = "select-pane -t = ; send-keys -M -t ="
 		}
 		if _, err = tm(s, "bind-key", "-T", root, key, "if-shell", "-F", "-t", "=", "#{@csquad_panel}", "set-option -pF -t = @csquad_client '#{client_name}' ; select-pane -t = ; send-keys -M -t =", fallback); err != nil {
+			return err
+		}
+	}
+	// Status ranges keep button hitboxes aligned with tmux's rendered cells.
+	statusClick := `if-shell -F '#{==:#{mouse_status_range},detach}' "detach-client"`
+	for _, view := range []string{"tasks"} {
+		action := "run-shell -b " + strconv.Quote(panelCmd+" ui-toggle --view "+view+" --client '#{client_name}'")
+		statusClick = "if-shell -F " + shellQuote("#{==:#{mouse_status_range},"+view+"}") + " " + strconv.Quote(action) + " " + strconv.Quote(statusClick)
+	}
+	for _, key := range []string{"MouseDown1Status", "SecondClick1Status", "DoubleClick1Status", "TripleClick1Status"} {
+		if _, err = tm(s, "bind-key", "-T", root, key, statusClick); err != nil {
 			return err
 		}
 	}
@@ -150,8 +161,11 @@ func (st *Store) configureNavigation() error {
 				}
 			}
 		}
-		hint := "C-b b:members t:tasks d:detach "
-		for opt, val := range map[string]string{"prefix": "None", "prefix2": "None", "key-table": root, "mouse": "on", "status-style": "fg=colour252,bg=colour234", "status": "on", "status-left": "[" + s.ID + "] ", "status-left-length": "60", "status-format[0]": "#[align=left] " + s.ID + " #[align=right]" + hint} {
+		hint := ""
+		for _, button := range []struct{ id, name, key string }{{"tasks", "Tasks", "t"}, {"detach", "Detach", "d"}} {
+			hint += "#[range=user|" + button.id + ",bg=colour236,fg=colour253] " + button.name + "  #[fg=colour245]C-b " + button.key + " #[norange,bg=colour234] "
+		}
+		for opt, val := range map[string]string{"prefix": "None", "prefix2": "None", "key-table": root, "mouse": "on", "status-style": "fg=colour252,bg=colour234", "status": "2", "status-position": "bottom", "status-left": "[" + s.ID + "] ", "status-left-length": "60", "status-format[0]": "#[fg=colour238]" + strings.Repeat("─", 500), "status-format[1]": "#[align=left,fg=colour245]  Click to select · C-b 0–9 switch member #[align=right]" + hint} {
 			if _, err = tm(s, "set-option", "-t", target, opt, val); err != nil {
 				return err
 			}

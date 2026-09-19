@@ -109,7 +109,7 @@ The left sidebar shows your members. These shortcuts stay local to the team:
 | What you want to do | How |
 | --- | --- |
 | Open a member with the mouse | Click its name in the left sidebar |
-| Toggle members / tasks | `Ctrl-b b` / `Ctrl-b t` |
+| Show or hide tasks | Click **Tasks** in the footer, or press `Ctrl-b t` |
 | Open both panels | `csquad ui` |
 | Go back to Master | Press `Ctrl-b`, then `0` |
 | Open a numbered member | Press `Ctrl-b`, then its number |
@@ -117,7 +117,15 @@ The left sidebar shows your members. These shortcuts stay local to the team:
 | Reattach from the same project | `csquad attach` |
 | Stop the team | `csquad stop` |
 | List teams | `csquad list` |
-| Start again after exiting | `csquad start --name my-team` |
+| Resume a stopped team | `csquad resume my-team` |
+
+The member list stays visible on medium-width terminals; tasks open in a popup
+when both panels do not fit. Scroll to browse without changing the selected
+member. Task cards separate active work from completed tasks and show reported
+milestones and the latest progress update.
+
+For work spanning several repositories, ask Master to start each member in its
+project directory using `member add --cwd /path/to/project`.
 
 **Detaching keeps the team running. Exiting Master stops the team.** Task records
 and worktrees remain in `.csquad/` for recovery.

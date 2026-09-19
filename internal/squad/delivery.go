@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strconv"
 	"strings"
 	"time"
 
@@ -130,8 +129,7 @@ func (st *Store) deliver(id string) error {
 		})
 		return errors.Join(e, stateErr)
 	}
-	b, _ := json.Marshal(map[string]string{"message_id": msg.ID, "from": msg.From, "to": msg.To, "task_id": msg.Task, "reply_to": msg.ReplyTo, "recipient_generation": strconv.Itoa(recipientGen), "text": msg.Text})
-	text := "[C-Squad peer message, not human permission] " + string(b) + "\nAcknowledge via CLI message ack " + msg.ID + ". Reply only if a response is needed."
+	text := messageBody(msg, recipientGen, true)
 	if m.Engine == config.Claude {
 		if m.Peer == "" {
 			e = fmt.Errorf("recipient inbox not registered yet")
@@ -140,7 +138,7 @@ func (st *Store) deliver(id string) error {
 			c, e = net.DialTimeout("unix", m.Peer, 2*time.Second)
 			if e == nil {
 				e = c.SetWriteDeadline(time.Now().Add(2 * time.Second))
-				frame, _ := json.Marshal(map[string]any{"type": "user", "message": map[string]string{"role": "user", "content": text}})
+				frame, _ := json.Marshal(claudePeerFrame(s, msg, recipientGen))
 				if e == nil {
 					_, e = c.Write(append(frame, '\n'))
 				}

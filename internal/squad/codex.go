@@ -4,8 +4,8 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,7 +22,7 @@ type codexSessionConfig struct {
 	Warnings     []string                   `json:"-"`
 }
 
-func codexConfig(cwd string, trusted bool, environments ...map[string]string) (codexSessionConfig, error) {
+func codexConfig(cwd string, trusted bool, environments ...map[string]string) (config codexSessionConfig, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	args := []string{"app-server"}
@@ -34,7 +34,8 @@ func codexConfig(cwd string, trusted bool, environments ...map[string]string) (c
 		env = environments[0]
 	}
 	c := process.Command(ctx, cwd, env, "codex", args...)
-	c.Stderr = io.Discard
+	diagnostics := &codexDiagnostics{}
+	c.Stderr = diagnostics
 	in, e := c.StdinPipe()
 	if e != nil {
 		return codexSessionConfig{}, e
@@ -46,16 +47,24 @@ func codexConfig(cwd string, trusted bool, environments ...map[string]string) (c
 	if e = c.Start(); e != nil {
 		return codexSessionConfig{}, e
 	}
-	defer func() { _ = in.Close(); cancel(); _ = c.Wait() }()
-	enc := json.NewEncoder(in)
-	for _, v := range []any{
-		map[string]any{"id": 1, "method": "initialize", "params": map[string]any{"clientInfo": map[string]string{"name": "csquad", "version": "0.1.0"}}},
-		map[string]any{"method": "initialized"},
-		map[string]any{"id": 2, "method": "config/read", "params": map[string]any{"cwd": cwd, "includeLayers": true}},
-	} {
-		if e = enc.Encode(v); e != nil {
-			return codexSessionConfig{}, e
+	defer func() {
+		timedOut := errors.Is(ctx.Err(), context.DeadlineExceeded)
+		_ = in.Close()
+		cancel()
+		_ = c.Wait()
+		if err != nil {
+			if timedOut {
+				err = fmt.Errorf("codex configuration lookup timed out after 10s: %w", context.DeadlineExceeded)
+			}
+			err = fmt.Errorf("read Codex configuration in %q: %w", cwd, err)
+			if text := diagnostics.String(); text != "" {
+				err = fmt.Errorf("%w\nCodex: %s", err, text)
+			}
 		}
+	}()
+	enc := json.NewEncoder(in)
+	if e = enc.Encode(map[string]any{"id": 1, "method": "initialize", "params": map[string]any{"clientInfo": map[string]string{"name": "csquad", "version": "0.1.0"}}}); e != nil {
+		return codexSessionConfig{}, e
 	}
 	scan := bufio.NewScanner(out)
 	scan.Buffer(make([]byte, 4096), 8<<20)
@@ -68,9 +77,23 @@ func codexConfig(cwd string, trusted bool, environments ...map[string]string) (c
 		if json.Unmarshal(scan.Bytes(), &v) != nil {
 			continue
 		}
+		if v.ID == 1 {
+			if len(v.Error) > 0 && string(v.Error) != "null" {
+				return codexSessionConfig{}, codexRPCError("initialize", v.Error)
+			}
+			for _, request := range []any{
+				map[string]any{"method": "initialized"},
+				map[string]any{"id": 2, "method": "config/read", "params": map[string]any{"cwd": cwd, "includeLayers": true}},
+			} {
+				if e = enc.Encode(request); e != nil {
+					return codexSessionConfig{}, e
+				}
+			}
+			continue
+		}
 		if v.ID == 2 {
-			if len(v.Error) > 0 {
-				return codexSessionConfig{}, fmt.Errorf("codex config/read failed")
+			if len(v.Error) > 0 && string(v.Error) != "null" {
+				return codexSessionConfig{}, codexRPCError("config/read", v.Error)
 			}
 			var result struct {
 				Config codexSessionConfig `json:"config"`

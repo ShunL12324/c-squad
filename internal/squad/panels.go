@@ -30,10 +30,10 @@ func panelVisibility(view panelView, width int) (bool, bool) {
 		return false, false
 	}
 	if view == panelTasks {
-		return false, true
+		return true, width >= 150
 	}
 	if view == panelBoth {
-		return width >= 150, true
+		return true, width >= 150
 	}
 	return true, false
 }
@@ -60,6 +60,15 @@ func (st *Store) configurePanels() error {
 		if m.Pane == "" {
 			continue
 		}
+		for option, value := range map[string]string{
+			"pane-border-status":       "off",
+			"pane-border-style":        "fg=colour238,bg=colour234",
+			"pane-active-border-style": "fg=colour238,bg=colour234",
+		} {
+			if _, err := tm(s, "set-option", "-w", "-t", m.Pane, option, value); err != nil {
+				return err
+			}
+		}
 		geometry, e := tm(s, "display-message", "-p", "-t", m.Pane, "#{window_width} #{window_height} #{pane_dead}")
 		if e != nil {
 			continue
@@ -85,28 +94,37 @@ func (st *Store) configurePanels() error {
 			if len(f) != 3 || f[0] == m.Pane || f[1] == "" {
 				continue
 			}
-			want := f[1] == "members" && members || f[1] == "tasks" && tasks
+			want := f[1] == "members" && members || f[1] == "tasks" && tasks || f[1] == "header" && (members || tasks)
 			if !want || f[2] == "1" {
 				if _, e = tm(s, "kill-pane", "-t", f[0]); e != nil {
 					return e
 				}
 			} else {
+				if _, e = tm(s, "set-option", "-p", "-t", f[0], "window-style", "bg=colour"+teamui.CanvasColor); e != nil {
+					return e
+				}
 				existing[f[1]] = f[0]
 			}
 		}
-		for _, view := range []string{"members", "tasks"} {
-			want := view == "members" && members || view == "tasks" && tasks
+		for _, view := range []string{"members", "tasks", "header"} {
+			want := view == "members" && members || view == "tasks" && tasks || view == "header" && (members || tasks)
 			if !want || existing[view] != "" {
 				continue
 			}
-			args := []string{"split-window", "-d", "-h", "-t", m.Pane, "-l", "36", "-P", "-F", "#{pane_id}"}
+			args := []string{"split-window", "-d", "-h", "-t", m.Pane, "-l", "40", "-P", "-F", "#{pane_id}"}
 			if view == "members" {
 				args = append(args, "-b")
-				args[6] = "24"
+				args[6] = "28"
+			}
+			if view == "header" {
+				args = []string{"split-window", "-d", "-v", "-f", "-b", "-t", m.Pane, "-l", "3", "-P", "-F", "#{pane_id}"}
 			}
 			args = append(args, st.panelCommand(s, m.ID, view))
 			pane, e := tm(s, args...)
 			if e != nil {
+				return e
+			}
+			if _, e = tm(s, "set-option", "-p", "-t", pane, "window-style", "bg=colour"+teamui.CanvasColor); e != nil {
 				return e
 			}
 			if _, e = tm(s, "set-option", "-p", "-t", pane, "@csquad_panel", view); e != nil {
@@ -117,6 +135,23 @@ func (st *Store) configurePanels() error {
 			}
 			if _, e = tm(s, "set-option", "-p", "-t", pane, "remain-on-exit", "off"); e != nil {
 				return e
+			}
+			existing[view] = pane
+		}
+
+		// tmux distributes terminal resize deltas between panes. Reapply the
+		// chrome dimensions after every layout pass instead of letting the
+		// header consume the newly available rows.
+		if pane := existing["header"]; pane != "" {
+			if _, e = tm(s, "resize-pane", "-t", pane, "-y", "3"); e != nil {
+				return e
+			}
+		}
+		for _, spec := range []struct{ view, width string }{{"members", "28"}, {"tasks", "40"}} {
+			if pane := existing[spec.view]; pane != "" {
+				if _, e = tm(s, "resize-pane", "-t", pane, "-x", spec.width); e != nil {
+					return e
+				}
 			}
 		}
 	}
@@ -183,7 +218,7 @@ func (st *Store) panelSnapshot() (teamui.Snapshot, error) {
 				tasks = append(tasks, id)
 			}
 		}
-		out.Members = append(out.Members, teamui.Member{ID: m.ID, Engine: string(m.Engine), State: strings.ReplaceAll(string(m.State), "_", " "), Color: strings.TrimPrefix(m.Color.StyleValue(), "colour"), Tasks: strings.Join(tasks, ", ")})
+		out.Members = append(out.Members, teamui.Member{ID: m.ID, Engine: string(m.Engine), State: strings.ReplaceAll(string(m.State), "_", " "), Color: strings.TrimPrefix(m.Color.StyleValue(), "colour"), Cwd: displayDirectory(m.Cwd), Tasks: strings.Join(tasks, ", ")})
 	}
 	for _, id := range taskIDs {
 		t := s.Tasks[id]
@@ -191,12 +226,17 @@ func (st *Store) panelSnapshot() (teamui.Snapshot, error) {
 		if owner := s.Members[t.Owner]; owner != nil {
 			color = strings.TrimPrefix(owner.Color.StyleValue(), "colour")
 		}
-		detail := fmt.Sprintf("With: %s\n\nGoal\n%s\n\nAcceptance\n%s\n\nUpdated: %s", strings.Join(t.Participants, ", "), t.Description, t.Acceptance, t.Updated)
+		workspace := t.Workspace
+		if workspace == "" && s.Members[t.Owner] != nil {
+			workspace = s.Members[t.Owner].Cwd
+		}
+		detail := fmt.Sprintf("With: %s\n\nGoal\n%s\n\nAcceptance\n%s\n\nLatest update\n%s\n\nWorkspace\n%s\n\nUpdated: %s", strings.Join(t.Participants, ", "), t.Description, t.Acceptance, t.Progress, workspace, t.Updated)
 		if len(t.Blockers) > 0 {
 			detail += "\n\nBlocked\n" + strings.Join(t.Blockers, "\n")
 		}
+		milestones := make([]teamui.Milestone, 0, len(t.Milestones))
 		for _, ms := range t.Milestones {
-			detail += fmt.Sprintf("\nCheckpoint: %s · %s", ms.Name, ms.State)
+			milestones = append(milestones, teamui.Milestone{Name: ms.Name, State: string(ms.State), Gate: ms.Gate})
 		}
 		for _, e := range t.Evidence {
 			result := "failed"
@@ -208,22 +248,7 @@ func (st *Store) panelSnapshot() (teamui.Snapshot, error) {
 		if t.Candidate != "" {
 			detail += "\n\nCandidate: " + t.Candidate
 		}
-		out.Tasks = append(out.Tasks, teamui.Task{ID: t.ID, Title: t.Title, State: strings.ReplaceAll(string(t.State), "_", " "), Owner: t.Owner, Color: color, Progress: t.Progress, Detail: detail})
-	}
-	ids := []string{}
-	for id, q := range s.Questions {
-		if q.State == QuestionStateOpen {
-			ids = append(ids, id)
-		}
-	}
-	sort.Strings(ids)
-	for _, id := range ids {
-		q := s.Questions[id]
-		out.Requests = append(out.Requests, fmt.Sprintf("%s · %s · %s\n%s\nAsk Master to handle this request.", id, q.Member, q.Task, q.Text))
-	}
-	for i := len(s.Events) - 1; i >= max(0, len(s.Events)-30); i-- {
-		e := s.Events[i]
-		out.Activity = append(out.Activity, fmt.Sprintf("%s · %s\n%s · %s", e.At, e.Member, e.Kind, e.Text))
+		out.Tasks = append(out.Tasks, teamui.Task{ID: t.ID, Title: t.Title, State: strings.ReplaceAll(string(t.State), "_", " "), Owner: t.Owner, Color: color, Progress: t.Progress, Detail: detail, Milestones: milestones})
 	}
 	return out, nil
 }
@@ -243,7 +268,7 @@ func sortedTaskIDs(s *State) []string {
 }
 
 func (st *Store) runPanel(owner, view string, popup bool) error {
-	if view != "members" && view != "tasks" {
+	if view != "members" && view != "tasks" && view != "header" {
 		return errors.New("panel must be members or tasks")
 	}
 	pane := os.Getenv("TMUX_PANE")
@@ -299,6 +324,16 @@ func (st *Store) openUI(o options, toggle bool) error {
 	if view == "" {
 		view = "both"
 	}
+	if toggle && view == "tasks" {
+		s, err := st.read()
+		if err != nil {
+			return err
+		}
+		opened, err := st.compactPanelPopup(s, view, o["client"])
+		if err != nil || opened {
+			return err
+		}
+	}
 	if err := st.setPanelView(view, toggle); err != nil {
 		return err
 	}
@@ -309,10 +344,16 @@ func (st *Store) openUI(o options, toggle bool) error {
 	if err != nil {
 		return err
 	}
-	client := o["client"]
+	_, err = st.compactPanelPopup(s, view, o["client"])
+	return err
+}
+
+// compactPanelPopup keeps member navigation visible when the task board cannot
+// fit alongside the engine. It never changes the saved wide-screen layout.
+func (st *Store) compactPanelPopup(s *State, view, client string) (bool, error) {
 	rows, err := tm(s, "list-clients", "-F", "#{client_name}\t#{session_name}\t#{client_width}")
 	if err != nil {
-		return err
+		return false, err
 	}
 	for _, row := range strings.Split(rows, "\n") {
 		f := strings.Split(row, "\t")
@@ -324,16 +365,31 @@ func (st *Store) openUI(o options, toggle bool) error {
 				continue
 			}
 			width, _ := strconv.Atoi(f[2])
-			if width >= 90 {
-				return nil
-			}
+			members, tasks := panelVisibility(panelBoth, width)
 			popupView := view
-			if view == "both" {
+			if popupView == "both" {
 				popupView = "tasks"
 			}
+			if popupView == "tasks" && tasks || popupView == "members" && members {
+				return false, nil
+			}
 			_, err = tm(s, "display-popup", "-c", f[0], "-E", "-w", "95%", "-h", "90%", st.panelCommand(s, m.ID, popupView)+" --popup")
-			return err
+			return true, err
 		}
 	}
-	return nil
+	return false, nil
+}
+
+// displayDirectory abbreviates only the user's home, preserving the actual cwd.
+func displayDirectory(path string) string {
+	home, err := os.UserHomeDir()
+	if err == nil && home != "" {
+		if path == home {
+			return "~"
+		}
+		if strings.HasPrefix(path, home+"/") {
+			return "~" + strings.TrimPrefix(path, home)
+		}
+	}
+	return path
 }

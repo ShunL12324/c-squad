@@ -2,7 +2,6 @@
 package teamui
 
 import (
-	"fmt"
 	"strings"
 	"time"
 	"unicode"
@@ -10,21 +9,30 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 )
 
 // Member is a presentation snapshot of an agent and its current assignments.
-type Member struct{ ID, Engine, State, Color, Tasks string }
+type Member struct{ ID, Engine, State, Color, Tasks, Cwd string }
 
 // Task is a presentation snapshot of a task and its delivery evidence.
-type Task struct{ ID, Title, State, Owner, Color, Progress, Detail string }
+type Task struct {
+	ID, Title, State, Owner, Color, Progress, Detail string
+	Milestones                                       []Milestone
+}
+
+// Milestone retains reporting and approval states without inferring completion.
+type Milestone struct {
+	Name, State string
+	Gate        bool
+}
 
 // Snapshot contains read-only data from the authoritative team ledger.
 type Snapshot struct {
-	Team               string
-	Members            []Member
-	Tasks              []Task
-	Requests, Activity []string
-	Active             bool
+	Team    string
+	Members []Member
+	Tasks   []Task
+	Active  bool
 }
 
 // Action describes a UI request; the controller owns session and pane operations.
@@ -47,18 +55,27 @@ type actionMsg struct {
 type tickMsg time.Time
 
 type model struct {
-	kind, current, tab                   string
+	kind, current                        string
 	data                                 Snapshot
 	load                                 Source
 	act                                  Handler
 	width, height, selected, top, offset int
 	selectedID                           string
+	completed                            bool
+	detail                               bool
 	err                                  error
 }
 
 // Run owns only its pane's terminal; the native agent continues in another pane.
 func Run(kind, current string, load Source, act Handler) error {
-	m := model{kind: kind, current: current, tab: "tasks", load: load, act: act, width: 24, height: 24}
+	// These panels run inside tmux, where color identifies members and states.
+	// Agent launchers may export NO_COLOR for their own captured CLI output;
+	// do not let that inherited setting disable the interactive panel palette.
+	if lipgloss.ColorProfile() != termenv.TrueColor {
+		lipgloss.SetColorProfile(termenv.ANSI256)
+	}
+
+	m := model{kind: kind, current: current, load: load, act: act, width: 24, height: 24}
 	if kind == "members" {
 		m.selectedID = current
 	}
@@ -77,11 +94,15 @@ func (m model) count() int {
 	if m.kind == "members" {
 		return len(m.data.Members)
 	}
-	return len(m.data.Tasks)
+	return len(m.tasks())
 }
 func (m model) rows() int {
 	if m.kind == "members" {
-		return max(1, (m.height-4)/3)
+		reserved := memberHeaderRows + 2
+		if m.hasMaster() {
+			reserved += memberBlockRows + 2
+		}
+		return max(1, (m.height-reserved)/memberBlockRows)
 	}
 	return max(1, (m.height-4)/8)
 }
@@ -99,10 +120,16 @@ func (m *model) remember() {
 	if m.kind == "members" {
 		m.selectedID = m.data.Members[m.selected].ID
 	} else {
-		m.selectedID = m.data.Tasks[m.selected].ID
+		m.selectedID = m.tasks()[m.selected].ID
 	}
 }
 func (m *model) reveal() {
+	if m.kind == "members" && m.hasMaster() {
+		m.top = max(1, m.top)
+		if m.selected == 0 {
+			return
+		}
+	}
 	if m.selected < m.top {
 		m.top = m.selected
 	}
@@ -128,12 +155,29 @@ func (m model) open() tea.Cmd {
 	if m.kind == "members" {
 		id = m.data.Members[m.selected].ID
 	} else {
-		id = m.data.Tasks[m.selected].Owner
+		id = m.tasks()[m.selected].Owner
 	}
 	if id == "" {
 		return nil
 	}
 	return m.action(Action{Kind: "open", Member: id})
+}
+
+// navigate restores this session's cursor before leaving. Each tmux session
+// owns a persistent sidebar; an outgoing destination must not become its saved
+// selection when the user returns to this session later.
+func (m model) navigate(id string) (tea.Model, tea.Cmd) {
+	if m.kind == "members" {
+		for i, member := range m.data.Members {
+			if member.ID == m.current {
+				m.selected = i
+				m.remember()
+				m.reveal()
+				break
+			}
+		}
+	}
+	return m, m.action(Action{Kind: "open", Member: id})
 }
 
 // Update handles input and asynchronous reads without blocking terminal rendering.
@@ -150,20 +194,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !v.data.Active {
 				return m, tea.Quit
 			}
+			found := false
 			for i := 0; i < m.count(); i++ {
 				id := ""
 				if m.kind == "members" {
 					id = m.data.Members[i].ID
 				} else {
-					id = m.data.Tasks[i].ID
+					id = m.tasks()[i].ID
 				}
 				if id == m.selectedID {
+					found = true
 					m.selected = i
 				}
 			}
+			if !found {
+				m.detail = false
+			}
 			m.selected = max(0, min(m.selected, m.count()-1))
+			if m.count() == 0 {
+				m.detail = false
+			}
 			m.remember()
-			m.reveal()
+			if !found {
+				m.reveal()
+			}
 		}
 		return m, tick()
 	case tickMsg:
@@ -174,80 +228,143 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case tea.KeyMsg:
+		if m.kind == "header" {
+			return m, nil
+		}
 		switch v.String() {
 		case "q", "esc", "ctrl+c":
+			if m.detail && v.String() != "ctrl+c" {
+				m.detail = false
+				m.offset = 0
+				return m, nil
+			}
+			if m.kind == "members" {
+				return m, nil
+			}
 			return m, m.action(Action{Kind: "close"})
-		case "m":
-			return m, m.action(Action{Kind: "open", Member: "master"})
 		case "enter":
-			return m, m.open()
+			if m.kind == "members" && m.count() > 0 {
+				return m.navigate(m.data.Members[m.selected].ID)
+			}
+			if m.kind == "tasks" && m.count() > 0 {
+				m.detail = true
+				m.offset = 0
+			}
+			return m, nil
+		case "left", "right":
+			if m.kind == "tasks" && !m.detail {
+				m.filterTasks(v.String() == "right")
+			}
+		case "o":
+			if m.kind == "tasks" {
+				return m, m.open()
+			}
 		case "down", "j":
-			m.move(1)
+			if m.kind == "tasks" && m.detail {
+				m.offset++
+			} else {
+				m.move(1)
+			}
 		case "up", "k":
-			m.move(-1)
+			if m.kind == "tasks" && m.detail {
+				m.offset = max(0, m.offset-1)
+			} else {
+				m.move(-1)
+			}
 		case "pgdown":
 			m.offset += max(1, m.height/2)
 		case "pgup":
 			m.offset = max(0, m.offset-max(1, m.height/2))
-		case "tab":
-			switch m.tab {
-			case "tasks":
-				m.tab = "activity"
-			case "activity":
-				m.tab = "requests"
-			default:
-				m.tab = "tasks"
-			}
-			m.offset = 0
+
 		}
 	case tea.MouseMsg:
+		if m.kind == "header" {
+			return m, nil
+		}
 		if v.Action != tea.MouseActionPress {
 			return m, nil
 		}
 		switch v.Button {
 		case tea.MouseButtonLeft:
+			if v.Y >= m.height-2 {
+				if v.Y == m.height-1 {
+					for _, button := range m.footerButtons() {
+						if v.X >= button.start && v.X < button.end && v.X < m.width {
+							switch button.action {
+							case "back":
+								m.detail, m.offset = false, 0
+								return m, nil
+							}
+						}
+					}
+				}
+				return m, nil
+			}
 			if m.kind == "members" {
-				i := m.top + (v.Y-2)/3
-				if v.Y >= 2 && v.Y < 2+m.rows()*3 && i < m.count() {
-					m.selected = i
-					m.remember()
-					return m, m.open()
+				_, hits := m.memberCards()
+				for _, hit := range hits {
+					if v.Y >= hit.start && v.Y < hit.end {
+						return m.navigate(m.data.Members[hit.index].ID)
+					}
 				}
 			}
 			if m.kind == "tasks" {
-				if v.Y == 0 {
-					tabs := []string{"tasks", "activity", "requests"}
-					m.tab = tabs[min(2, v.X/max(1, m.width/3))]
-					m.offset = 0
-				} else if m.tab == "tasks" {
+				if v.Y == taskTitleRow && v.X >= m.width-5 && v.X < m.width-2 {
+					return m, m.action(Action{Kind: "close"})
+				}
+				if m.detail {
+					if v.Y == taskFilterRow {
+						m.detail = false
+						m.offset = 0
+					}
+					return m, nil
+				}
+				if v.Y == taskFilterRow {
+					m.filterTasks(v.X >= max(1, m.width/2))
+				} else {
 					_, hits := m.taskCards()
 					for _, hit := range hits {
-						if v.Y >= hit.start+2 && v.Y < hit.end+2 {
+						if v.Y >= hit.start+taskHeaderRows && v.Y < hit.end+taskHeaderRows {
 							m.selected = hit.index
+							m.detail = v.Y == hit.button+taskHeaderRows && v.X >= 2 && v.X < 18
 							m.remember()
-							m.offset = 0
-							m.reveal()
+							if m.detail {
+								m.offset = 0
+							}
 							break
 						}
 					}
 				}
 			}
 		case tea.MouseButtonWheelDown:
-			if m.kind == "members" || m.tab == "tasks" {
-				m.move(1)
-			} else {
-				m.offset += 3
-			}
+			m.scroll(1)
 		case tea.MouseButtonWheelUp:
-			if m.kind == "members" || m.tab == "tasks" {
-				m.move(-1)
-			} else {
-				m.offset = max(0, m.offset-3)
-			}
+			m.scroll(-1)
 		}
 	}
 	return m, nil
 }
+
+// scroll moves the viewport independently of keyboard selection.
+func (m *model) scroll(direction int) {
+	if m.kind == "members" {
+		first := 0
+		if m.hasMaster() {
+			first = 1
+		}
+		m.top = max(first, min(max(first, m.count()-m.rows()), max(first, m.top)+direction))
+		return
+	}
+	m.offset = max(0, m.offset+3*direction)
+	if !m.detail {
+		total := 0
+		for i := m.top; i < len(m.tasks()); i++ {
+			total += len(m.taskCard(i))
+		}
+		m.offset = min(m.offset, max(0, total-max(0, m.height-taskHeaderRows-2)))
+	}
+}
+
 func clean(s string) string {
 	return strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) && r != '\n' {
@@ -270,69 +387,38 @@ func (m model) details(text string, available int) []string {
 	if available < 1 {
 		return nil
 	}
-	wrapped := lipgloss.NewStyle().Width(max(1, m.width-2)).Render(clean(text))
+	wrapped := lipgloss.NewStyle().Width(max(1, m.width-6)).Render(clean(text))
 	lines := strings.Split(wrapped, "\n")
 	offset := min(m.offset, max(0, len(lines)-available))
-	return lines[offset:min(len(lines), offset+available)]
+	lines = lines[offset:min(len(lines), offset+available)]
+	for i := range lines {
+		lines[i] = "   " + lines[i]
+	}
+	return lines
 }
 
 // View renders a bounded panel; the parent tmux pane owns its dimensions.
 func (m model) View() string {
+	if m.kind == "header" {
+		return m.workspaceHeader()
+	}
 	var lines []string
 	if m.kind == "members" {
-		lines = []string{paint(" C SQUAD", "121", true), line(" "+m.data.Team, m.width)}
-		for i := m.top; i < min(m.count(), m.top+m.rows()); i++ {
-			member := m.data.Members[i]
-			mark := "● "
-			if member.ID == m.current {
-				mark = "◆ "
-			}
-			lines = append(lines, paint(line(" "+mark+member.ID, m.width), member.Color, i == m.selected), line("   "+member.Engine+" · "+member.State, m.width), line("   "+member.Tasks, m.width))
-		}
+		lines = m.memberBlocks()
 	} else {
-		w := max(1, m.width/3)
-		header := ""
-		for _, tab := range []string{"tasks", "activity", "requests"} {
-			label := map[string]string{"tasks": "Tasks", "activity": "Activity", "requests": "Requests"}[tab]
-			if tab == "requests" {
-				label = fmt.Sprintf("Asks %d", len(m.data.Requests))
-			}
-			header += paint(fmt.Sprintf("%-*s", w, line(label, w)), "121", m.tab == tab)
-		}
-		lines = []string{header, fmt.Sprintf("%d tasks · %d open requests", len(m.data.Tasks), len(m.data.Requests))}
-		if m.tab == "tasks" {
-			cards, _ := m.taskCards()
-			lines = append(lines, cards...)
-		} else {
-			text := "No activity yet."
-			if m.tab == "activity" && len(m.data.Activity) > 0 {
-				text = strings.Join(m.data.Activity, "\n\n")
-			}
-			if m.tab == "requests" {
-				text = "No unanswered requests."
-				if len(m.data.Requests) > 0 {
-					text = strings.Join(m.data.Requests, "\n\n")
-				}
-			}
-			lines = append(lines, m.details(text, m.height-4)...)
-		}
+		lines = m.boardView()
 	}
 	for len(lines) < m.height-2 {
 		lines = append(lines, "")
 	}
 	lines = lines[:min(len(lines), max(0, m.height-2))]
-	footer := "Click / ↑↓ · Enter open"
-	if m.kind == "tasks" {
-		footer = "Tab views · PgUp/PgDn"
-	}
-	lines = append(lines, line(footer, m.width))
-	last := "q close · m Master"
-	if m.err != nil {
-		last = m.err.Error()
-	}
-	lines = append(lines, line(last, m.width))
+	lines = append(lines, m.footer()...)
+	base := lipgloss.NewStyle().Background(lipgloss.Color(canvas)).Foreground(lipgloss.Color(foreground))
 	for i, s := range lines {
-		lines[i] = ansi.Truncate(s, m.width, "")
+		s = ansi.Truncate(s, m.width, "")
+		// Paint trailing cells explicitly; erased or unstyled cells otherwise
+		// inherit the surrounding terminal's background during redraws.
+		lines[i] = base.Render(s + strings.Repeat(" ", max(0, m.width-ansi.StringWidth(s))))
 	}
 	return strings.Join(lines[:min(len(lines), m.height)], "\n")
 }

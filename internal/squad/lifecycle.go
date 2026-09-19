@@ -14,7 +14,7 @@ import (
 	"github.com/ShunL12324/c-squad/internal/process"
 )
 
-func lifecycle(st *Store, actor, op, id, initial string) error {
+func lifecycle(st *Store, actor, op, id, initial, directory string) error {
 	if actor != "master" {
 		return fmt.Errorf("only master manages members: %w", ErrMasterRequired)
 	}
@@ -44,6 +44,10 @@ func lifecycle(st *Store, actor, op, id, initial string) error {
 	}
 	if !s.Active {
 		return fmt.Errorf("use csquad resume to recover the whole team: %w", ErrTeamStopped)
+	}
+	cwd, e := memberDirectory(m.Cwd, directory)
+	if e != nil {
+		return e
 	}
 	if op != "remove" {
 		if err := preflight.Check(m.Engine); err != nil {
@@ -108,6 +112,7 @@ func lifecycle(st *Store, actor, op, id, initial string) error {
 	e = st.update(func(s *State) error {
 		v := s.Members[id]
 		v.resetRuntime()
+		v.Cwd = cwd
 		if op == "replace" {
 			v.EngineID = ""
 		}

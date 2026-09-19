@@ -69,7 +69,10 @@ limits are configurable; there is no conversation-turn cap. A member's
 `generation` identifies its current process incarnation, not an iteration limit.
 
 **Agents bypass native approval prompts by default.** Set
-`bypass_permissions = false` to retain approvals. This does not log in, supply
+`bypass_permissions = false` to retain approvals. With bypass enabled, C Squad
+also confirms Claude's startup trust dialog for the member's selected working
+directory. Claude saves its normal project trust record; C Squad does not set a
+sandbox environment variable. This does not log in, supply
 account quota, or override organization policy. Project files such as untracked
 MCP configuration are not automatically copied into worktrees.
 
@@ -107,6 +110,10 @@ use `--help` or `csquad usage` for command documentation.
 ## How tasks are coordinated
 
 Members share a persistent task board and can send direct messages or broadcasts.
+Claude receives messages in its native peer envelope; Codex receives a compact
+sender header. Both use the same task records, acknowledgments, and reply routing.
+Coordination instructions are injected into session context, not appended to every
+message. Claude may still display its own native peer notice.
 They report meaningful milestones and ask Master for help when blocked. Master
 brings questions that need a human decision back to you.
 
@@ -149,7 +156,9 @@ color themes can affect their appearance. `--color` supports shell completion.
 
 On wide terminals, new teams open both the member sidebar and task board beside
 the native agent terminal. Click a member
-or select it with the arrow keys and press Enter to open its session. The agent's
+or select it with the arrow keys and press Enter to open its session. Each member
+block shows its engine, working directory, status, and assigned task IDs. Long
+paths retain their trailing directory components; task details show the full workspace. The agent's
 terminal remains a native tmux pane; click it to resume typing.
 
 | Action | Shortcut or command |
@@ -159,21 +168,52 @@ terminal remains a native tmux pane; click it to resume typing.
 | Show members and tasks | `csquad ui` |
 | Show only tasks beside the terminal | `csquad ui --view tasks` |
 | Hide both panels | `csquad ui --view hide` |
-| Close the focused panel | `q` or `Esc` |
-| Return to Master from a panel | `m` |
+| Collapse the task panel | Top-right **×**, `q` or `Esc` |
+| Return to Master | Click the pinned Master card |
+
+The workspace header displays the C Squad mark and team name.
+The bottom footer has clickable **Tasks** and **Detach** buttons.
+Tasks toggles the right panel; the member sidebar stays open. Detach disconnects only your terminal; the
+team keeps running. Button labels include their keyboard shortcuts.
+
+Master stays pinned above the scrolling member list, marked with a diamond.
+Member names always use their assigned colors, including unselected members.
+
+The task panel opens on **Active**, which includes pending, working, and review tasks.
+Completed tasks move to **Done**. Click either filter or use the left/right arrow
+keys to switch; both filters show their task counts.
 
 The task panel shows the recorded task phase, owner, collaborators, acceptance
 criteria, latest progress report, blockers, checkpoints, and review/test evidence.
 Tasks appear as vertically stacked cards with their status, owner, and latest
-progress. Click a card to expand its details inside the card. Use Tab or click the header to switch between
-Tasks, Activity, and Asks (unanswered requests). Scroll with the mouse wheel;
-Page Up and Page Down scroll long details. Press Enter on a task to open its
-owner's terminal. Questions are handled through Master; these panels do not
-assign tasks, approve merges, or infer completion from terminal output.
+progress. Cards show structured milestones, including checkpoints awaiting approval.
+Click **View details** or press Enter to read the full task in the panel. Escape
+or **Back to tasks** returns to the list; the wheel and Page Up/Down scroll details.
+Press `o` to open the task owner's terminal. The right panel is dedicated to
+tasks. Questions are handled through Master; this panel does not assign tasks,
+approve merges, or infer completion from terminal output.
 
 At 150 columns or wider, both panels fit beside the terminal. Between 90 and 149
-columns, showing tasks takes precedence over the member sidebar. Below 90 columns,
+columns, the member sidebar stays visible and Tasks opens in a popup. Below 90 columns,
 side panels are hidden; the panel shortcuts open a temporary popup instead.
 Expand the terminal to restore the chosen layout. Pane borders can be dragged to
-adjust widths. As with normal tmux panes, clients attached to the same session
+adjust widths; resizing the terminal restores the standard sidebar widths. The header stays three rows high. As with normal tmux panes, clients attached to the same session
 share its layout and panel selection.
+
+### Member working directories
+
+For a team spanning several projects, set each member's actual startup directory:
+
+```sh
+csquad member add api-reader --engine codex --cwd /path/to/api --role "API researcher"
+csquad member restart api-reader --cwd /path/to/api
+```
+
+The directory must exist. Relative paths resolve from the calling directory.
+Without `--cwd`, creation uses the `--task` workspace when available, otherwise the
+team root; restart and replace retain the existing member directory.
+Restart resumes the conversation. Replace starts a new conversation.
+
+The mouse wheel scrolls panel content without changing selection. Click a member
+to switch terminals; arrow keys move the selection and Enter opens it. Master
+remains pinned while the member list scrolls.

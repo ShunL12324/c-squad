@@ -13,6 +13,8 @@ import (
 
 func TestSyntaxErrorsNeverReachTeamOperations(t *testing.T) {
 	cases := [][]string{
+		{"resume", "folio", "--name", "other"},
+		{"resume", "folio", "--team", "/tmp/team"},
 		{"task", "create", "test"},
 		{"member", "add"},
 		{"start", "--engnie", "claude"},
@@ -48,6 +50,7 @@ func TestParsedValuesPreserveOpaqueTextAndNativeArguments(t *testing.T) {
 		args, path, engine []string
 		values             map[string]string
 	}{
+		{args: []string{"resume", "folio", "--detach"}, path: []string{"resume"}, values: map[string]string{"name": "folio", "detach": "true"}},
 		{args: []string{"--team", "/tmp/team", "member", "add", "alice", "--env", "A=a,b", "--env", "B=x=y", "--role", "reviewer"}, path: []string{"member", "add", "alice"}, values: map[string]string{"team": "/tmp/team", "env": "A=a,b\x00B=x=y", "role": "reviewer"}},
 		{args: []string{"task", "create", "--acceptance", "done", "--", "--literal-title"}, path: []string{"task", "create", "--literal-title"}, values: map[string]string{"acceptance": "done"}},
 		{args: []string{"--name", "demo", "--detach"}, path: []string{"start"}, values: map[string]string{"name": "demo", "detach": "true"}},

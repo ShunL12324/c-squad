@@ -320,7 +320,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				if v.Y == taskFilterRow {
-					m.filterTasks(v.X >= max(1, m.width/2))
+					// Gutters fall to the segment they sit beside, so the whole
+					// row stays clickable with no dead columns.
+					left, _ := m.filterSplit()
+					m.filterTasks(v.X >= 2+left)
 				} else {
 					_, hits := m.taskCards()
 					for _, hit := range hits {

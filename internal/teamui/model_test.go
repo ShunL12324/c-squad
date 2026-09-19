@@ -3,9 +3,12 @@ package teamui
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 )
 
 func TestSelectionSurvivesTaskUpdates(t *testing.T) {
@@ -266,5 +269,115 @@ func TestWorkspaceHeaderIsBounded(t *testing.T) {
 		if ansi.StringWidth(row) != 80 {
 			t.Fatal("header is not full width")
 		}
+	}
+}
+
+// cellBackgrounds maps each rendered column to the 256-colour background in
+// effect there, so a test can prove a painted row has no unstyled holes.
+func cellBackgrounds(row string) []string {
+	var cells []string
+	bg := ""
+	for i := 0; i < len(row); {
+		if strings.HasPrefix(row[i:], "\x1b[") {
+			end := strings.IndexByte(row[i:], 'm')
+			if end < 0 {
+				break
+			}
+			params := strings.Split(row[i+2:i+end], ";")
+			for j := 0; j < len(params); j++ {
+				switch params[j] {
+				case "", "0":
+					bg = ""
+				case "38", "48":
+					if j+2 < len(params) && params[j+1] == "5" {
+						if params[j] == "48" {
+							bg = params[j+2]
+						}
+						j += 2
+					}
+				}
+			}
+			i += end + 1
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(row[i:])
+		for range ansi.StringWidth(string(r)) {
+			cells = append(cells, bg)
+		}
+		i += size
+	}
+	return cells
+}
+
+func TestTaskFilterSegmentsSplitPanelEvenly(t *testing.T) {
+	restore := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.ANSI256)
+	t.Cleanup(func() { lipgloss.SetColorProfile(restore) })
+
+	data := Snapshot{Active: true, Tasks: []Task{{ID: "T1", State: "done"}, {ID: "T2"}, {ID: "T3"}}}
+	for _, width := range []int{24, 30, 40, 41} {
+		for _, completed := range []bool{false, true} {
+			m := model{kind: "tasks", width: width, height: 20, completed: completed, data: data}
+			left, right := m.filterSplit()
+			if left+right != width-4 || max(left, right)-min(left, right) > 1 {
+				t.Fatalf("segments do not split %d evenly: %d/%d", width-4, left, right)
+			}
+			row := strings.Split(m.View(), "\n")[taskFilterRow]
+			cells := cellBackgrounds(row)
+			if len(cells) != width {
+				t.Fatalf("filter row is %d columns wide, want %d", len(cells), width)
+			}
+			leftBG, rightBG := accent, surface
+			if completed {
+				leftBG, rightBG = surface, accent
+			}
+			want := func(x int) string {
+				switch {
+				case x < 2 || x >= width-2:
+					return canvas
+				case x < 2+left:
+					return leftBG
+				default:
+					return rightBG
+				}
+			}
+			for x, bg := range cells {
+				if bg != want(x) {
+					t.Fatalf("width %d completed %v: column %d painted %q, want %q in %q",
+						width, completed, x, bg, want(x), ansi.Strip(row))
+				}
+			}
+		}
+	}
+}
+
+func TestTaskFilterClicksFollowRenderedSegments(t *testing.T) {
+	data := Snapshot{Active: true, Tasks: []Task{{ID: "T1", State: "done"}, {ID: "T2"}}}
+	click := func(m model, x int) bool {
+		next, _ := m.Update(tea.MouseMsg{X: x, Y: taskFilterRow, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+		return next.(model).completed
+	}
+	for _, width := range []int{1, 12, 24, 30, 40, 41} {
+		active := model{kind: "tasks", width: width, height: 20, data: data}
+		done := active
+		done.completed = true
+		left, _ := active.filterSplit()
+		// Gutters belong to the segment beside them, so every column of the
+		// row selects one filter and none is dead.
+		for x := range width {
+			if got, want := click(active, x), x >= 2+left; got != want {
+				t.Fatalf("width %d: click at %d gave completed=%v, want %v", width, x, got, want)
+			}
+			if got, want := click(done, x), x >= 2+left; got != want {
+				t.Fatalf("width %d: click at %d from Done gave completed=%v, want %v", width, x, got, want)
+			}
+		}
+	}
+	wide := model{kind: "tasks", width: 40, height: 20, completed: true, data: data}
+	if click(wide, 10) {
+		t.Fatal("left half must select Active")
+	}
+	if !click(model{kind: "tasks", width: 40, height: 20, data: data}, 30) {
+		t.Fatal("right half must select Done")
 	}
 }

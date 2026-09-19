@@ -99,6 +99,25 @@ func (m *model) filterTasks(completed bool) {
 	m.remember()
 }
 
+// filterSplit is shared by the renderer and the mouse hit test so the painted
+// boundary and the clickable boundary can never drift apart. The right segment
+// absorbs the odd column so the pair exactly spans the card content width.
+func (m model) filterSplit() (int, int) {
+	left := max(1, (m.width-4)/2)
+	return left, max(1, m.width-4-left)
+}
+
+// filterSegment paints padding and label in one style; unstyled padding would
+// punch canvas-coloured holes either side of the centred label.
+func filterSegment(text string, width int, selected bool) string {
+	style := lipgloss.NewStyle().Width(width).Align(lipgloss.Center).
+		Background(lipgloss.Color(surface)).Foreground(lipgloss.Color(muted))
+	if selected {
+		style = style.Background(lipgloss.Color(accent)).Foreground(lipgloss.Color(canvas)).Bold(true)
+	}
+	return style.Render(line(text, width))
+}
+
 func (m model) taskFilters() string {
 	done := 0
 	for _, task := range m.data.Tasks {
@@ -106,8 +125,10 @@ func (m model) taskFilters() string {
 			done++
 		}
 	}
-	width := max(1, (m.width-4)/2)
-	left := fmt.Sprintf(" Active %d", len(m.data.Tasks)-done)
-	right := fmt.Sprintf(" Done %d", done)
-	return "  " + paint(fmt.Sprintf("%-*s", width, line(left, width)), accent, !m.completed) + paint(fmt.Sprintf("%-*s", max(1, m.width-4-width), line(right, max(1, m.width-4-width))), accent, m.completed)
+	left, right := m.filterSplit()
+	// Paint the gutters too; cells emitted after the segments' reset would
+	// otherwise inherit the terminal's own background instead of the canvas.
+	gutter := lipgloss.NewStyle().Background(lipgloss.Color(canvas)).Render("  ")
+	return gutter + filterSegment(fmt.Sprintf("Active %d", len(m.data.Tasks)-done), left, !m.completed) +
+		filterSegment(fmt.Sprintf("Done %d", done), right, m.completed) + gutter
 }

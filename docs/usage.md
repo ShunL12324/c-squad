@@ -25,9 +25,9 @@ Outside a team session, use `csquad --team /path/to/team COMMAND`; team state is
 normally in `.csquad/teams/<name>/`. Team shortcuts do not modify `~/.tmux.conf`.
 If your terminal captures Alt-arrow, use the numbered shortcuts.
 
-Mouse support is enabled only in team sessions. Click a member name to switch
+Mouse support is enabled only in team sessions. With tmux 3.4 or newer, click a member name to switch
 sessions, use the wheel to scroll, and click or resize tmux panes if you use a
-split layout. Native agents control mouse behavior inside their own interfaces.
+split layout. Older tmux versions retain colored labels and keyboard navigation. Native agents control mouse behavior inside their own interfaces.
 In most terminals, hold Shift while dragging to select text without sending
 mouse events to tmux.
 

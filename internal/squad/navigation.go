@@ -60,6 +60,13 @@ func (st *Store) configureNavigation() error {
 	if err != nil {
 		return err
 	}
+	version, err := tm(s, "display-message", "-p", "#{version}")
+	if err != nil {
+		return err
+	}
+	var major, minor int
+	_, _ = fmt.Sscanf(version, "%d.%d", &major, &minor)
+	clickable := major > 3 || major == 3 && minor >= 4
 	root, prefix := navigationTables(st)
 	var source strings.Builder
 	for _, table := range []struct{ from, to string }{{"root", root}, {"prefix", prefix}} {
@@ -95,9 +102,11 @@ func (st *Store) configureNavigation() error {
 	}
 	// Only member labels carry numeric ranges. Ignore clicks on empty space or
 	// shortcut hints rather than treating them as a window-selection request.
-	if _, err = tm(s, "bind-key", "-T", root, "MouseDown1Status", "if-shell", "-F",
-		"#{m/r:^[0-9]+$,#{mouse_status_range}}", "run-shell -b "+shellQuote(cmd+" --index '#{mouse_status_range}'")); err != nil {
-		return err
+	if clickable {
+		if _, err = tm(s, "bind-key", "-T", root, "MouseDown1Status", "if-shell", "-F",
+			"#{m/r:^[0-9]+$,#{mouse_status_range}}", "run-shell -b "+shellQuote(cmd+" --index '#{mouse_status_range}'")); err != nil {
+			return err
+		}
 	}
 	members := navigationMembers(s)
 	for _, m := range members {
@@ -138,9 +147,17 @@ func (st *Store) configureNavigation() error {
 			if other.ID == m.ID {
 				style = "fg=colour234,bg=" + other.Color.StyleValue() + ",bold"
 			}
-			labels = append(labels, fmt.Sprintf("#[range=user|%d,%s]%s#[norange,default]", i, style, label))
+			if clickable {
+				labels = append(labels, fmt.Sprintf("#[range=user|%d,%s]%s#[norange,default]", i, style, label))
+			} else {
+				labels = append(labels, fmt.Sprintf("#[%s]%s#[default]", style, label))
+			}
 		}
-		for opt, val := range map[string]string{"prefix": "None", "prefix2": "None", "key-table": root, "mouse": "on", "status-style": "fg=colour252,bg=colour234", "status": "on", "status-left": "[" + s.ID + "] ", "status-left-length": "60", "status-format[0]": "#[align=left]" + strings.Join(labels, "") + " #[align=right]Click member · Alt+←/→ "} {
+		hint := "Alt+←/→  Ctrl+B 0–9 "
+		if clickable {
+			hint = "Click member · Alt+←/→ "
+		}
+		for opt, val := range map[string]string{"prefix": "None", "prefix2": "None", "key-table": root, "mouse": "on", "status-style": "fg=colour252,bg=colour234", "status": "on", "status-left": "[" + s.ID + "] ", "status-left-length": "60", "status-format[0]": "#[align=left]" + strings.Join(labels, "") + " #[align=right]" + hint} {
 			if _, err = tm(s, "set-option", "-t", target, opt, val); err != nil {
 				return err
 			}

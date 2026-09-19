@@ -17,6 +17,7 @@ import (
 	"github.com/ShunL12324/c-squad/internal/config"
 	"github.com/ShunL12324/c-squad/internal/filelock"
 	"github.com/ShunL12324/c-squad/internal/preflight"
+	"github.com/ShunL12324/c-squad/internal/tmux"
 )
 
 var validID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,40}$`)
@@ -309,7 +310,7 @@ func start(o options) error {
 	}
 	e = st.update(func(s *State) error {
 		*s = State{Version: 2, Epoch: 1, Phase: TeamPhaseStarting, OwnSocket: os.Getenv("TMUX") == "", Config: &cfg, ID: id, Root: root, Socket: socket, Executable: bin, Active: true, Members: map[string]*Member{}, Tasks: map[string]*Task{}, Questions: map[string]*Question{}, Messages: []*Message{}, Events: []Event{}}
-		s.Members["master"] = &Member{Env: memberEnv(cfg, t, nil), ID: "master", Engine: t.Engine, Model: t.Model, Role: "master", Session: "csq-" + id + "-master", Cwd: root, State: MemberStateStarting, Generation: 1}
+		s.Members["master"] = &Member{Color: tmux.Color(o["color"]), Env: memberEnv(cfg, t, nil), ID: "master", Engine: t.Engine, Model: t.Model, Role: "master", Session: "csq-" + id + "-master", Cwd: root, State: MemberStateStarting, Generation: 1}
 		return nil
 	})
 	if e != nil {

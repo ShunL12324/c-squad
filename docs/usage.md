@@ -10,6 +10,7 @@ or inspect the underlying state with `csquad board`.
 
 | Action | Shortcut or command |
 | --- | --- |
+| Open a member with the mouse | Click its name in the tmux status bar |
 | Switch team members | `Alt+←` / `Alt+→` |
 | Return to Master | `Ctrl-b 0` |
 | Open a numbered member | `Ctrl-b 1` … `Ctrl-b 9` |
@@ -23,6 +24,12 @@ or inspect the underlying state with `csquad board`.
 Outside a team session, use `csquad --team /path/to/team COMMAND`; team state is
 normally in `.csquad/teams/<name>/`. Team shortcuts do not modify `~/.tmux.conf`.
 If your terminal captures Alt-arrow, use the numbered shortcuts.
+
+Mouse support is enabled only in team sessions. Click a member name to switch
+sessions, use the wheel to scroll, and click or resize tmux panes if you use a
+split layout. Native agents control mouse behavior inside their own interfaces.
+In most terminals, hold Shift while dragging to select text without sending
+mouse events to tmux.
 
 Master process exit stops the team; detaching does not. Recovery preserves
 worktrees and uncommitted changes. `resume --fresh` starts new native sessions
@@ -114,3 +121,22 @@ C Squad injects coordination instructions into native engine sessions. No extra
 collaboration skill or MCP server is required. Native MCP configuration and
 account authentication remain under each engine's control. The application uses
 a local SQLite ledger and a per-team runtime; it installs no system service.
+
+## Member colors
+
+Give collaborators the same status-bar color to make a task group easy to spot:
+
+```sh
+csquad member add developer --engine codex --role developer --color mint
+csquad member add reviewer --engine claude --role reviewer --color mint
+```
+
+Colors are visual labels, not task assignments or status indicators. Master is
+prompted to use matching colors for collaborators, but this is optional. Without
+`--color`, a random color is selected and retained across restarts and recovery;
+duplicates are allowed. Use `csquad start --color blue` to color Master as well.
+
+Available colors: `red`, `orange`, `amber`, `yellow`, `lime`, `green`, `mint`,
+`teal`, `cyan`, `sky`, `blue`, `indigo`, `violet`, `purple`, `pink`, and `rose`.
+The current member has a filled label; other members use colored text. Terminal
+color themes can affect their appearance. `--color` supports shell completion.

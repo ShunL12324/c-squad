@@ -13,6 +13,7 @@ import (
 
 	"github.com/ShunL12324/c-squad/internal/config"
 	"github.com/ShunL12324/c-squad/internal/process"
+	"github.com/ShunL12324/c-squad/internal/tmux"
 
 	_ "modernc.org/sqlite"
 )
@@ -20,6 +21,7 @@ import (
 // Member records an agent identity, its launch configuration, and observed runtime state.
 // Generation fences writes from previous incarnations of the same member.
 type Member struct {
+	Color        tmux.Color         `json:"color,omitempty"`
 	Instructions string             `json:"instructions,omitempty"`
 	Env          map[string]string  `json:"env,omitempty"`
 	ID           string             `json:"id"`

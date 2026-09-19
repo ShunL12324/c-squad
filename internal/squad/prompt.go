@@ -2,8 +2,10 @@ package squad
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/ShunL12324/c-squad/internal/config"
+	"github.com/ShunL12324/c-squad/internal/tmux"
 )
 
 func prompt(s *State, m *Member, st *Store, t config.Template) string {
@@ -12,7 +14,7 @@ Use the CLI below for ALL team task/message/help state. No MCP or skill setup is
 CLI prefix (include it in every invocation): %s --team %s --member %s --generation %d
 Commands:
   board
-  member add NAME --role IDENTITY --instructions RESPONSIBILITIES [--engine claude|codex] [--model MODEL] [--task TASK] [--env KEY=VALUE]
+  member add NAME --role IDENTITY --instructions RESPONSIBILITIES [--engine claude|codex] [--model MODEL] [--task TASK] [--env KEY=VALUE] [--color COLOR]
   member list; member inspect NAME; member interrupt NAME; member restart NAME; member replace NAME; member remove NAME
   task create TITLE --description TEXT --acceptance TEXT [--code] [--milestones 'plan,implementation,tests'] [--gates plan] [--deps T1,T2] [--dispatch assigned|open] [--request-id UNIQUE] [--setup TEXT]
   task assign TASK --owner NAME --to NAME[,NAME] ; task claim TASK
@@ -35,7 +37,7 @@ Do not merge or remove worktrees yourself. Only master can approve and merge thr
 If idle, check your inbox and assigned/ready tasks once, then return; do not busy-poll. Status/help/completion notices to master are informational unless action is needed.
 `, m.ID, m.Role, s.ID, t.Prompt, shellQuote(s.Executable), shellQuote(st.Dir), shellQuote(m.ID), m.Generation)
 	if m.ID == "master" {
-		base += "\nYou coordinate this team: clarify the human request, create tasks, recruit members with task-specific identities and instructions, assign work, handle escalations, and approve delivery. Recruit only when needed.\n"
+		base += "\nYou coordinate this team: clarify the human request, create tasks, recruit members with task-specific identities and instructions, assign work, handle escalations, and approve delivery. Recruit only when needed. Prefer the same --color for members collaborating on one task; this is a visual convention, not a constraint. Omitted colors are random and persisted. Available colors: " + strings.Join(tmux.ColorNames(), ", ") + ".\n"
 	}
 	if m.Handoff != "" {
 		base += "\nRECOVERY: Use ONLY the current injected CLI generation. Before handling the next request read board, inbox and handoff at " + m.Handoff + ". Reconcile completed work; do not repeat completed requests.\n"

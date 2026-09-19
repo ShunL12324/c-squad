@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/ShunL12324/c-squad/internal/process"
+	"github.com/ShunL12324/c-squad/internal/tmux"
 )
 
 func TestNavigationIsScopedAndRefreshesRoster(t *testing.T) {
@@ -23,6 +24,8 @@ func TestNavigationIsScopedAndRefreshesRoster(t *testing.T) {
 	defer process.Run("", "tmux", "-S", socket, "kill-server")
 	st := testStore(t)
 	must(t, st.update(func(s *State) error {
+		s.Members["a"].Color = tmux.Mint
+		s.Members["b"].Color = tmux.Mint
 		s.Socket = socket
 		s.Executable = "/tmp/csquad"
 		for id, m := range s.Members {
@@ -36,10 +39,21 @@ func TestNavigationIsScopedAndRefreshesRoster(t *testing.T) {
 		must(t, e)
 	}
 	unrelatedBefore, _ := tm(s, "show-options", "-Av", "-t", "=unrelated", "key-table")
+	mouseBefore, _ := tm(s, "show-options", "-Av", "-t", "=unrelated", "mouse")
 	before, _ := tm(s, "list-keys", "-T", "root")
 	prefixBefore, _ := tm(s, "list-keys", "-T", "prefix")
 	must(t, st.configureNavigation())
+	first, e := st.read()
+	must(t, e)
 	must(t, st.configureNavigation())
+	second, e := st.read()
+	must(t, e)
+	if first.Members["master"].Color == "" || first.Members["master"].Color != second.Members["master"].Color {
+		t.Fatal("random color was not persisted")
+	}
+	if second.Members["a"].Color != tmux.Mint || second.Members["b"].Color != tmux.Mint {
+		t.Fatal("explicit shared colors changed")
+	}
 	after, _ := tm(s, "list-keys", "-T", "root")
 	prefixAfter, _ := tm(s, "list-keys", "-T", "prefix")
 	if before != after || prefixBefore != prefixAfter {
@@ -50,10 +64,20 @@ func TestNavigationIsScopedAndRefreshesRoster(t *testing.T) {
 	if table != unrelatedBefore {
 		t.Fatal("modified unrelated session")
 	}
+	mouseAfter, e := tm(s, "show-options", "-Av", "-t", "=unrelated", "mouse")
+	must(t, e)
+	if mouseBefore != mouseAfter {
+		t.Fatal("modified unrelated session mouse setting")
+	}
+	mouse, e := tm(s, "show-options", "-Av", "-t", "=team-master", "mouse")
+	must(t, e)
+	if mouse != "on" {
+		t.Fatal("team mouse support disabled")
+	}
 	root, prefix := navigationTables(st)
 	keys, e := tm(s, "list-keys", "-T", root)
 	must(t, e)
-	if !strings.Contains(keys, "M-Right") || !strings.Contains(keys, prefix) {
+	if !strings.Contains(keys, "M-Right") || !strings.Contains(keys, prefix) || !strings.Contains(keys, "MouseDown1Status") {
 		t.Fatal("missing navigation bindings")
 	}
 	must(t, st.update(func(s *State) error { s.Members["a"].State = MemberStateRemoved; return nil }))
@@ -62,6 +86,9 @@ func TestNavigationIsScopedAndRefreshesRoster(t *testing.T) {
 	must(t, e)
 	if strings.Contains(labels, ":a ") || !strings.Contains(labels, "0:master") || !strings.Contains(labels, "1:b") {
 		t.Fatal(labels)
+	}
+	if !strings.Contains(labels, "#[range=user|1,") {
+		t.Fatal("member click range did not follow roster change:", labels)
 	}
 	st.clearNavigation(s)
 	if _, e = tm(s, "list-keys", "-T", root); e == nil {

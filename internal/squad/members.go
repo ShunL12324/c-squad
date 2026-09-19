@@ -8,6 +8,7 @@ import (
 	"github.com/ShunL12324/c-squad/internal/config"
 	"github.com/ShunL12324/c-squad/internal/filelock"
 	"github.com/ShunL12324/c-squad/internal/preflight"
+	"github.com/ShunL12324/c-squad/internal/tmux"
 )
 
 func memberCommand(st *Store, actor string, p []string, o options) error {
@@ -123,7 +124,7 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 			if count >= cfg.MaxMembers {
 				return ErrMemberLimit
 			}
-			s.Members[id] = &Member{Instructions: t.Prompt, Env: memberEnv(cfg, t, overrides), ID: id, Engine: t.Engine, Model: t.Model, Role: role, Session: "csq-" + s.ID + "-" + id, Cwd: cwd, State: MemberStateStarting, Generation: 1}
+			s.Members[id] = &Member{Color: tmux.Color(o["color"]), Instructions: t.Prompt, Env: memberEnv(cfg, t, overrides), ID: id, Engine: t.Engine, Model: t.Model, Role: role, Session: "csq-" + s.ID + "-" + id, Cwd: cwd, State: MemberStateStarting, Generation: 1}
 			if o["task"] != "" {
 				t := s.Tasks[o["task"]]
 				t.Participants = append(t.Participants, id)

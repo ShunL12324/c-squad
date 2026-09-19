@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/ShunL12324/c-squad/internal/filelock"
+	"github.com/ShunL12324/c-squad/internal/tmux"
 )
 
 func navigationTables(st *Store) (string, string) {
@@ -44,6 +45,17 @@ func (st *Store) configureNavigation() error {
 		return err
 	}
 	defer unlock()
+	// Persist defaults once so refresh, restart and recovery retain member colors.
+	if err = st.update(func(s *State) error {
+		for _, m := range s.Members {
+			if m.Color == "" {
+				m.Color = tmux.RandomColor()
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
 	s, err := st.read()
 	if err != nil {
 		return err
@@ -81,6 +93,12 @@ func (st *Store) configureNavigation() error {
 			return err
 		}
 	}
+	// Only member labels carry numeric ranges. Ignore clicks on empty space or
+	// shortcut hints rather than treating them as a window-selection request.
+	if _, err = tm(s, "bind-key", "-T", root, "MouseDown1Status", "if-shell", "-F",
+		"#{m/r:^[0-9]+$,#{mouse_status_range}}", "run-shell -b "+shellQuote(cmd+" --index '#{mouse_status_range}'")); err != nil {
+		return err
+	}
 	members := navigationMembers(s)
 	for _, m := range members {
 		target := "=" + m.Session
@@ -116,12 +134,13 @@ func (st *Store) configureNavigation() error {
 		labels := []string{}
 		for i, other := range members {
 			label := fmt.Sprintf(" %d:%s ", i, other.ID)
+			style := "fg=" + other.Color.StyleValue() + ",bg=colour234"
 			if other.ID == m.ID {
-				label = "#[reverse]" + label + "#[noreverse]"
+				style = "fg=colour234,bg=" + other.Color.StyleValue() + ",bold"
 			}
-			labels = append(labels, label)
+			labels = append(labels, fmt.Sprintf("#[range=user|%d,%s]%s#[norange,default]", i, style, label))
 		}
-		for opt, val := range map[string]string{"prefix": "None", "prefix2": "None", "key-table": root, "status": "on", "status-left": "[" + s.ID + "] ", "status-left-length": "60", "status-format[0]": "#[align=left]" + strings.Join(labels, "") + " #[align=right]Alt+←/→  Ctrl+B 0–9 "} {
+		for opt, val := range map[string]string{"prefix": "None", "prefix2": "None", "key-table": root, "mouse": "on", "status-style": "fg=colour252,bg=colour234", "status": "on", "status-left": "[" + s.ID + "] ", "status-left-length": "60", "status-format[0]": "#[align=left]" + strings.Join(labels, "") + " #[align=right]Click member · Alt+←/→ "} {
 			if _, err = tm(s, "set-option", "-t", target, opt, val); err != nil {
 				return err
 			}
@@ -137,9 +156,17 @@ func (st *Store) navigate(client, direction, index string) error {
 	if client == "" {
 		return fmt.Errorf("--client required")
 	}
-	current, err := tm(s, "display-message", "-p", "-c", client, "#{session_name}")
+	clients, err := tm(s, "list-clients", "-F", "#{client_name}\t#{session_name}")
 	if err != nil {
 		return err
+	}
+	current := ""
+	for _, line := range strings.Split(clients, "\n") {
+		name, session, ok := strings.Cut(line, "\t")
+		if ok && name == client {
+			current = session
+			break
+		}
 	}
 	members := navigationMembers(s)
 	live := []*Member{}

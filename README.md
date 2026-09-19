@@ -108,6 +108,7 @@ The tmux status bar shows your members. These shortcuts stay local to the team:
 
 | What you want to do | How |
 | --- | --- |
+| Open a member with the mouse | Click its name in the tmux status bar |
 | See the next or previous member | `Alt+Right` / `Alt+Left` |
 | Go back to Master | Press `Ctrl-b`, then `0` |
 | Open a numbered member | Press `Ctrl-b`, then its number |

@@ -11,7 +11,18 @@ import (
 func completeResource(kind string) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 	return func(cmd *cobra.Command, args []string, prefix string) ([]string, cobra.ShellCompDirective) {
 		team, _ := cmd.Flags().GetString("team")
-		values, err := squad.CompletionValues(team, kind)
+		resource := kind
+		if kind == "team-or-member" {
+			resource = "member"
+		}
+		values, err := squad.CompletionValues(team, resource)
+		if kind == "team-or-member" {
+			names, e := squad.CompletionValues("", "team")
+			if e == nil {
+				values = append(values, names...)
+				err = nil
+			}
+		}
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}

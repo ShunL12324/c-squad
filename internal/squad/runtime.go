@@ -16,6 +16,9 @@ func attach(st *Store, id string) error {
 	if e != nil {
 		return e
 	}
+	if !s.Active || masterGone(s) {
+		return fmt.Errorf("team %q is stopped; run csquad start --name %s to resume it", s.ID, s.ID)
+	}
 	m, e := s.member(id)
 	if e != nil {
 		return e
@@ -31,7 +34,11 @@ func attach(st *Store, id string) error {
 	if cmd == "attach-session" {
 		c.Env = agentenv.Environ(map[string]string{"TMUX": ""})
 	}
-	return c.Run()
+	err := c.Run()
+	if latest, readErr := st.read(); readErr == nil && !latest.Active {
+		_, _ = fmt.Fprintf(os.Stderr, "Team %s stopped (%s). All team sessions are closed; task records are saved.\nRestart: csquad start --name %s\n", latest.ID, latest.StopReason, latest.ID)
+	}
+	return err
 }
 func runEngine(st *Store, actor string, gen int, args []string) error {
 	if len(args) == 0 {
@@ -90,7 +97,11 @@ func runEngine(st *Store, actor string, gen int, args []string) error {
 	stateErr := st.update(func(s *State) error {
 		if m := s.Members[actor]; m != nil && m.Generation == gen && m.State != MemberStateRemoved {
 			m.State = state
-			s.event(actor, string(state), fmt.Sprint(e))
+			detail := "engine exited normally"
+			if e != nil {
+				detail = e.Error()
+			}
+			s.event(actor, string(state), detail)
 		}
 		return nil
 	})

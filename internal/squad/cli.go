@@ -64,6 +64,9 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 		return doctor(o)
 	}
 
+	if p[0] == "list" {
+		return listTeams()
+	}
 	if p[0] == "start" {
 		return start(o)
 	}
@@ -78,11 +81,23 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 		}
 		dir = strings.TrimSpace(string(b))
 	}
-	if o["name"] != "" && p[0] == "resume" && o["team"] == "" {
+	if o["name"] != "" && contains([]string{"resume", "attach", "board", "stop", "ui"}, p[0]) && o["team"] == "" {
 		if !validID.MatchString(o["name"]) {
 			return errors.New("invalid team name")
 		}
-		dir = filepath.Join(currentProjectBase(), "teams", o["name"])
+		var err error
+		dir, err = namedTeam(o["name"])
+		if err != nil {
+			return err
+		}
+	}
+	// A bare attach argument selects a team when no explicit team/member context
+	// exists. Inside an agent session, the same argument remains a member name.
+	if p[0] == "attach" && len(p) > 1 && o["team"] == "" && o["name"] == "" && os.Getenv("CSQUAD_STATE_DIR") == "" {
+		if found, err := namedTeam(p[1]); err == nil {
+			dir = found
+			p = []string{"attach"}
+		}
 	}
 	st, e := openStore(dir)
 	if e != nil {
@@ -283,8 +298,22 @@ func start(o options) error {
 		return e
 	}
 	dir := filepath.Join(base, "teams", id)
+	if existing, err := namedTeam(id); err == nil {
+		old, err := openStore(existing)
+		if err != nil {
+			return err
+		}
+		state, err := old.read()
+		_ = old.DB.Close()
+		if err != nil {
+			return err
+		}
+		if state.Root == root {
+			return startExisting(existing, o)
+		}
+	}
 	if _, e = os.Stat(filepath.Join(dir, "state.db")); e == nil {
-		return fmt.Errorf("team exists: %s; use attach or resume", dir)
+		return startExisting(dir, o)
 	}
 	st, e := openStore(dir)
 	if e != nil {

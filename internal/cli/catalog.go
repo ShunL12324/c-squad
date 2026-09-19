@@ -38,6 +38,9 @@ func addFlags(cmd *cobra.Command, names []string) {
 			cmd.Flags().String(name, "", description)
 		}
 		completion := cobra.NoFileCompletions
+		if name == "name" && (cmd.Name() == "attach" || cmd.Name() == "resume" || cmd.Name() == "board" || cmd.Name() == "stop" || cmd.Name() == "ui") {
+			completion = completeResource("team")
+		}
 		if choices, ok := flagChoices[name]; ok {
 			completion = cobra.FixedCompletions(choices, cobra.ShellCompDirectiveNoFileComp)
 		}
@@ -64,16 +67,17 @@ func definitions() []definition {
 	defs := []definition{
 		{path: "start", summary: "Start a master session in tmux", flags: startupFlags, example: "  csquad start --name my-team --engine claude\n  csquad start --detach --env CODEX_HOME=/path/to/codex-home"},
 		{path: "resume", summary: "Recover a stopped team from its ledger", flags: []string{"name", "env", "fresh", "detach"}, example: "  csquad resume --name my-team\n  csquad resume --fresh --detach"},
-		{path: "attach", args: " [MEMBER]", summary: "Attach to master or a member", max: 1, complete: "member"},
-		{path: "ui", summary: "Show team members and task panels", flags: []string{"view", "client"}, example: "  csquad ui\n  csquad ui --view tasks\n  csquad ui --view hide"},
+		{path: "attach", args: " [TEAM_OR_MEMBER]", summary: "Enter a team, or select a member with --name TEAM", max: 1, complete: "team-or-member", flags: []string{"name"}, example: "  csquad attach research\n  csquad attach --name research reviewer"},
+		{path: "ui", summary: "Show team members and task panels", flags: []string{"view", "client", "name"}, example: "  csquad ui\n  csquad ui --view tasks\n  csquad ui --view hide"},
 		{path: "ui-layout", hidden: true},
 		{path: "ui-toggle", hidden: true, flags: []string{"view", "client"}},
 		{path: "ui-panel", hidden: true, flags: []string{"view", "owner", "popup"}},
-		{path: "board", summary: "Inspect team progress, blockers, and recent activity", flags: []string{"full"}},
+		{path: "list", summary: "List saved teams and whether they are running"},
+		{path: "board", summary: "Inspect team progress, blockers, and recent activity", flags: []string{"full", "name"}},
 		{path: "config", summary: "Show effective user configuration"},
 		{path: "doctor", summary: "Check tmux, Git, and native engine availability", flags: []string{"strict", "engine"}},
 		{path: "version", summary: "Show the CLI version"},
-		{path: "stop", summary: "Stop team processes and retain recoverable work"},
+		{path: "stop", summary: "Stop team processes and retain recoverable work", flags: []string{"name"}},
 		{path: "sync", summary: "Retry pending message delivery"},
 		{path: "reconcile", summary: "Reconcile durable Git merge intents"},
 		{path: "recover", summary: "Restart master from an outside terminal", flags: []string{"fresh", "prompt"}},

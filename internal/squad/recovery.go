@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/ShunL12324/c-squad/internal/agentenv"
+	"github.com/ShunL12324/c-squad/internal/config"
 	"github.com/ShunL12324/c-squad/internal/filelock"
 	"github.com/ShunL12324/c-squad/internal/preflight"
 )
@@ -238,6 +239,10 @@ func resumeTeam(st *Store, o options) error {
 	if s.Active && !masterGone(s) {
 		return errors.New("team is running; use csquad attach")
 	}
+	currentConfig, err := config.Load(s.Root)
+	if err != nil {
+		return err
+	}
 	for _, member := range s.Members {
 		if member.State != MemberStateRemoved {
 			if err := preflight.Check(member.Engine); err != nil {
@@ -276,7 +281,14 @@ func resumeTeam(st *Store, o options) error {
 		return e
 	}
 	if e = st.update(func(cur *State) error {
+		oldDefaults := map[string]string{}
+		newDefaults := currentConfig.Env
 		if cur.Config != nil {
+			oldDefaults = agentenv.Merge(cur.Config.Env, cur.Config.StartupEnv)
+			newDefaults = agentenv.Merge(currentConfig.Env, cur.Config.StartupEnv)
+		}
+		if cur.Config != nil {
+			cur.Config.Env = agentenv.Merge(cur.Config.Env, currentConfig.Env)
 			cur.Config.StartupEnv = agentenv.Merge(cur.Config.StartupEnv, overrides)
 		}
 		cur.Epoch++
@@ -291,7 +303,7 @@ func resumeTeam(st *Store, o options) error {
 			if m.State == MemberStateRemoved {
 				continue
 			}
-			m.Env = agentenv.Merge(m.Env, overrides)
+			m.applyResumeEnvironment(oldDefaults, newDefaults, overrides)
 			m.Generation++
 			m.resetRuntime()
 			m.Handoff = handoff

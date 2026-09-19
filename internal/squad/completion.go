@@ -13,6 +13,18 @@ import (
 // CompletionValues reads identifiers without creating a store, refreshing tmux,
 // acquiring write transactions, or launching engines. Missing teams yield no values.
 func CompletionValues(dir, kind string) ([]string, error) {
+	if kind == "team" {
+		dirs, err := teamDirectories()
+		if err != nil {
+			return nil, err
+		}
+		names := []string{}
+		for _, dir := range dirs {
+			names = append(names, filepath.Base(dir))
+		}
+		sort.Strings(names)
+		return names, nil
+	}
 	if dir == "" {
 		dir = os.Getenv("CSQUAD_STATE_DIR")
 	}

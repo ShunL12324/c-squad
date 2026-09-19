@@ -125,7 +125,10 @@ func TestCrashCleanupAndProjectResume(t *testing.T) {
 	if strings.Contains(sessions, "csq-test-") {
 		t.Fatal("team session remains", sessions)
 	}
-	cli("resume", "--detach")
+	if out := string(cli("list")); !strings.Contains(out, "test") || !strings.Contains(out, "stopped") {
+		t.Fatal("stopped team missing from list:", out)
+	}
+	cli("start", "--name", "test", "--detach")
 	after := wait(func(s *State) bool {
 		return s.Active && s.Phase == TeamPhaseRunning && s.Members["alice"].EnginePID > 0
 	})
@@ -136,6 +139,11 @@ func TestCrashCleanupAndProjectResume(t *testing.T) {
 	must(t, e)
 	if string(b) != "keep me" {
 		t.Fatal("work lost")
+	}
+	epoch := read().Epoch
+	cli("start", "--name", "test", "--detach")
+	if read().Epoch != epoch {
+		t.Fatal("start restarted a running team")
 	}
 	// A delayed old shutdown must not kill a resumed team.
 	cli("shutdown", "--epoch", strconv.Itoa(before.Epoch), "--expected-generation", strconv.Itoa(before.Members["master"].Generation), "--reason", "master_exit")

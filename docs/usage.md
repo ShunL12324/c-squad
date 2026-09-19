@@ -1,5 +1,10 @@
 # Using C Squad
 
+List saved teams with `csquad list`. Run `csquad start --name research` to create
+a team, resume it after stopping, or enter it if it is already running.
+Use `csquad attach research` to enter a running team, or
+`csquad attach --name research reviewer` to open one member.
+
 Start a team in your project with `csquad start --engine claude` or
 `csquad start --engine codex`. This opens the Master session. Tell it what you
 want built and how you want work divided; it recruits and coordinates members.
@@ -57,7 +62,11 @@ csquad start --env CODEX_HOME=/absolute/path/to/codex-config
 ```
 
 Precedence: inherited environment → configuration `env` → `start --env` →
-`member add --env`. Running teams retain their startup configuration. Member
+`member add --env`. Running teams retain their startup configuration. On recovery, changes to
+configured environment defaults apply to members that inherited those defaults;
+member-specific overrides remain intact. Changing `CODEX_HOME` starts a fresh
+Codex conversation in that configuration directory while preserving the task
+ledger and recovery handoff. Member
 limits are configurable; there is no conversation-turn cap. A member's
 `generation` identifies its current process incarnation, not an iteration limit.
 

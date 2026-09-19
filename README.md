@@ -117,7 +117,8 @@ The tmux status bar shows your members. These shortcuts stay local to the team:
 | Leave the terminal and keep the team running | Press `Ctrl-b`, then `d` |
 | Reattach from the same project | `csquad attach` |
 | Stop the team | `csquad stop` |
-| Recover a stopped or interrupted team | `csquad resume` |
+| List teams | `csquad list` |
+| Start again after exiting | `csquad start --name my-team` |
 
 **Detaching keeps the team running. Exiting Master stops the team.** Task records
 and worktrees remain in `.csquad/` for recovery. If your terminal captures Alt-arrow,

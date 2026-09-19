@@ -38,3 +38,20 @@ func TestRestartPreservesConversationAndFencesOldDelivery(t *testing.T) {
 		t.Fatal("restart did not preserve message content and reset its delivery lease")
 	}
 }
+
+func TestResumeEnvironmentUsesUpdatedDefaults(t *testing.T) {
+	m := Member{Engine: "codex", EngineID: "old-thread", Env: map[string]string{"CODEX_HOME": "/old", "CUSTOM": "member"}}
+	m.applyResumeEnvironment(map[string]string{"CODEX_HOME": "/old", "CUSTOM": "global"}, map[string]string{"CODEX_HOME": "/new", "CUSTOM": "new-global"}, nil)
+	if m.Env["CODEX_HOME"] != "/new" || m.Env["CUSTOM"] != "member" || m.EngineID != "" {
+		t.Fatalf("incorrect recovery environment: %+v", m)
+	}
+	m.EngineID = "new-thread"
+	m.applyResumeEnvironment(map[string]string{"CODEX_HOME": "/new"}, map[string]string{"CODEX_HOME": "/new"}, nil)
+	if m.EngineID != "new-thread" {
+		t.Fatal("unchanged account lost its conversation")
+	}
+	m.applyResumeEnvironment(nil, nil, map[string]string{"CODEX_HOME": "/explicit"})
+	if m.Env["CODEX_HOME"] != "/explicit" || m.EngineID != "" {
+		t.Fatal("explicit account override was not applied")
+	}
+}

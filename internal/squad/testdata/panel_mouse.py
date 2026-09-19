@@ -135,6 +135,10 @@ try:
                 break
         else:
             raise AssertionError(f"resize to {width}x{height} did not settle: {layout}; clients={tm('list-clients','-F','#{client_name}:#{session_name}:#{client_width}:#{client_height}')}; window={tm('show-options','-w','-v','-t',worker,'window-size')}")
+    # The asynchronous Tasks click may open a compact popup if the first
+    # resize arrives before openUI finishes. Popups intentionally intercept
+    # mouse input; dismiss that overlay before testing the underlying footer.
+    tm("display-popup", "-C", "-c", client)
     # Pane geometry settles before tmux redraws the client's status hit regions.
     # Flush the resized status line before sending the one and only detach click.
     tm("refresh-client", "-S", "-t", client)

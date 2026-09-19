@@ -1,6 +1,7 @@
 package squad
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,7 +18,7 @@ func TestResponsivePanelVisibility(t *testing.T) {
 		view           panelView
 		width          int
 		members, tasks bool
-	}{{panelBoth, 180, true, true}, {panelBoth, 110, false, true}, {panelBoth, 80, false, false}, {panelMembers, 110, true, false}, {panelHidden, 180, false, false}} {
+	}{{"", 180, true, true}, {panelBoth, 180, true, true}, {panelBoth, 110, false, true}, {panelBoth, 80, false, false}, {panelMembers, 110, true, false}, {panelHidden, 180, false, false}} {
 		m, b := panelVisibility(tt.view, tt.width)
 		if m != tt.members || b != tt.tasks {
 			t.Fatalf("%s at %d: %v %v", tt.view, tt.width, m, b)
@@ -47,13 +48,16 @@ func TestPanelsPreserveEngineAndMasterLifecycle(t *testing.T) {
 		s.Socket = socket
 		s.Executable = binary
 		s.PanelView = panelBoth
-		delete(s.Members, "a")
+		s.Members["a"].Session = "panel-worker"
 		delete(s.Members, "b")
 		s.Members["master"].Session = "panel-master"
 		s.Members["master"].Pane = pane
 		return nil
 	}))
 	s, _ := st.read()
+	workerPane, err := tm(s, "new-session", "-d", "-s", "panel-worker", "-x", "180", "-y", "35", "-P", "-F", "#{pane_id}", "cat")
+	must(t, err)
+	must(t, st.update(func(s *State) error { s.Members["a"].Pane = workerPane; return nil }))
 	must(t, installMasterHook(st))
 	must(t, st.configureNavigation())
 	panes, err := tm(s, "list-panes", "-t", pane, "-F", "#{pane_id} #{@csquad_panel}")
@@ -69,6 +73,14 @@ func TestPanelsPreserveEngineAndMasterLifecycle(t *testing.T) {
 	}
 	if sidebar == "" {
 		t.Fatal("missing sidebar")
+	}
+	if python, lookupErr := exec.LookPath("python3"); lookupErr == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		output, clickErr := exec.CommandContext(ctx, python, "testdata/panel_mouse.py", socket, "panel-master", "panel-worker").CombinedOutput()
+		if clickErr != nil {
+			t.Fatalf("mouse navigation: %v\n%s", clickErr, output)
+		}
 	}
 	_, err = tm(s, "select-pane", "-t", sidebar)
 	must(t, err)

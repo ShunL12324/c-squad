@@ -16,6 +16,7 @@ internal/
   process/         Helper commands, process snapshots, identity checks, and tree cleanup
   filelock/        Unix interprocess locking
   tmux/            Socket-scoped commands and exact session lookup
+  teamui/          Bubble Tea panels, task cards, viewport and pointer handling
 ```
 
 Dependencies flow from `cmd` through `cli` and `squad` to supporting packages.
@@ -114,3 +115,21 @@ acceptance is separate: check startup, message round trips, task delivery, and
 cleanup/recovery after Master failure. Passing automated tests does not establish
 native-engine compatibility. macOS and WSL still need runtime acceptance;
 cross-compilation only establishes buildability.
+
+## Terminal presentation
+
+Tmux owns native engine terminals and session lifetimes. Bubble Tea handles
+panel input and refreshes; Lip Gloss renders their styles. The UI reads snapshots
+from the ledger and asks orchestration to navigate. It never owns engine input
+or infers task completion from terminal output.
+
+The member sidebar, native terminal, and task board occupy separate panes.
+Task cards share rendered bounds with hit testing, so wrapped titles cannot
+shift click targets. Wide terminals show both panels by default; compact layouts
+and popups preserve room for the native terminal. The status bar contains team
+identity and shortcuts rather than a second member list.
+
+A future terminal backend must cover pane creation, client-specific navigation,
+input delivery, screen capture, lifecycle events, and recovery before replacing
+tmux. Native Windows also requires replacing Unix process-group and file-lock
+operations; changing the rendering library alone does not provide that support.

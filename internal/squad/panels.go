@@ -23,6 +23,9 @@ const (
 )
 
 func panelVisibility(view panelView, width int) (bool, bool) {
+	if view == "" {
+		view = panelBoth
+	}
 	if width < 90 || view == panelHidden {
 		return false, false
 	}
@@ -124,7 +127,7 @@ func (st *Store) setPanelView(view string, toggle bool) error {
 	if err := st.update(func(s *State) error {
 		current := s.PanelView
 		if current == "" {
-			current = panelMembers
+			current = panelBoth
 		}
 		if toggle {
 			switch panelView(view) {
@@ -188,7 +191,7 @@ func (st *Store) panelSnapshot() (teamui.Snapshot, error) {
 		if owner := s.Members[t.Owner]; owner != nil {
 			color = strings.TrimPrefix(owner.Color.StyleValue(), "colour")
 		}
-		detail := fmt.Sprintf("%s · %s\n\nOwner: %s\nWith: %s\n\nGoal\n%s\n\nAcceptance\n%s\n\nLatest update\n%s\nUpdated: %s", t.ID, t.Title, t.Owner, strings.Join(t.Participants, ", "), t.Description, t.Acceptance, t.Progress, t.Updated)
+		detail := fmt.Sprintf("With: %s\n\nGoal\n%s\n\nAcceptance\n%s\n\nUpdated: %s", strings.Join(t.Participants, ", "), t.Description, t.Acceptance, t.Updated)
 		if len(t.Blockers) > 0 {
 			detail += "\n\nBlocked\n" + strings.Join(t.Blockers, "\n")
 		}
@@ -205,7 +208,7 @@ func (st *Store) panelSnapshot() (teamui.Snapshot, error) {
 		if t.Candidate != "" {
 			detail += "\n\nCandidate: " + t.Candidate
 		}
-		out.Tasks = append(out.Tasks, teamui.Task{ID: t.ID, Title: t.Title, State: strings.ReplaceAll(string(t.State), "_", " "), Owner: t.Owner, Color: color, Detail: detail})
+		out.Tasks = append(out.Tasks, teamui.Task{ID: t.ID, Title: t.Title, State: strings.ReplaceAll(string(t.State), "_", " "), Owner: t.Owner, Color: color, Progress: t.Progress, Detail: detail})
 	}
 	ids := []string{}
 	for id, q := range s.Questions {

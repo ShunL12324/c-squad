@@ -22,7 +22,7 @@ func TestSelectionSurvivesTaskUpdates(t *testing.T) {
 }
 func TestMouseSelectsTaskWithoutOpeningTerminal(t *testing.T) {
 	m := model{kind: "tasks", tab: "tasks", height: 30, width: 36, data: Snapshot{Active: true, Tasks: []Task{{ID: "T1"}, {ID: "T2"}}}}
-	next, cmd := m.Update(tea.MouseMsg{X: 4, Y: 4, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	next, cmd := m.Update(tea.MouseMsg{X: 4, Y: 10, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
 	if cmd != nil || next.(model).selectedID != "T2" {
 		t.Fatal("task click should only select its details")
 	}
@@ -41,5 +41,33 @@ func TestViewsFitSmallAndUnicodeTerminals(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestCardsUseRenderedBoundsForSelection(t *testing.T) {
+	m := model{kind: "tasks", tab: "tasks", width: 36, height: 40, data: Snapshot{Active: true, Tasks: []Task{
+		{ID: "T1", Title: "A title that wraps across multiple lines", State: "in progress", Owner: "dev", Detail: strings.Repeat("Evidence\n", 20)},
+		{ID: "T2", Title: "Test the change", State: "ready", Owner: "tester"},
+		{ID: "T3", Title: "Review", State: "ready"},
+	}}}
+	_, hits := m.taskCards()
+	if len(hits) < 2 {
+		t.Fatal("second card not visible")
+	}
+	next, cmd := m.Update(tea.MouseMsg{X: 4, Y: hits[1].start + 3, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	selected := next.(model)
+	if cmd != nil || selected.selectedID != "T2" {
+		t.Fatal("wrapped card changed pointer target")
+	}
+	for range 3 {
+		selected.move(1)
+	}
+	_, hits = selected.taskCards()
+	if len(hits) == 0 || hits[len(hits)-1].index != 2 {
+		t.Fatal("keyboard selection scrolled out of view")
+	}
+	view := ansi.Strip(selected.View())
+	if !strings.Contains(view, "╭") || !strings.Contains(view, "Owner:") {
+		t.Fatal("missing task card boundaries or ownership")
 	}
 }

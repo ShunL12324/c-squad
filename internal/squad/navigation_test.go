@@ -45,6 +45,9 @@ func TestNavigationIsScopedAndRefreshesRoster(t *testing.T) {
 	must(t, st.configureNavigation())
 	first, e := st.read()
 	must(t, e)
+	rootTable, _ := navigationTables(st)
+	_, e = tm(s, "bind-key", "-T", rootTable, "M-Right", "run-shell", "echo obsolete-navigation")
+	must(t, e)
 	must(t, st.configureNavigation())
 	second, e := st.read()
 	must(t, e)
@@ -77,18 +80,15 @@ func TestNavigationIsScopedAndRefreshesRoster(t *testing.T) {
 	root, prefix := navigationTables(st)
 	keys, e := tm(s, "list-keys", "-T", root)
 	must(t, e)
-	if !strings.Contains(keys, "M-Right") || !strings.Contains(keys, prefix) || !strings.Contains(keys, "MouseDown1Status") {
+	if strings.Contains(keys, "obsolete-navigation") || strings.Contains(keys, "--direction next") || strings.Contains(keys, "--direction previous") || !strings.Contains(keys, prefix) {
 		t.Fatal("missing navigation bindings")
 	}
 	must(t, st.update(func(s *State) error { s.Members["a"].State = MemberStateRemoved; return nil }))
 	must(t, st.configureNavigation())
 	labels, e := tm(s, "show-options", "-v", "-t", "=team-master", "status-format[0]")
 	must(t, e)
-	if strings.Contains(labels, ":a ") || !strings.Contains(labels, "0:master") || !strings.Contains(labels, "1:b") {
-		t.Fatal(labels)
-	}
-	if !strings.Contains(labels, "#[range=user|1,") {
-		t.Fatal("member click range did not follow roster change:", labels)
+	if strings.Contains(labels, "range=user") || strings.Contains(labels, "master") || strings.Contains(labels, "1:b") {
+		t.Fatal("status bar still contains the member roster:", labels)
 	}
 	st.clearNavigation(s)
 	if _, e = tm(s, "list-keys", "-T", root); e == nil {

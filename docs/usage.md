@@ -15,8 +15,7 @@ or inspect the underlying state with `csquad board`.
 
 | Action | Shortcut or command |
 | --- | --- |
-| Open a member with the mouse | Click its name in the tmux status bar |
-| Switch team members | `Alt+←` / `Alt+→` |
+| Open a member with the mouse | Click its name in the left sidebar |
 | Return to Master | `Ctrl-b 0` |
 | Open a numbered member | `Ctrl-b 1` … `Ctrl-b 9` |
 | Detach and leave the team running | `Ctrl-b d` |
@@ -28,11 +27,10 @@ or inspect the underlying state with `csquad board`.
 
 Outside a team session, use `csquad --team /path/to/team COMMAND`; team state is
 normally in `.csquad/teams/<name>/`. Team shortcuts do not modify `~/.tmux.conf`.
-If your terminal captures Alt-arrow, use the numbered shortcuts.
 
-Mouse support is enabled only in team sessions. With tmux 3.4 or newer, click a member name to switch
-sessions, use the wheel to scroll, and click or resize tmux panes if you use a
-split layout. Older tmux versions retain colored labels and keyboard navigation. Native agents control mouse behavior inside their own interfaces.
+Mouse support is enabled only in team sessions. Click a member in the sidebar to
+switch sessions, use the wheel to scroll, and drag pane borders to resize.
+Native agents control mouse behavior inside their own interfaces.
 In most terminals, hold Shift while dragging to select text without sending
 mouse events to tmux.
 
@@ -149,7 +147,8 @@ color themes can affect their appearance. `--color` supports shell completion.
 
 ![Members, native agent terminal, and task details](assets/workspace.png)
 
-New teams open a member sidebar beside the native agent terminal. Click a member
+On wide terminals, new teams open both the member sidebar and task board beside
+the native agent terminal. Click a member
 or select it with the arrow keys and press Enter to open its session. The agent's
 terminal remains a native tmux pane; click it to resume typing.
 
@@ -165,7 +164,8 @@ terminal remains a native tmux pane; click it to resume typing.
 
 The task panel shows the recorded task phase, owner, collaborators, acceptance
 criteria, latest progress report, blockers, checkpoints, and review/test evidence.
-Click a task to read its details. Use Tab or click the header to switch between
+Tasks appear as vertically stacked cards with their status, owner, and latest
+progress. Click a card to expand its details inside the card. Use Tab or click the header to switch between
 Tasks, Activity, and Asks (unanswered requests). Scroll with the mouse wheel;
 Page Up and Page Down scroll long details. Press Enter on a task to open its
 owner's terminal. Questions are handled through Master; these panels do not

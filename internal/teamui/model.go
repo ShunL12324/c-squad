@@ -16,7 +16,7 @@ import (
 type Member struct{ ID, Engine, State, Color, Tasks string }
 
 // Task is a presentation snapshot of a task and its delivery evidence.
-type Task struct{ ID, Title, State, Owner, Color, Detail string }
+type Task struct{ ID, Title, State, Owner, Color, Progress, Detail string }
 
 // Snapshot contains read-only data from the authoritative team ledger.
 type Snapshot struct {
@@ -83,7 +83,7 @@ func (m model) rows() int {
 	if m.kind == "members" {
 		return max(1, (m.height-4)/3)
 	}
-	return max(1, min(5, (m.height-7)/4))
+	return max(1, (m.height-4)/8)
 }
 func (m *model) move(delta int) {
 	m.selected = max(0, min(m.count()-1, m.selected+delta))
@@ -110,6 +110,15 @@ func (m *model) reveal() {
 		m.top = m.selected - m.rows() + 1
 	}
 	m.top = max(0, m.top)
+	if m.kind == "tasks" {
+		for m.top < m.selected {
+			_, hits := m.taskCards()
+			if len(hits) > 0 && hits[len(hits)-1].index >= m.selected {
+				break
+			}
+			m.top++
+		}
+	}
 }
 func (m model) open() tea.Cmd {
 	if m.count() == 0 {
@@ -210,23 +219,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					tabs := []string{"tasks", "activity", "requests"}
 					m.tab = tabs[min(2, v.X/max(1, m.width/3))]
 					m.offset = 0
-				} else if m.tab == "tasks" && v.Y >= 2 && v.Y < 2+m.rows()*2 {
-					i := m.top + (v.Y-2)/2
-					if i < m.count() {
-						m.selected = i
-						m.remember()
-						m.offset = 0
+				} else if m.tab == "tasks" {
+					_, hits := m.taskCards()
+					for _, hit := range hits {
+						if v.Y >= hit.start+2 && v.Y < hit.end+2 {
+							m.selected = hit.index
+							m.remember()
+							m.offset = 0
+							m.reveal()
+							break
+						}
 					}
 				}
 			}
 		case tea.MouseButtonWheelDown:
-			if m.kind == "members" || m.tab == "tasks" && v.Y < 2+m.rows()*2 {
+			if m.kind == "members" || m.tab == "tasks" {
 				m.move(1)
 			} else {
 				m.offset += 3
 			}
 		case tea.MouseButtonWheelUp:
-			if m.kind == "members" || m.tab == "tasks" && v.Y < 2+m.rows()*2 {
+			if m.kind == "members" || m.tab == "tasks" {
 				m.move(-1)
 			} else {
 				m.offset = max(0, m.offset-3)
@@ -288,16 +301,8 @@ func (m model) View() string {
 		}
 		lines = []string{header, fmt.Sprintf("%d tasks · %d open requests", len(m.data.Tasks), len(m.data.Requests))}
 		if m.tab == "tasks" {
-			for i := m.top; i < min(m.count(), m.top+m.rows()); i++ {
-				t := m.data.Tasks[i]
-				lines = append(lines, paint(line(" "+t.ID+" "+t.Title, m.width), t.Color, i == m.selected), line("   "+t.State+" · "+t.Owner, m.width))
-			}
-			if m.count() == 0 {
-				lines = append(lines, " No tasks yet.", " Ask Master to plan work.")
-			} else {
-				lines = append(lines, strings.Repeat("─", m.width))
-				lines = append(lines, m.details(m.data.Tasks[m.selected].Detail, m.height-len(lines)-2)...)
-			}
+			cards, _ := m.taskCards()
+			lines = append(lines, cards...)
 		} else {
 			text := "No activity yet."
 			if m.tab == "activity" && len(m.data.Activity) > 0 {

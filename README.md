@@ -23,9 +23,9 @@ Master creates the task, starts the members, and passes work between them. Each
 agent has its own tmux session. You can switch between them to see what they are
 doing, or stay with Master and ask for an update.
 
-![Switching between five real tmux sessions: Master, developer, docs, reviewer, and tester](docs/assets/demo.gif)
+![C Squad: member sidebar, native agent terminal, and task cards](docs/assets/workspace.png)
 
-*Switch between team members to see their work. [View screenshot](docs/assets/demo.png).*
+*Click a member to follow its work. Task cards show progress and review evidence.*
 
 ## Why use it?
 
@@ -104,14 +104,13 @@ See [configuration and behavior](docs/usage.md#configure-only-what-you-need).
 
 ## Move around your team
 
-The tmux status bar shows your members. These shortcuts stay local to the team:
+The left sidebar shows your members. These shortcuts stay local to the team:
 
 | What you want to do | How |
 | --- | --- |
-| Open a member with the mouse | Click its name in the tmux status bar (tmux 3.4+) |
+| Open a member with the mouse | Click its name in the left sidebar |
 | Toggle members / tasks | `Ctrl-b b` / `Ctrl-b t` |
 | Open both panels | `csquad ui` |
-| See the next or previous member | `Alt+Right` / `Alt+Left` |
 | Go back to Master | Press `Ctrl-b`, then `0` |
 | Open a numbered member | Press `Ctrl-b`, then its number |
 | Leave the terminal and keep the team running | Press `Ctrl-b`, then `d` |
@@ -121,8 +120,7 @@ The tmux status bar shows your members. These shortcuts stay local to the team:
 | Start again after exiting | `csquad start --name my-team` |
 
 **Detaching keeps the team running. Exiting Master stops the team.** Task records
-and worktrees remain in `.csquad/` for recovery. If your terminal captures Alt-arrow,
-use the numbered shortcuts instead.
+and worktrees remain in `.csquad/` for recovery.
 
 ## Learn more
 

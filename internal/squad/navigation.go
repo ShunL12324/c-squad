@@ -60,13 +60,6 @@ func (st *Store) configureNavigation() error {
 	if err != nil {
 		return err
 	}
-	version, err := tm(s, "display-message", "-p", "#{version}")
-	if err != nil {
-		return err
-	}
-	var major, minor int
-	_, _ = fmt.Sscanf(version, "%d.%d", &major, &minor)
-	clickable := major > 3 || major == 3 && minor >= 4
 	root, prefix := navigationTables(st)
 	var source strings.Builder
 	for _, table := range []struct{ from, to string }{{"root", root}, {"prefix", prefix}} {
@@ -86,25 +79,14 @@ func (st *Store) configureNavigation() error {
 	if err = os.WriteFile(path, []byte(source.String()), 0600); err != nil {
 		return err
 	}
+	// Drop obsolete team bindings before copying the user's current tables.
+	st.clearNavigation(s)
 	if _, err = tm(s, "source-file", path); err != nil {
 		return err
 	}
 	cmd := shellQuote(s.Executable) + " --team " + shellQuote(st.Dir) + " --member master --generation 0 navigate --client '#{client_name}'"
-	for key, dir := range map[string]string{"M-Left": "previous", "M-Right": "next"} {
-		if _, err = tm(s, "bind-key", "-T", root, key, "run-shell", "-b", cmd+" --direction "+dir); err != nil {
-			return err
-		}
-	}
 	for i := 0; i < 10; i++ {
 		if _, err = tm(s, "bind-key", "-T", prefix, strconv.Itoa(i), "run-shell", "-b", cmd+" --index "+strconv.Itoa(i)); err != nil {
-			return err
-		}
-	}
-	// Only member labels carry numeric ranges. Ignore clicks on empty space or
-	// shortcut hints rather than treating them as a window-selection request.
-	if clickable {
-		if _, err = tm(s, "bind-key", "-T", root, "MouseDown1Status", "if-shell", "-F",
-			"#{m/r:^[0-9]+$,#{mouse_status_range}}", "run-shell -b "+shellQuote(cmd+" --index '#{mouse_status_range}'")); err != nil {
 			return err
 		}
 	}
@@ -115,9 +97,18 @@ func (st *Store) configureNavigation() error {
 			return err
 		}
 	}
-	// Record the mouse's originating client before forwarding it into a panel.
-	if _, err = tm(s, "bind-key", "-T", root, "MouseDown1Pane", "if-shell", "-F", "-t", "=", "#{@csquad_panel}", "set-option -pF -t = @csquad_client '#{client_name}' ; select-pane -t = ; send-keys -M", "select-pane -t = ; send-keys -M"); err != nil {
-		return err
+	// Every click must record its client, including tmux's SecondClick event
+	// for the next press in a double click. Forward to the clicked pane explicitly, independent of old focus.
+	for _, key := range []string{"MouseDown1Pane", "SecondClick1Pane", "DoubleClick1Pane", "TripleClick1Pane"} {
+		binding, _ := tm(s, "list-keys", "-T", "root", key)
+		_, fallback, _ := strings.Cut(binding, key)
+		fallback = strings.ReplaceAll(strings.TrimSpace(fallback), `\;`, ";")
+		if fallback == "" {
+			fallback = "select-pane -t = ; send-keys -M -t ="
+		}
+		if _, err = tm(s, "bind-key", "-T", root, key, "if-shell", "-F", "-t", "=", "#{@csquad_panel}", "set-option -pF -t = @csquad_client '#{client_name}' ; select-pane -t = ; send-keys -M -t =", fallback); err != nil {
+			return err
+		}
 	}
 	members := navigationMembers(s)
 	for _, m := range members {
@@ -159,24 +150,8 @@ func (st *Store) configureNavigation() error {
 				}
 			}
 		}
-		labels := []string{}
-		for i, other := range members {
-			label := fmt.Sprintf(" %d:%s ", i, other.ID)
-			style := "fg=" + other.Color.StyleValue() + ",bg=colour234"
-			if other.ID == m.ID {
-				style = "fg=colour234,bg=" + other.Color.StyleValue() + ",bold"
-			}
-			if clickable {
-				labels = append(labels, fmt.Sprintf("#[range=user|%d,%s]%s#[norange,default]", i, style, label))
-			} else {
-				labels = append(labels, fmt.Sprintf("#[%s]%s#[default]", style, label))
-			}
-		}
-		hint := "C-b b:members t:tasks "
-		if clickable {
-			hint = "Click member · C-b b/t panels "
-		}
-		for opt, val := range map[string]string{"prefix": "None", "prefix2": "None", "key-table": root, "mouse": "on", "status-style": "fg=colour252,bg=colour234", "status": "on", "status-left": "[" + s.ID + "] ", "status-left-length": "60", "status-format[0]": "#[align=left]" + strings.Join(labels, "") + " #[align=right]" + hint} {
+		hint := "C-b b:members t:tasks d:detach "
+		for opt, val := range map[string]string{"prefix": "None", "prefix2": "None", "key-table": root, "mouse": "on", "status-style": "fg=colour252,bg=colour234", "status": "on", "status-left": "[" + s.ID + "] ", "status-left-length": "60", "status-format[0]": "#[align=left] " + s.ID + " #[align=right]" + hint} {
 			if _, err = tm(s, "set-option", "-t", target, opt, val); err != nil {
 				return err
 			}

@@ -1,4 +1,5 @@
 """Exercise single-click navigation through real tmux clients and pseudo-terminals."""
+import errno
 import fcntl
 import os
 import pty
@@ -26,7 +27,12 @@ def drain(seconds):
     while time.monotonic() < deadline:
         ready, _, _ = select.select([entry[0] for entry in clients], [], [], .01)
         for fd in ready:
-            os.read(fd, 65536)
+            try:
+                os.read(fd, 65536)
+            except OSError as error:
+                # A detached client closes its pseudo-terminal during the wait.
+                if error.errno != errno.EIO:
+                    raise
 
 
 def sessions():
@@ -129,10 +135,14 @@ try:
                 break
         else:
             raise AssertionError(f"resize to {width}x{height} did not settle: {layout}; clients={tm('list-clients','-F','#{client_name}:#{session_name}:#{client_width}:#{client_height}')}; window={tm('show-options','-w','-v','-t',worker,'window-size')}")
+    # Pane geometry settles before tmux redraws the client's status hit regions.
+    # Flush the resized status line before sending the one and only detach click.
+    tm("refresh-client", "-S", "-t", client)
+    drain(.3)
     os.write(fd,b"\x1b[<0;172;40M\x1b[<0;172;40m")
     deadline=time.monotonic()+3
     while time.monotonic()<deadline and client in sessions():
-        time.sleep(.05)
+        drain(.05)
     assert client not in sessions(), "Detach button failed"
     assert sessions()[observer]==master, "Detach removed another client"
     assert tm("has-session","-t",worker)=="", "Detach killed the team"

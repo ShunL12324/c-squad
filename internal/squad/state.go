@@ -137,6 +137,7 @@ type Event struct {
 // State is the persisted team ledger shared by CLI commands and the runtime.
 // Mutations must use Store.update so generation checks and transactions apply.
 type State struct {
+	PanelView   panelView            `json:"panel_view,omitempty"`
 	Epoch       int                  `json:"epoch,omitempty"`
 	Phase       TeamPhase            `json:"phase,omitempty"`
 	OwnSocket   bool                 `json:"own_socket,omitempty"`

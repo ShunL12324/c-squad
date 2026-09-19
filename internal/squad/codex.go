@@ -171,7 +171,7 @@ func (st *Store) startCodexInput(s *State, m *Member, message string) error {
 			return fmt.Errorf("first message waiting: member has an attached client; enter a first message or detach")
 		}
 	}
-	pane, err := tm(s, "capture-pane", "-p", "-t", "="+m.Session+":")
+	pane, err := tm(s, "capture-pane", "-p", "-t", agentPane(m))
 	if err != nil {
 		return err
 	}
@@ -181,21 +181,26 @@ func (st *Store) startCodexInput(s *State, m *Member, message string) error {
 	// The JSON envelope escapes message control characters; use literal keys so
 	// incoming task text cannot become tmux key names or shell commands.
 	message = strings.ReplaceAll(message, "\n", " ")
-	if _, err = tm(s, "send-keys", "-t", "="+m.Session+":", "-l", "--", message); err != nil {
+	if _, err = tm(s, "send-keys", "-t", agentPane(m), "-l", "--", message); err != nil {
 		return err
 	}
 	time.Sleep(100 * time.Millisecond)
-	_, err = tm(s, "send-keys", "-t", "="+m.Session+":", "Enter")
+	_, err = tm(s, "send-keys", "-t", agentPane(m), "Enter")
 	return err
 }
 
+// codexEmptyComposer recognizes the empty native input near the bottom of the
+// screen. Resumed conversations can scroll the startup banner out of view.
 func codexEmptyComposer(pane string) bool {
-	if !strings.Contains(pane, "OpenAI Codex (") {
+	lines := strings.Split(strings.TrimRight(pane, "\n "), "\n")
+	footer := lines[max(0, len(lines)-12):]
+	if strings.Contains(strings.ToLower(strings.Join(footer, "\n")), "esc to interrupt") {
 		return false
 	}
-	for _, line := range strings.Split(pane, "\n") {
-		if strings.TrimSpace(line) == "› Ask Codex to do anything" {
-			return true
+	for i := len(footer) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(footer[i])
+		if strings.HasPrefix(line, "›") {
+			return line == "› Ask Codex to do anything"
 		}
 	}
 	return false

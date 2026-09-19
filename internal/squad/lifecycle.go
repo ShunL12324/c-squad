@@ -182,7 +182,7 @@ func killMember(st *Store, id string) error {
 		if _, err := tm(s, "has-session", "-t", "="+m.Session); err != nil {
 			return nil
 		}
-		out, e := tm(s, "display-message", "-p", "-t", "="+m.Session+":", "#{pane_pid} #{pane_dead}")
+		out, e := tm(s, "display-message", "-p", "-t", agentPane(m), "#{pane_pid} #{pane_dead}")
 		if e != nil {
 			return nil
 		}

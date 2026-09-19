@@ -202,7 +202,7 @@ func masterGone(s *State) bool {
 	if m.State == MemberStateCrashed || m.State == MemberStateStopped {
 		return true
 	}
-	out, e := tm(s, "display-message", "-p", "-t", "="+m.Session+":", "#{pane_dead}")
+	out, e := tm(s, "display-message", "-p", "-t", agentPane(m), "#{pane_dead}")
 	return e != nil || out == "1"
 }
 func (st *Store) checkMaster() error {
@@ -397,11 +397,15 @@ func reapProjectTeams(base string) error {
 	return nil
 }
 
-func installMasterHook(st *Store, s *State) error {
+func installMasterHook(st *Store) error {
+	s, err := st.read()
+	if err != nil {
+		return err
+	}
 	m := s.Members["master"]
 	if m == nil {
 		return errors.New("missing master")
 	}
-	_, e := tm(s, "set-hook", "-w", "-t", "="+m.Session+":", "pane-died", "run-shell -b "+shellQuote(shutdownCommand(st, s, "master_exit")))
+	_, e := tm(s, "set-hook", "-w", "-t", "="+m.Session+":", "pane-died", "if-shell -F "+shellQuote("#{==:#{hook_pane},"+m.Pane+"}")+" "+shellQuote("run-shell -b "+shellQuote(shutdownCommand(st, s, "master_exit"))))
 	return e
 }

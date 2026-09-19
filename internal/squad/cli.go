@@ -148,6 +148,15 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 		}
 		return attach(st, id)
 	}
+	if p[0] == "ui" || p[0] == "ui-toggle" {
+		return st.openUI(o, p[0] == "ui-toggle")
+	}
+	if p[0] == "ui-layout" {
+		return st.configurePanels()
+	}
+	if p[0] == "ui-panel" {
+		return st.runPanel(o["owner"], o["view"], o["popup"] == "true")
+	}
 	if p[0] == "navigate" {
 		return st.navigate(o["client"], o["direction"], o["index"])
 	}

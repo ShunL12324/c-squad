@@ -108,6 +108,17 @@ func (st *Store) configureNavigation() error {
 			return err
 		}
 	}
+
+	panelCmd := shellQuote(s.Executable) + " --team " + shellQuote(st.Dir) + " --member master --generation 0"
+	for key, view := range map[string]string{"b": "members", "t": "tasks"} {
+		if _, err = tm(s, "bind-key", "-T", prefix, key, "run-shell", "-b", panelCmd+" ui-toggle --view "+view+" --client '#{client_name}'"); err != nil {
+			return err
+		}
+	}
+	// Record the mouse's originating client before forwarding it into a panel.
+	if _, err = tm(s, "bind-key", "-T", root, "MouseDown1Pane", "if-shell", "-F", "-t", "=", "#{@csquad_panel}", "set-option -pF -t = @csquad_client '#{client_name}' ; select-pane -t = ; send-keys -M", "select-pane -t = ; send-keys -M"); err != nil {
+		return err
+	}
 	members := navigationMembers(s)
 	for _, m := range members {
 		target := "=" + m.Session
@@ -140,6 +151,14 @@ func (st *Store) configureNavigation() error {
 		if _, err = tm(s, "bind-key", "-T", root, "C-b", "switch-client", "-T", prefix); err != nil {
 			return err
 		}
+
+		if m.Pane != "" {
+			for _, hook := range []string{"client-attached", "client-session-changed", "client-resized"} {
+				if _, err = tm(s, "set-hook", "-t", target, hook+"[914]", "run-shell -b "+shellQuote(panelCmd+" ui-layout")); err != nil {
+					return err
+				}
+			}
+		}
 		labels := []string{}
 		for i, other := range members {
 			label := fmt.Sprintf(" %d:%s ", i, other.ID)
@@ -153,9 +172,9 @@ func (st *Store) configureNavigation() error {
 				labels = append(labels, fmt.Sprintf("#[%s]%s#[default]", style, label))
 			}
 		}
-		hint := "Alt+←/→  Ctrl+B 0–9 "
+		hint := "C-b b:members t:tasks "
 		if clickable {
-			hint = "Click member · Alt+←/→ "
+			hint = "Click member · C-b b/t panels "
 		}
 		for opt, val := range map[string]string{"prefix": "None", "prefix2": "None", "key-table": root, "mouse": "on", "status-style": "fg=colour252,bg=colour234", "status": "on", "status-left": "[" + s.ID + "] ", "status-left-length": "60", "status-format[0]": "#[align=left]" + strings.Join(labels, "") + " #[align=right]" + hint} {
 			if _, err = tm(s, "set-option", "-t", target, opt, val); err != nil {
@@ -163,7 +182,7 @@ func (st *Store) configureNavigation() error {
 			}
 		}
 	}
-	return nil
+	return st.configurePanels()
 }
 func (st *Store) navigate(client, direction, index string) error {
 	s, err := st.read()

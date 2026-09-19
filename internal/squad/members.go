@@ -38,7 +38,7 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 		if e != nil {
 			return e
 		}
-		out, _ := tm(s, "capture-pane", "-p", "-t", "="+m.Session+":", "-S", "-80")
+		out, _ := tm(s, "capture-pane", "-p", "-t", agentPane(m), "-S", "-80")
 		return jsonOut(map[string]any{"member": m, "terminal": out})
 	}
 	if actor != "master" {
@@ -155,7 +155,7 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 		return e
 	}
 	if p[0] == "interrupt" {
-		_, e = tm(s, "send-keys", "-t", "="+m.Session+":", "Escape")
+		_, e = tm(s, "send-keys", "-t", agentPane(m), "Escape")
 		return e
 	}
 	if p[0] != "remove" && p[0] != "restart" && p[0] != "replace" {

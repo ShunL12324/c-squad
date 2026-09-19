@@ -18,7 +18,7 @@ func (c Client) Run(args ...string) (string, error) {
 	// tmux commands differ in how they interpret '=' and session/window
 	// targets. Resolve exact names ourselves, then use the unambiguous $ID.
 	for i := 0; i+1 < len(args); i++ {
-		if args[i] != "-t" || !strings.HasPrefix(args[i+1], "=") {
+		if args[i] != "-t" || args[i+1] == "=" || !strings.HasPrefix(args[i+1], "=") {
 			continue
 		}
 		target := strings.TrimPrefix(args[i+1], "=")

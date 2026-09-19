@@ -140,3 +140,36 @@ Available colors: `red`, `orange`, `amber`, `yellow`, `lime`, `green`, `mint`,
 `teal`, `cyan`, `sky`, `blue`, `indigo`, `violet`, `purple`, `pink`, and `rose`.
 The current member has a filled label; other members use colored text. Terminal
 color themes can affect their appearance. `--color` supports shell completion.
+
+## Team panels
+
+![Members, native agent terminal, and task details](assets/workspace.png)
+
+New teams open a member sidebar beside the native agent terminal. Click a member
+or select it with the arrow keys and press Enter to open its session. The agent's
+terminal remains a native tmux pane; click it to resume typing.
+
+| Action | Shortcut or command |
+| --- | --- |
+| Toggle the member sidebar | `Ctrl-b b` |
+| Toggle the task panel | `Ctrl-b t` |
+| Show members and tasks | `csquad ui` |
+| Show only tasks beside the terminal | `csquad ui --view tasks` |
+| Hide both panels | `csquad ui --view hide` |
+| Close the focused panel | `q` or `Esc` |
+| Return to Master from a panel | `m` |
+
+The task panel shows the recorded task phase, owner, collaborators, acceptance
+criteria, latest progress report, blockers, checkpoints, and review/test evidence.
+Click a task to read its details. Use Tab or click the header to switch between
+Tasks, Activity, and Asks (unanswered requests). Scroll with the mouse wheel;
+Page Up and Page Down scroll long details. Press Enter on a task to open its
+owner's terminal. Questions are handled through Master; these panels do not
+assign tasks, approve merges, or infer completion from terminal output.
+
+At 150 columns or wider, both panels fit beside the terminal. Between 90 and 149
+columns, showing tasks takes precedence over the member sidebar. Below 90 columns,
+side panels are hidden; the panel shortcuts open a temporary popup instead.
+Expand the terminal to restore the chosen layout. Pane borders can be dragged to
+adjust widths. As with normal tmux panes, clients attached to the same session
+share its layout and panel selection.

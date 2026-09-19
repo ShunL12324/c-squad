@@ -160,7 +160,7 @@ func (st *Store) launch(id string, resume bool, initial string) error {
 		return e
 	}
 	if id == "master" {
-		if e = installMasterHook(st, s); e != nil {
+		if e = installMasterHook(st); e != nil {
 			return e
 		}
 	}

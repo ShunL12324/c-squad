@@ -24,7 +24,7 @@ func (st *Store) startRuntime() error {
 	}
 	// Refresh the exit hook without restarting the native Master.
 	if _, err := tm(s, "has-session", "-t", "="+s.Members["master"].Session); err == nil {
-		if e = installMasterHook(st, s); e != nil {
+		if e = installMasterHook(st); e != nil {
 			return e
 		}
 	}

@@ -17,8 +17,9 @@ type definition struct {
 }
 
 var startupFlags = []string{"name", "engine", "model", "env", "detach", "color"}
-var flagChoices = map[string][]string{"color": tmux.ColorNames(), "engine": {string(config.Claude), string(config.Codex)}, "dispatch": {"assigned", "open"}, "kind": {"review", "test"}, "passed": {"true", "false"}, "direction": {"previous", "next"}}
+var flagChoices = map[string][]string{"view": {"members", "tasks", "both", "hide"}, "color": tmux.ColorNames(), "engine": {string(config.Claude), string(config.Codex)}, "dispatch": {"assigned", "open"}, "kind": {"review", "test"}, "passed": {"true", "false"}, "direction": {"previous", "next"}}
 var flagDescriptions = map[string]string{
+	"view": "Visible panels: members, tasks, both or hide", "popup": "Render a temporary popup panel",
 	"color": "Member label color (random when omitted): " + strings.Join(tmux.ColorNames(), ", "), "name": "Team name or milestone name for this command", "engine": "Native agent engine", "model": "Native engine model name", "env": "Environment override KEY=VALUE; repeat for multiple values", "detach": "Start without attaching this terminal", "fresh": "Start new native conversations while retaining the team ledger", "full": "Include the full message and event history", "role": "Free-form member identity", "instructions": "Responsibilities injected into system/developer context", "task": "Task ID", "template": "Legacy role template name", "prompt": "Explicit opening user message (none by default)", "description": "Task description", "acceptance": "Verifiable task acceptance criteria", "code": "Create an isolated Git worktree for this task", "milestones": "Comma-separated reporting checkpoints", "gates": "Comma-separated checkpoints requiring master approval", "deps": "Comma-separated prerequisite task IDs", "dispatch": "Assign an owner or allow members to claim the task", "request-id": "Stable idempotency key for retries", "setup": "Workspace setup instructions", "owner": "Member responsible for writing task code", "to": "Comma-separated task participants", "text": "Message or progress text", "summary": "Result or evidence summary", "sha": "Candidate commit SHA", "kind": "Evidence category", "passed": "Whether verification passed", "all": "Broadcast to every available team member", "client": "tmux client identifier", "direction": "Member navigation direction", "index": "Member navigation index", "epoch": "Team incarnation for shutdown fencing", "expected-generation": "Master generation for shutdown fencing", "reason": "Shutdown reason", "strict": "Fail when required runtime tools are unavailable",
 }
 
@@ -29,7 +30,7 @@ func addFlags(cmd *cobra.Command, names []string) {
 			panic("undocumented flag: " + name)
 		}
 		switch name {
-		case "detach", "fresh", "full", "code", "all", "strict":
+		case "detach", "fresh", "full", "code", "all", "strict", "popup":
 			cmd.Flags().Bool(name, false, description)
 		case "env":
 			cmd.Flags().StringArray(name, nil, description)
@@ -64,6 +65,10 @@ func definitions() []definition {
 		{path: "start", summary: "Start a master session in tmux", flags: startupFlags, example: "  csquad start --name my-team --engine claude\n  csquad start --detach --env CODEX_HOME=/path/to/codex-home"},
 		{path: "resume", summary: "Recover a stopped team from its ledger", flags: []string{"name", "env", "fresh", "detach"}, example: "  csquad resume --name my-team\n  csquad resume --fresh --detach"},
 		{path: "attach", args: " [MEMBER]", summary: "Attach to master or a member", max: 1, complete: "member"},
+		{path: "ui", summary: "Show team members and task panels", flags: []string{"view", "client"}, example: "  csquad ui\n  csquad ui --view tasks\n  csquad ui --view hide"},
+		{path: "ui-layout", hidden: true},
+		{path: "ui-toggle", hidden: true, flags: []string{"view", "client"}},
+		{path: "ui-panel", hidden: true, flags: []string{"view", "owner", "popup"}},
 		{path: "board", summary: "Inspect team progress, blockers, and recent activity", flags: []string{"full"}},
 		{path: "config", summary: "Show effective user configuration"},
 		{path: "doctor", summary: "Check tmux, Git, and native engine availability", flags: []string{"strict", "engine"}},

@@ -63,7 +63,7 @@ func (st *Store) refresh() error {
 				}
 			}
 			m.ObservedAt = now()
-			out, err := tm(s, "display-message", "-p", "-t", "="+m.Session+":", "#{pane_dead}")
+			out, err := tm(s, "display-message", "-p", "-t", agentPane(m), "#{pane_dead}")
 			// A restart publishes its new generation before creating the tmux pane.
 			if err != nil && m.State == MemberStateStarting {
 				continue
@@ -72,8 +72,8 @@ func (st *Store) refresh() error {
 				m.State = MemberStateCrashed
 				continue
 			}
-			if m.Engine == config.Codex && m.EngineID == "" && m.State == MemberStateStarting {
-				if pane, err := tm(s, "capture-pane", "-p", "-t", "="+m.Session+":"); err == nil && codexEmptyComposer(pane) {
+			if m.Engine == config.Codex && m.State == MemberStateStarting {
+				if pane, err := tm(s, "capture-pane", "-p", "-t", agentPane(m)); err == nil && codexEmptyComposer(pane) {
 					m.State = MemberStateIdle
 				}
 			}

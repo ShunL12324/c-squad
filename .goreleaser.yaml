@@ -41,6 +41,7 @@ archives:
       - docs/assets/icon.png
       - docs/assets/demo.gif
       - docs/assets/demo.png
+      - docs/assets/workspace.png
       - src: dist/completions/*
         dst: completions
         strip_parent: true

@@ -1,0 +1,45 @@
+{
+  "name": "csquad",
+  "version": "0.0.0",
+  "description": "Coordinate Claude Code and Codex teams in tmux",
+  "license": "MIT",
+  "author": "ShunL12324",
+  "homepage": "https://github.com/ShunL12324/c-squad#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ShunL12324/c-squad.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ShunL12324/c-squad/issues"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "agents",
+    "tmux",
+    "cli"
+  ],
+  "bin": {
+    "csquad": "bin/csquad"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "files": [
+    "bin/",
+    "native/",
+    "completions/",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "private": true
+}

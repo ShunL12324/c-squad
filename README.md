@@ -51,6 +51,15 @@ Each running agent uses its own engine account's quota.
 
 ### 1. Install
 
+**npm — macOS / Linux / WSL 2**
+
+```sh
+npm install -g csquad
+```
+
+Install [system dependencies](docs/install.md#npm) separately, or use Homebrew/APT
+below to install them together with C Squad. You can also run `npx csquad`.
+
 **macOS / Homebrew**
 
 ```sh
@@ -65,7 +74,7 @@ sudo apt update
 sudo apt install csquad
 ```
 
-Both install a precompiled C Squad binary and tmux. You also need an installed,
+Homebrew and APT install a precompiled C Squad binary and tmux. You also need an installed,
 signed-in **Claude Code or Codex CLI**; set up both to use a mixed-engine team.
 Code tasks need Git, which Homebrew installs and APT normally installs as a
 recommended dependency.

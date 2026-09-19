@@ -1,8 +1,35 @@
 # Installation
 
-Install a precompiled package with Homebrew, APT, or a download from
+Install a precompiled package with npm, Homebrew, APT, or a download from
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases/latest).
 You do not need Go or a compiler.
+
+## npm
+
+```sh
+npm install -g csquad
+csquad doctor
+csquad start --name my-team --engine claude
+```
+
+Or run `npx csquad`. Install npm inside WSL 2 when using Windows.
+The package contains native binaries for macOS and Linux on x64 and arm64;
+installation needs no Go compiler, lifecycle scripts, or GitHub downloads.
+
+npm does not manage system packages. Install tmux, ps, and Git separately:
+
+```sh
+# macOS (ps is included with the OS)
+brew install tmux git
+
+# Ubuntu / Debian / WSL 2
+sudo apt install tmux procps git
+```
+
+Install and sign in to your chosen agent CLI separately. Update with
+`npm install -g csquad@latest`; remove with `npm uninstall -g csquad`.
+Use one installation channel to avoid competing executables on PATH.
+Shell completion files are included; see [shell completion](usage.md#help-and-completion).
 
 ## macOS / Homebrew
 

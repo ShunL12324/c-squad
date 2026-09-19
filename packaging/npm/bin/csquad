@@ -1,0 +1,30 @@
+#!/bin/sh
+# npm links this launcher into PATH. Resolve that link before locating binaries.
+set -eu
+launcher=$0
+while [ -L "$launcher" ]; do
+    base=$(CDPATH= cd -P -- "$(dirname -- "$launcher")" && pwd)
+    target=$(readlink "$launcher")
+    case "$target" in
+        /*) launcher=$target ;;
+        *) launcher=$base/$target ;;
+    esac
+done
+base=$(CDPATH= cd -P -- "$(dirname -- "$launcher")" && pwd)
+case "$(uname -s)" in
+    Darwin) platform=darwin ;;
+    Linux) platform=linux ;;
+    *) echo 'csquad: unsupported OS; on Windows, install inside WSL 2.' >&2; exit 1 ;;
+esac
+case "$(uname -m)" in
+    x86_64|amd64) arch=amd64 ;;
+    arm64|aarch64) arch=arm64 ;;
+    *) echo 'csquad: supported CPU architectures are x64 and arm64.' >&2; exit 1 ;;
+esac
+binary=$base/../native/$platform-$arch/csquad
+if [ ! -x "$binary" ]; then
+    echo 'csquad: packaged binary is missing; reinstall with npm install -g csquad.' >&2
+    exit 1
+fi
+# Replace the launcher so the native CLI owns the terminal and receives signals.
+exec "$binary" "$@"

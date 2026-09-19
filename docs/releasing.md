@@ -5,7 +5,8 @@ start a build.
 
 The repository builds archives, a source tarball, and Debian packages with a pinned
 GoReleaser version. Homebrew installs precompiled release archives; APT uses signed static
-metadata hosted on GitHub Pages. Neither channel requires a running server.
+metadata hosted on GitHub Pages. npm packages the same four native binaries in one package. None of these channels
+requires a running server.
 
 ## One-time setup
 
@@ -78,3 +79,43 @@ brew test ShunL12324/c-squad/csquad
 
 Also verify installation from the public APT URL. Local checks cannot verify
 GitHub credentials, Pages configuration, or a remote Homebrew download.
+
+## npm distribution
+
+The npm sources live in `packaging/npm` in this repository. The release workflow
+sets the package version from the stable tag; do not manually update the template's
+`0.0.0` version. `scripts/build-npm.py` verifies the four archive checksums and
+stages the package in `dist/npm/package`. The package has no runtime dependencies
+or install scripts. It includes all four binaries to avoid extra registries,
+post-install downloads, and multiple platform-package publications.
+
+Before the first automated npm release:
+
+1. Log in to the npm account that will own `csquad` using `npm login`.
+2. Stage and test the first package from an existing stable release, then publish
+   the generated tarball with `npm publish dist/npm/csquad-VERSION.tgz --access public`.
+   Never publish the template directory directly.
+3. In the npm package settings, add a GitHub Actions trusted publisher:
+   owner **ShunL12324**, repository **c-squad**, workflow **release.yml**,
+   with direct publishing allowed and no environment restriction.
+
+Later tags publish via OIDC after npm installation tests pass on Linux and
+macOS. No npm token needs to be stored in GitHub. The npm job requires
+`id-token: write`; the workflow pins an OIDC-capable npm version.
+
+To test locally with downloaded release archives and `checksums.txt`:
+
+```sh
+python3 scripts/build-npm.py --version 0.4.0 --release dist/published-v0.4.0
+npm pack ./dist/npm/package --pack-destination dist/npm
+python3 scripts/test-npm.py dist/npm/csquad-0.4.0.tgz
+```
+
+The staging directory must not already exist. Tests use a temporary npm prefix,
+leave the normal installed executable untouched, and disable install scripts.
+Native Windows is intentionally unsupported; use WSL 2.
+
+npm versions are immutable. If npm publication fails, fix the authentication or
+trusted-publisher configuration and rerun the failed job. Check the registry
+before retrying a publish whose outcome is uncertain; do not overwrite a published
+version. A failed npm job does not roll back the GitHub, APT, or Homebrew release.

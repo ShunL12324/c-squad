@@ -42,6 +42,19 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSQUAD_PUBLISH: 'true'
       - run: make test-packaging
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Package npm distribution
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          python3 scripts/build-npm.py --version "${TAG#v}"
+          npm pack ./dist/npm/package --pack-destination dist/npm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: dist/npm/*.tgz
       - name: Generate Homebrew formula
         run: python3 scripts/render-homebrew.py --repository "$GITHUB_REPOSITORY" --license MIT --output dist/tap/Formula/csquad.rb
       - name: Build signed APT repository
@@ -124,3 +137,39 @@ jobs:
       - name: Deploy APT repository
         id: deployment
         uses: actions/deploy-pages@v4
+
+  npm-test:
+    needs: release
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: dist/npm
+      - run: python3 scripts/test-npm.py dist/npm/*.tgz
+
+  npm:
+    needs: [release, npm-test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+      - run: npm install --global npm@11.6.2
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: dist/npm
+      - name: Publish through npm trusted publishing
+        run: npm publish dist/npm/*.tgz --access public --provenance

@@ -160,10 +160,83 @@ func TestSavedTeamRemovalRefusesUnrecordedRegisteredWorktree(t *testing.T) {
 	path := filepath.Join(st.Dir, "unexpected")
 	_, e = git(s.Root, "worktree", "add", "-b", "unrecorded", path)
 	must(t, e)
-	if _, e = removeTeamDirectory(st.Dir, false); e == nil || !strings.Contains(e.Error(), "unrecognized registered") {
+	if _, e = removeTeamDirectory(st.Dir, false); e == nil || !strings.Contains(e.Error(), "unrecognized") {
 		t.Fatalf("unrecorded registered worktree removal: %v", e)
 	}
 	if _, e = os.Stat(path); e != nil {
 		t.Fatal(e)
+	}
+}
+
+func TestSavedTeamRemovalPreservesIgnoredSourceUnlessExplicit(t *testing.T) {
+	st, path := savedRemovalTeam(t, true)
+	commitFile(t, path, ".gitignore", "secret-source.txt\n")
+	s, e := st.read()
+	must(t, e)
+	_, e = git(s.Root, "merge", "--ff-only", "csquad/old/T1")
+	must(t, e)
+	source := filepath.Join(path, "secret-source.txt")
+	must(t, os.WriteFile(source, []byte("valuable ignored source"), 0600))
+	plan, e := removeTeamDirectory(st.Dir, true)
+	must(t, e)
+	if len(plan.IgnoredFiles) != 1 || plan.IgnoredFiles[0] != source {
+		t.Fatalf("ignored inventory: %+v", plan)
+	}
+	if _, e = removeTeamDirectory(st.Dir, false); e == nil || !strings.Contains(e.Error(), "ignored files") {
+		t.Fatalf("ignored source removal: %v", e)
+	}
+	if _, e = os.Stat(source); e != nil {
+		t.Fatal("ignored source lost", e)
+	}
+	plan, e = removeTeamWithIgnored(st.Dir, false, true)
+	must(t, e)
+	if !plan.Removed || !plan.DiscardIgnored {
+		t.Fatalf("explicit removal: %+v", plan)
+	}
+}
+
+func TestSavedTeamRemovalPreservesForeignAndNestedRepositories(t *testing.T) {
+	for _, nested := range []bool{false, true} {
+		t.Run(map[bool]string{false: "foreign", true: "nested ignored"}[nested], func(t *testing.T) {
+			st, path := savedRemovalTeam(t, nested)
+			foreign := t.TempDir()
+			initRepo(t, foreign)
+			location := filepath.Join(st.Dir, "foreign-work")
+			if nested {
+				commitFile(t, path, ".gitignore", "nested/\n")
+				s, e := st.read()
+				must(t, e)
+				_, e = git(s.Root, "merge", "--ff-only", "csquad/old/T1")
+				must(t, e)
+				location = filepath.Join(path, "nested")
+			}
+			_, e := git(foreign, "worktree", "add", "-b", "foreign-work", location)
+			must(t, e)
+			source := filepath.Join(location, "uncommitted-source.go")
+			must(t, os.WriteFile(source, []byte("valuable source"), 0600))
+			if _, e = removeTeamWithIgnored(st.Dir, false, true); e == nil {
+				t.Fatal("foreign repository removal allowed")
+			}
+			if _, e = os.Stat(source); e != nil {
+				t.Fatal("foreign source lost", e)
+			}
+		})
+	}
+}
+
+func TestSavedTeamRemovalRefusesUnknownMetadata(t *testing.T) {
+	for _, relative := range []string{"notes.md", "handoffs/notes.txt", "runtime/unknown/notes.txt", "locks/notes.txt"} {
+		t.Run(relative, func(t *testing.T) {
+			st, _ := savedRemovalTeam(t, false)
+			path := filepath.Join(st.Dir, relative)
+			must(t, os.MkdirAll(filepath.Dir(path), 0700))
+			must(t, os.WriteFile(path, []byte("preserve"), 0600))
+			if _, e := removeTeamWithIgnored(st.Dir, false, true); e == nil {
+				t.Fatal("unknown payload removed")
+			}
+			if _, e := os.Stat(path); e != nil {
+				t.Fatal(e)
+			}
+		})
 	}
 }

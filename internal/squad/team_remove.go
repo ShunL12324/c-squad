@@ -4,10 +4,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/ShunL12324/c-squad/internal/filelock"
@@ -19,6 +21,8 @@ type removalPlan struct {
 	Directory         string   `json:"directory"`
 	Worktrees         []string `json:"worktrees"`
 	PreservedBranches []string `json:"preserved_branches"`
+	IgnoredFiles      []string `json:"ignored_files"`
+	DiscardIgnored    bool     `json:"discard_ignored"`
 	DryRun            bool     `json:"dry_run"`
 	Removed           bool     `json:"removed"`
 }
@@ -36,7 +40,7 @@ func removeSavedTeam(o options) error {
 	if err != nil {
 		return err
 	}
-	plan, err := removeTeamDirectory(dir, o["dry-run"] == "true")
+	plan, err := removeTeamWithIgnored(dir, o["dry-run"] == "true", o["discard-ignored"] == "true")
 	if err != nil {
 		return err
 	}
@@ -58,6 +62,10 @@ func removalStore(dir string) (*Store, error) {
 }
 
 func removeTeamDirectory(dir string, dryRun bool) (*removalPlan, error) {
+	return removeTeamWithIgnored(dir, dryRun, false)
+}
+
+func removeTeamWithIgnored(dir string, dryRun, discardIgnored bool) (*removalPlan, error) {
 	dir, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, err
@@ -108,8 +116,12 @@ func removeTeamDirectory(dir string, dryRun bool) (*removalPlan, error) {
 		return nil, err
 	}
 	plan.DryRun = dryRun
+	plan.DiscardIgnored = discardIgnored
 	if dryRun {
 		return plan, nil
+	}
+	if len(plan.IgnoredFiles) > 0 && !discardIgnored {
+		return nil, errors.New("worktrees contain ignored files; inspect team remove NAME --dry-run and explicitly use --discard-ignored to delete them")
 	}
 	// Validate the whole inventory before removing any worktree. Git performs
 	// its own final dirty check; never use --force or delete branches here.
@@ -178,7 +190,7 @@ func removalProcessesStopped(s *State) error {
 }
 
 func planTeamRemoval(st *Store, s *State) (*removalPlan, error) {
-	plan := &removalPlan{Team: s.ID, Directory: st.Dir, Worktrees: []string{}, PreservedBranches: []string{}}
+	plan := &removalPlan{Team: s.ID, Directory: st.Dir, Worktrees: []string{}, PreservedBranches: []string{}, IgnoredFiles: []string{}}
 	base := filepath.Join(st.Dir, "worktrees")
 	wanted := map[string]*Task{}
 	for _, t := range s.Tasks {
@@ -196,6 +208,9 @@ func planTeamRemoval(st *Store, s *State) (*removalPlan, error) {
 			return nil, fmt.Errorf("duplicate task workspace %s", path)
 		}
 		wanted[path] = t
+	}
+	if err := inspectRemovalPayload(st.Dir, s, wanted); err != nil {
+		return nil, err
 	}
 	entries, err := os.ReadDir(base)
 	if err != nil && !os.IsNotExist(err) {
@@ -252,6 +267,15 @@ func planTeamRemoval(st *Store, s *State) (*removalPlan, error) {
 		if dirty != "" {
 			return nil, fmt.Errorf("workspace has uncommitted files: %s", path)
 		}
+		ignored, e := git(path, "ls-files", "--others", "--ignored", "--exclude-standard", "-z")
+		if e != nil {
+			return nil, e
+		}
+		for _, name := range strings.Split(ignored, "\x00") {
+			if name != "" {
+				plan.IgnoredFiles = append(plan.IgnoredFiles, filepath.Join(path, name))
+			}
+		}
 		if t.Target == "" {
 			return nil, fmt.Errorf("task %s has no target branch", t.ID)
 		}
@@ -266,5 +290,85 @@ func planTeamRemoval(st *Store, s *State) (*removalPlan, error) {
 	}
 	sort.Strings(plan.Worktrees)
 	sort.Strings(plan.PreservedBranches)
+	sort.Strings(plan.IgnoredFiles)
 	return plan, nil
+}
+
+// A saved-team directory is not an arbitrary trash folder. Only generated
+// metadata and explicitly validated task worktrees belong to this operation.
+// Walk the entire tree, including ignored directories, to detect foreign/nested
+// repositories before deleting anything. Never follow a symlink.
+func inspectRemovalPayload(dir string, s *State, worktrees map[string]*Task) error {
+	return filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == dir {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		parts := strings.Split(rel, string(filepath.Separator))
+		inWorktree := len(parts) >= 2 && parts[0] == "worktrees" && worktrees[filepath.Join(dir, parts[0], parts[1])] != nil
+		if entry.Name() == ".git" {
+			if !inWorktree || len(parts) != 3 || entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
+				return fmt.Errorf("nested or foreign repository at %s; preserve it before removing team", path)
+			}
+		}
+		if entry.IsDir() {
+			if _, e := os.Stat(filepath.Join(path, "HEAD")); e == nil {
+				if objects, e := os.Stat(filepath.Join(path, "objects")); e == nil && objects.IsDir() {
+					return fmt.Errorf("possible bare repository at %s; preserve it before removing team", path)
+				}
+			}
+		}
+		if inWorktree {
+			return nil
+		}
+		allowed := false
+		switch parts[0] {
+		case "state.db", "state.db-wal", "state.db-shm":
+			allowed = len(parts) == 1 && entry.Type().IsRegular()
+		case "worktrees":
+			allowed = len(parts) == 1 && entry.IsDir()
+		case "locks":
+			allowed = len(parts) == 1 && entry.IsDir()
+			if len(parts) == 2 && entry.Type().IsRegular() {
+				name := strings.TrimSuffix(parts[1], ".lock")
+				if name != parts[1] {
+					allowed = contains([]string{"team-lifecycle", "runtime", "runtime-start", "merge", "panels", "navigation"}, name) || s.Members[strings.TrimPrefix(name, "member-")] != nil && strings.HasPrefix(name, "member-") || s.Tasks[strings.TrimPrefix(name, "workspace-")] != nil && strings.HasPrefix(name, "workspace-")
+				}
+			}
+		case "handoffs":
+			allowed = len(parts) == 1 && entry.IsDir()
+			if len(parts) == 2 && entry.Type().IsRegular() && strings.HasSuffix(parts[1], ".json") {
+				name := strings.TrimSuffix(parts[1], ".json")
+				at := strings.LastIndex(name, "-")
+				if at >= 0 {
+					_, e := strconv.ParseUint(name[at+1:], 10, 64)
+					allowed = e == nil && (name[:at] == "team" || s.Members[name[:at]] != nil)
+				}
+			}
+		case "runtime":
+			allowed = len(parts) == 1 && entry.IsDir()
+			if len(parts) >= 2 && s.Members[parts[1]] != nil {
+				allowed = len(parts) == 2 && entry.IsDir()
+				if len(parts) == 3 && (parts[2] == "prompt.txt" || parts[2] == "claude.json") {
+					allowed = entry.Type().IsRegular()
+				}
+				if len(parts) >= 3 {
+					_, e := strconv.ParseUint(parts[2], 10, 64)
+					if e == nil {
+						allowed = len(parts) == 3 && entry.IsDir() || len(parts) == 4 && parts[3] == "bin" && entry.IsDir() || len(parts) == 5 && parts[3] == "bin" && parts[4] == "csquad" && entry.Type()&os.ModeSymlink != 0
+					}
+				}
+			}
+		}
+		if !allowed {
+			return fmt.Errorf("unrecognized team data %s; preserve it before removing team", path)
+		}
+		return nil
+	})
 }

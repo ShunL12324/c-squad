@@ -287,6 +287,18 @@ On macOS, Terminal.app sends Option as an accent composer unless **Use Option as
 Meta key** is enabled in its keyboard settings; without it the Alt shortcuts
 never reach tmux. iTerm2 and most Linux terminals send Alt correctly.
 
+Each member card names the Git branch of that member's OWN working directory -
+`Git main`, `Git detached 4f2a1b9`, or a branch with `wt` when the directory is a
+linked worktree. It is the member's directory, not the repository its task is
+bound to, which is what matters when a member works in another repository. Long
+branch names keep their trailing segment; `csquad member inspect NAME` prints the
+untruncated value under `git`. Nothing Git-related is written to the ledger, and
+the panel only reads repository state.
+
+When the roster is longer than the sidebar, a position indicator appears in the
+right-hand gutter showing how far through the list you are. It is absent when
+every member already fits.
+
 The workspace header displays the C Squad mark and team name.
 The bottom footer has clickable **Tasks** and **Detach** buttons.
 Tasks toggles the right panel; the member sidebar stays open. Detach disconnects only your terminal; the

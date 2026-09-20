@@ -29,7 +29,7 @@ func repoIdentity(dir string) (string, error) {
 	if dir == "" {
 		return "", errors.New("no directory given")
 	}
-	return git(dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	return runGit(dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
 }
 
 func short(sha string) string {

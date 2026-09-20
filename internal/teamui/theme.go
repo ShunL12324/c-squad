@@ -105,7 +105,58 @@ func (m model) memberCards() ([]string, []cardHit) {
 	for i := first; i < min(m.count(), first+m.rows()); i++ {
 		appendCard(i)
 	}
-	return rows, hits
+	return m.scrollbar(rows, hits), hits
+}
+
+// scrollbar shows how much roster is off-screen, in the blank gutter column the
+// cards already leave at the right edge: state, the selection stripe and the
+// card bodies all sit further left, so nothing is covered. It spans only the
+// scrolling cards, because Master is pinned above them and is never scrolled.
+func (m model) scrollbar(rows []string, hits []cardHit) []string {
+	pinned := 0
+	if m.hasMaster() {
+		pinned = 1
+	}
+	visible, start, end := 0, -1, -1
+	for _, hit := range hits {
+		if hit.index < pinned {
+			continue
+		}
+		if start < 0 {
+			start = hit.start
+		}
+		end, visible = hit.end, visible+1
+	}
+	total := m.count() - pinned
+	// A bar over a list that already fits would imply hidden members.
+	if start < 0 || visible >= total || m.width < 12 {
+		return rows
+	}
+	track := end - start + 1
+	thumb := max(1, track*visible/total)
+	offset := max(0, m.top-pinned)
+	position := min(track*offset/total, track-thumb)
+	if offset+visible >= total {
+		// Reaching the end must look like the end, whatever rounding says.
+		position = track - thumb
+	}
+	for i := range track {
+		glyph, color := "│", "238"
+		if i >= position && i < position+thumb {
+			glyph, color = "┃", muted
+		}
+		rows[start+i] = m.gutter(rows[start+i], glyph, color)
+	}
+	return rows
+}
+
+// gutter rewrites a row's last two cells, which block paints blank, leaving the
+// card's own styling and the row's total width untouched.
+func (m model) gutter(row, glyph, color string) string {
+	body := ansi.Truncate(row, m.width-2, "")
+	style := lipgloss.NewStyle().Background(lipgloss.Color(canvas))
+	pad := style.Render(strings.Repeat(" ", max(0, m.width-2-ansi.StringWidth(body))))
+	return body + pad + style.Foreground(lipgloss.Color(color)).Render(glyph) + style.Render(" ")
 }
 
 func (m model) hasMaster() bool {
@@ -155,9 +206,45 @@ func (m model) memberCard(i int) []string {
 	}
 	title := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).
 		Underline(i == m.selected && member.ID != m.current).Render(name)
-	return block([]string{title, meta, textStyle(cwd, muted, false),
-		textStyle(strings.Repeat("─", width), "240", false), task}, m.width, bg, stripe)
+	// The Git line takes the decorative divider's row rather than a new one, so
+	// card height and every offset derived from it stay exactly as they were.
+	divider := textStyle(strings.Repeat("─", width), "240", false)
+	if row := gitLine(member, width, bg); row != "" {
+		divider = row
+	}
+	return block([]string{title, meta, textStyle(cwd, muted, false), divider, task}, m.width, bg, stripe)
 
+}
+
+// gitLine names the branch of the member's OWN directory. Branch names are
+// hierarchical and their distinguishing segment is last, so an overlong one
+// keeps its tail, the way compactPath keeps a path's trailing components.
+func gitLine(member Member, width int, bg string) string {
+	value := member.Branch
+	if value == "" && member.Commit != "" {
+		value = "detached " + member.Commit
+	}
+	if value == "" {
+		return ""
+	}
+	const label = "Git "
+	room := max(1, width-len(label))
+	// A linked worktree is always marked: which checkout a member sits in is the
+	// confusion this line exists to remove, and a truncated branch still shows
+	// the segment that identifies it.
+	if member.Worktree && room > 4 {
+		left := textStyle(label, muted, false) + textStyle(tail(value, room-3), foreground, false)
+		return spread(left, textStyle("wt", muted, false), width, bg)
+	}
+	return textStyle(label, muted, false) + textStyle(tail(value, room), foreground, false)
+}
+
+func tail(s string, width int) string {
+	s = clean(s)
+	if ansi.StringWidth(s) <= width {
+		return s
+	}
+	return ansi.TruncateLeft(s, ansi.StringWidth(s)-width+1, "…")
 }
 
 // spread anchors metadata to both edges without letting long labels wrap.

@@ -41,7 +41,14 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 			return e
 		}
 		out, _ := tm(s, "capture-pane", "-p", "-t", agentPane(m), "-S", "-80")
-		return jsonOut(map[string]any{"member": m, "terminal": out})
+		// The card truncates long branch names to fit a 28-column panel; this is
+		// where the untruncated value lives. It is resolved on demand rather than
+		// stored, so the ledger keeps no Git state to go stale.
+		record := map[string]any{"member": m, "terminal": out}
+		if state, ok := memberGit(m.Cwd); ok {
+			record["git"] = state
+		}
+		return jsonOut(record)
 	}
 	if actor != "master" {
 		return fmt.Errorf("only master manages members: %w", ErrMasterRequired)

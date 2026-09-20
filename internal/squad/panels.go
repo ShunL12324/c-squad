@@ -287,7 +287,14 @@ func (st *Store) panelSnapshot() (teamui.Snapshot, error) {
 				tasks = append(tasks, id)
 			}
 		}
-		out.Members = append(out.Members, teamui.Member{ID: m.ID, Engine: string(m.Engine), State: strings.ReplaceAll(string(m.State), "_", " "), Color: strings.TrimPrefix(m.Color.StyleValue(), "colour"), Cwd: displayDirectory(m.Cwd), Tasks: strings.Join(tasks, ", ")})
+		card := teamui.Member{ID: m.ID, Engine: string(m.Engine), State: strings.ReplaceAll(string(m.State), "_", " "), Color: strings.TrimPrefix(m.Color.StyleValue(), "colour"), Cwd: displayDirectory(m.Cwd), Tasks: strings.Join(tasks, ", ")}
+		// Resolve from the raw cwd, never from displayDirectory's abbreviation and
+		// never from the task's workspace: in a cross-repository task the member
+		// is on another repository's branch entirely.
+		if state, ok := memberGit(m.Cwd); ok {
+			card.Branch, card.Commit, card.Worktree = state.Branch, state.Commit, state.Worktree
+		}
+		out.Members = append(out.Members, card)
 	}
 	for _, id := range taskIDs {
 		t := s.Tasks[id]

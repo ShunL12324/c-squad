@@ -445,3 +445,155 @@ func TestExternalClosureIsVisibleOnCardAndDetail(t *testing.T) {
 		t.Error("a merged task card gained an external closure marker")
 	}
 }
+
+// scrollColumn reports the indicator cell of every rendered row, which lives in
+// the gutter column the cards leave blank.
+func scrollColumn(m model) []rune {
+	var cells []rune
+	for _, row := range strings.Split(ansi.Strip(m.View()), "\n") {
+		runes := []rune(row)
+		if len(runes) < m.width-1 {
+			cells = append(cells, ' ')
+			continue
+		}
+		cells = append(cells, runes[m.width-2])
+	}
+	return cells
+}
+
+func rosterOf(n int) []Member {
+	members := []Member{{ID: "master", Engine: "claude", State: "idle", Cwd: "/repo", Branch: "main"}}
+	for i := 1; i < n; i++ {
+		members = append(members, Member{ID: fmt.Sprintf("member-%02d", i), Engine: "codex", State: "idle", Cwd: "/repo", Branch: "main"})
+	}
+	return members
+}
+
+func TestMemberScrollbarReflectsPosition(t *testing.T) {
+	data := Snapshot{Active: true, Members: rosterOf(12)}
+	m := model{kind: "members", width: 28, height: 34, current: "master", selectedID: "master", data: data}
+	if m.rows() >= m.count()-1 {
+		t.Fatalf("the roster fits in %d rows; this test needs it to overflow", m.rows())
+	}
+	positions := map[string][]int{}
+	for _, at := range []struct {
+		name string
+		top  int
+	}{{"top", 1}, {"middle", 5}, {"bottom", m.count() - m.rows()}} {
+		scrolled := m
+		scrolled.top = at.top
+		var thumb []int
+		for row, cell := range scrollColumn(scrolled) {
+			if cell == '┃' {
+				thumb = append(thumb, row)
+			}
+		}
+		if len(thumb) == 0 {
+			t.Fatalf("%s: no thumb drawn while %d of %d members are hidden", at.name, m.count()-1-m.rows(), m.count()-1)
+		}
+		positions[at.name] = thumb
+	}
+	if positions["top"][0] >= positions["middle"][0] || positions["middle"][0] >= positions["bottom"][0] {
+		t.Fatalf("the thumb does not move down the track: %v", positions)
+	}
+	track := 0
+	for _, cell := range scrollColumn(m) {
+		if cell == '│' || cell == '┃' {
+			track++
+		}
+	}
+	bottom := positions["bottom"]
+	if bottom[len(bottom)-1] != positions["top"][0]+track-1 {
+		t.Fatalf("the bottom of the list does not reach the end of the track: %v in %d rows", positions, track)
+	}
+}
+
+func TestShortRosterDrawsNoScrollbar(t *testing.T) {
+	m := model{kind: "members", width: 28, height: 60, current: "master", data: Snapshot{Active: true, Members: rosterOf(2)}}
+	if m.count()-1 > m.rows() {
+		t.Fatal("this roster does not fit; the test cannot show the absence of a bar")
+	}
+	for _, cell := range scrollColumn(m) {
+		if cell == '│' || cell == '┃' {
+			t.Fatal("a fitting roster was given a bar implying hidden members")
+		}
+	}
+}
+
+func TestMemberCardShowsItsOwnGitState(t *testing.T) {
+	for _, tt := range []struct {
+		name           string
+		member         Member
+		want, unwanted string
+	}{
+		{name: "plain branch", member: Member{ID: "dev", Cwd: "/repo", Branch: "main"}, want: "Git main"},
+		{name: "detached head", member: Member{ID: "dev", Cwd: "/repo", Commit: "4f2a1b9"}, want: "Git detached 4f2a1b9"},
+		{name: "linked worktree keeps the branch tail and the marker",
+			member: Member{ID: "dev", Cwd: "/repo", Branch: "csquad/csquad/T167", Worktree: true}, want: "wt", unwanted: "Git csquad/csquad/T167"},
+		{name: "outside git keeps the divider", member: Member{ID: "dev", Cwd: "/tmp/plain"}, want: "────", unwanted: "Git "},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			m := model{kind: "members", width: 28, height: 40, data: Snapshot{Active: true, Members: []Member{tt.member}}}
+			card := ansi.Strip(strings.Join(m.memberCard(0), "\n"))
+			if !strings.Contains(card, tt.want) {
+				t.Fatalf("card is missing %q:\n%s", tt.want, card)
+			}
+			if tt.unwanted != "" && strings.Contains(card, tt.unwanted) {
+				t.Fatalf("card unexpectedly contains %q:\n%s", tt.unwanted, card)
+			}
+			if len(m.memberCard(0)) != memberBlockRows {
+				t.Fatalf("card is %d rows, want %d: the Git line must reuse the divider's row", len(m.memberCard(0)), memberBlockRows)
+			}
+		})
+	}
+	// The tail identifies the branch; the head is the part that repeats.
+	wide := model{kind: "members", width: 28, height: 40, data: Snapshot{Active: true,
+		Members: []Member{{ID: "dev", Cwd: "/repo", Branch: "csquad/csquad/T167", Worktree: true}}}}
+	if card := ansi.Strip(strings.Join(wide.memberCard(0), "\n")); !strings.Contains(card, "T167") {
+		t.Fatalf("truncation dropped the identifying end of the branch:\n%s", card)
+	}
+}
+
+func TestScrollbarSurvivesResizeAndKeepsCardClicks(t *testing.T) {
+	data := Snapshot{Active: true, Members: rosterOf(12)}
+	m := model{kind: "members", width: 28, height: 34, current: "master", selectedID: "master", data: data}
+	m.top = 1
+	for _, size := range [][2]int{{28, 34}, {11, 34}, {24, 20}, {28, 34}} {
+		next, _ := m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		resized := next.(model)
+		for _, row := range strings.Split(resized.View(), "\n") {
+			if ansi.StringWidth(row) > size[0] {
+				t.Fatalf("width %d overflowed: %q", size[0], row)
+			}
+		}
+		drawn := false
+		for _, cell := range scrollColumn(resized) {
+			drawn = drawn || cell == '│' || cell == '┃'
+		}
+		// Below the width block() itself gives up at, the bar is dropped rather
+		// than squeezed into the card body.
+		if want := size[0] >= 12; drawn != want {
+			t.Fatalf("width %d drew the indicator=%v, want %v", size[0], drawn, want)
+		}
+	}
+	// The bar occupies the gutter column only, and the card hit test is
+	// unchanged, so a click there still opens that member.
+	var opened Action
+	m.act = func(a Action) error { opened = a; return nil }
+	_, hits := m.memberCards()
+	var scrolling cardHit
+	for _, hit := range hits {
+		if hit.index >= 1 {
+			scrolling = hit
+			break
+		}
+	}
+	_, cmd := m.Update(tea.MouseMsg{X: m.width - 2, Y: scrolling.start + 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if cmd == nil {
+		t.Fatal("a click on the indicator column no longer reaches the member card")
+	}
+	cmd()
+	if want := m.data.Members[scrolling.index].ID; opened.Kind != "open" || opened.Member != want {
+		t.Fatalf("the indicator column opened %+v, want %s", opened, want)
+	}
+}

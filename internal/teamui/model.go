@@ -13,7 +13,13 @@ import (
 )
 
 // Member is a presentation snapshot of an agent and its current assignments.
-type Member struct{ ID, Engine, State, Color, Tasks, Cwd string }
+// Branch and Commit describe the member's own working directory, which need not
+// be the repository its task is bound to; Commit is set only on a detached HEAD.
+type Member struct {
+	ID, Engine, State, Color, Tasks, Cwd string
+	Branch, Commit                       string
+	Worktree                             bool
+}
 
 // Task is a presentation snapshot of a task and its delivery evidence.
 // Note carries a terse qualifier for a done task that was not merged, so the card

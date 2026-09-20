@@ -89,12 +89,14 @@ use WSL 2 instead.
 ```sh
 cd /path/to/your/project
 csquad doctor
-csquad start --name my-team --engine claude
+csquad start my-team --engine claude
 ```
 
 Use `--engine codex` if you want Codex as Master. C Squad opens tmux for you;
 there is no separate server or tmux session to start by hand. For development
 tasks, your project must be a Git repository with at least one commit.
+`start` always creates a new team and rejects an existing name. Continue a saved
+team with `csquad resume my-team`, or connect to a running one with `csquad attach my-team`.
 
 ### 3. Give Master a task
 

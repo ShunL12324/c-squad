@@ -345,16 +345,21 @@ func start(o options) error {
 	if e = os.MkdirAll(base, 0700); e != nil {
 		return e
 	}
+	// Serialize creators before SQLite initialization, which itself writes schema
+	// and journal settings. Locking only after openStore can race with SQLITE_BUSY.
+	unlock, e := filelock.Acquire(dir, "team-lifecycle", false)
+	if e != nil {
+		return e
+	}
+	defer unlock()
+	if e = rejectExistingTeam(root, dir, id); e != nil {
+		return e
+	}
 	st, e := openStore(dir)
 	if e != nil {
 		return e
 	}
 	defer func() { _ = st.DB.Close() }()
-	unlock, e := filelock.Acquire(st.Dir, "team-lifecycle", false)
-	if e != nil {
-		return e
-	}
-	defer unlock()
 	if _, err := st.read(); err == nil {
 		return errors.New("team already exists; use attach or resume")
 	} else if !errors.Is(err, sql.ErrNoRows) {

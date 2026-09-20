@@ -55,7 +55,7 @@ func addFlags(cmd *cobra.Command, names []string) {
 				return nil, cobra.ShellCompDirectiveFilterDirs
 			}
 		}
-		if name == "name" && (cmd.Name() == "attach" || cmd.Name() == "resume" || cmd.Name() == "board" || cmd.Name() == "stop" || cmd.Name() == "ui") {
+		if name == "name" && (cmd.Name() == "attach" || cmd.Name() == "resume" || cmd.Name() == "board" || cmd.Name() == "stop" || cmd.Name() == "recover" || cmd.Name() == "ui") {
 			completion = completeResource("team")
 		}
 		if choices, ok := flagChoices[name]; ok {

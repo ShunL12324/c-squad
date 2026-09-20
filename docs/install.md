@@ -9,7 +9,7 @@ You do not need Go or a compiler.
 ```sh
 npm install -g csquad
 csquad doctor
-csquad start --name my-team --engine claude
+csquad start my-team --engine claude
 ```
 
 Or run `npx csquad`. Install npm inside WSL 2 when using Windows.

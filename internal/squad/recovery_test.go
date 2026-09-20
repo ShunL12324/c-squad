@@ -52,6 +52,20 @@ func TestCrashCleanupAndProjectResume(t *testing.T) {
 		}
 		return out
 	}
+	// Failure to reap an older corrupt ledger must not reserve a new name.
+	broken := filepath.Join(root, ".csquad", "teams", "old")
+	must(t, os.MkdirAll(broken, 0700))
+	must(t, os.WriteFile(filepath.Join(broken, "state.db"), []byte("invalid sqlite database"), 0600))
+	failedStart := exec.Command(binary, "start", "test", "--engine", "claude", "--detach")
+	failedStart.Dir, failedStart.Env = root, env
+	if out, err := failedStart.CombinedOutput(); err == nil {
+		t.Fatalf("corrupt old ledger should block cleanup: %s", out)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".csquad", "teams", "test", "state.db")); !os.IsNotExist(err) {
+		t.Fatalf("cleanup failure reserved new team name: %v", err)
+	}
+	must(t, os.RemoveAll(broken))
+	// Retrying after removing that corruption must succeed, even with competition.
 	// Two creators of the same name must produce exactly one live team.
 	type creation struct {
 		out []byte

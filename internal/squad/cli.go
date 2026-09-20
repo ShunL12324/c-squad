@@ -355,6 +355,9 @@ func start(o options) error {
 	if e = rejectExistingTeam(root, dir, id); e != nil {
 		return e
 	}
+	if e = reapProjectTeams(base); e != nil {
+		return e
+	}
 	st, e := openStore(dir)
 	if e != nil {
 		return e
@@ -365,9 +368,7 @@ func start(o options) error {
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	if e = reapProjectTeams(base); e != nil {
-		return e
-	}
+
 	bin, e := os.Executable()
 	if e != nil {
 		return e

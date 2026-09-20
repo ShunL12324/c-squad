@@ -5,12 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/ShunL12324/c-squad/internal/filelock"
 	"github.com/ShunL12324/c-squad/internal/process"
@@ -164,26 +167,30 @@ func removalProcessesStopped(s *State) error {
 			}
 		}
 	}
-	// No socket means there cannot be an owned tmux server to inspect. If a
-	// socket still exists, fail closed on inspection failure rather than guessing.
+	// A crashed server can leave its Unix socket behind. Verify whether it has a
+	// listener before asking tmux for sessions; only concrete refusal/absence
+	// means no server. Permission, timeout and protocol errors remain failures.
 	if s.Socket != "" {
-		if _, err = os.Stat(s.Socket); err == nil {
-			out, e := tm(s, "list-sessions", "-F", "#{session_name}")
-			if e != nil {
-				return fmt.Errorf("cannot verify remaining tmux sessions: %w", e)
+		absent, e := removalSocketAbsent(s.Socket)
+		if e != nil {
+			return fmt.Errorf("cannot verify remaining tmux sessions: %w", e)
+		}
+		if absent {
+			return nil
+		}
+		out, e := tm(s, "list-sessions", "-F", "#{session_name}")
+		if e != nil {
+			return fmt.Errorf("cannot verify remaining tmux sessions: %w", e)
+		}
+		for _, name := range strings.Split(out, "\n") {
+			if name == runtimeName(s) {
+				return errors.New("team runtime session still exists")
 			}
-			for _, name := range strings.Split(out, "\n") {
-				if name == runtimeName(s) {
-					return errors.New("team runtime session still exists")
-				}
-				for _, m := range s.Members {
-					if name == m.Session {
-						return fmt.Errorf("member session %s still exists", name)
-					}
+			for _, m := range s.Members {
+				if name == m.Session {
+					return fmt.Errorf("member session %s still exists", name)
 				}
 			}
-		} else if !os.IsNotExist(err) {
-			return err
 		}
 	}
 	return nil
@@ -371,4 +378,26 @@ func inspectRemovalPayload(dir string, s *State, worktrees map[string]*Task) err
 		}
 		return nil
 	})
+}
+
+// removalSocketAbsent never unlinks sockets or interprets tmux's error text.
+func removalSocketAbsent(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		return false, fmt.Errorf("tmux endpoint %s is not a Unix socket", path)
+	}
+	conn, err := net.DialTimeout("unix", path, 250*time.Millisecond)
+	if errors.Is(err, syscall.ECONNREFUSED) || os.IsNotExist(err) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return false, conn.Close()
 }

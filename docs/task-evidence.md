@@ -14,8 +14,11 @@ can change `progress` without changing the submitted summary.
 Research and other non-code work can record formal evidence without a commit:
 
 ```sh
+# Task owner submits the work.
 csquad task submit T7 --summary 'Reviewed the proposal and recorded findings'
+# A different participating reviewer records independent review.
 csquad task evidence T7 --submission T7-r1 --kind review --passed true --summary 'Sources and conclusions verified'
+# Master approves the submitted work.
 csquad task approve T7
 ```
 

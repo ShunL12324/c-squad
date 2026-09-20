@@ -35,6 +35,7 @@ archives:
       - CONTRIBUTING.md
       - docs/install.md
       - docs/usage.md
+      - docs/task-evidence.md
       - docs/architecture.md
       - docs/releasing.md
       - docs/assets/hero.png

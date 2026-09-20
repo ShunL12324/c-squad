@@ -410,7 +410,11 @@ and clean, fully merged owned worktrees. It removes eligible task worktrees and
 the saved ledger, preserves Git branches, and refuses unknown or external
 worktree paths, unknown payload, or nested repositories. Ignored files are listed
 by dry-run and prevent removal unless `--discard-ignored` is supplied explicitly.
-There is no force flag to discard uncommitted or unmerged work.
+There is no force flag to discard uncommitted or unmerged work. A leftover tmux
+socket from a crashed server is accepted only when its endpoint is absent or
+refuses connections. Reachable sockets still require successful tmux session
+inspection; permission, timeout, and protocol errors prevent removal. Inspection
+does not delete the stale socket.
 
 Every submission has an immutable identity. For formal research/non-code review,
 use `task evidence TASK --submission ID --kind review --passed true --summary TEXT`.

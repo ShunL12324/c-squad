@@ -115,6 +115,11 @@ The staging directory must not already exist. Tests use a temporary npm prefix,
 leave the normal installed executable untouched, and disable install scripts.
 Native Windows is intentionally unsupported; use WSL 2.
 
+`test-npm.py` also runs `csquad completion install` against a throwaway `HOME`
+and then checks, with a real Tab key in an isolated Zsh, that the file it wrote
+is the one the shell loads. That last step needs `zsh`; without it the test
+prints a `SKIP` line and the rest still runs.
+
 npm versions are immutable. If npm publication fails, fix the authentication or
 trusted-publisher configuration and rerun the failed job. Check the registry
 before retrying a publish whose outcome is uncertain; do not overwrite a published

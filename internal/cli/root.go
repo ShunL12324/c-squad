@@ -127,6 +127,9 @@ func newCommand(run runner) *cobra.Command {
 		parent.AddCommand(cmd)
 	}
 	root.AddCommand(&cobra.Command{Use: "help-cli", Hidden: true, Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error { return root.Help() }})
+	// Owning 'completion' replaces Cobra's default command, whose help documents
+	// persistence through Homebrew only.
+	root.AddCommand(completionCommand(root))
 	// The existing help command is an escalation workflow, not Cobra's help alias.
 	root.SetHelpCommand(&cobra.Command{Use: "usage [command...]", Short: "Show help for a command", RunE: func(c *cobra.Command, args []string) error {
 		target, rest, err := root.Find(args)

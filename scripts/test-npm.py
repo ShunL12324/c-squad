@@ -6,13 +6,49 @@ import json
 import os
 import platform
 from pathlib import Path
+import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 
 
 def run(*args, **kwargs):
     return subprocess.run(args, check=True, text=True, capture_output=True, **kwargs).stdout
+
+
+def check_completion(root, binary):
+    """npm ships completion scripts but wires nothing up, so the documented
+    'csquad completion install' path is what has to keep working."""
+    home = root / "home with spaces"
+    (home / "config").mkdir(parents=True)
+    rc = home / ".zshrc"
+    rc.write_text("# untouched\n")
+    data = home / "data"
+    user = dict(os.environ, HOME=str(home), XDG_DATA_HOME=str(data),
+                XDG_CONFIG_HOME=str(home / "config"), SHELL="/bin/zsh")
+    script = data / "zsh/site-functions/_csquad"
+    first = run(str(binary), "completion", "install", env=user)
+    assert first.startswith(f"Installed zsh completion: {script}\n"), first
+    assert f"fpath=({script.parent} $fpath)" in first, first
+    again = run(str(binary), "completion", "install", env=user)
+    assert again.startswith(f"Unchanged zsh completion: {script}\n"), again
+    assert rc.read_text() == "# untouched\n", "installation edited a shell configuration"
+    # Bash and Fish install into directories their shells read on their own.
+    for shell, target in (("bash", data / "bash-completion/completions/csquad"),
+                          ("fish", home / "config/fish/completions/csquad.fish")):
+        run(str(binary), "completion", "install", "--shell", shell, env=user)
+        assert target.read_text() == run(str(binary), "completion", shell), shell
+    status = run(str(binary), "completion", "status", env=user)
+    for line in ("zsh         current", "bash        current", "fish        current"):
+        assert line in status, status
+    if not shutil.which("zsh"):
+        print("SKIP: zsh is missing; completion registration was not exercised in a shell")
+        return
+    # The only proof that matters: a real Tab in a real Zsh, with the installed
+    # directory on fpath exactly as the printed instruction describes.
+    print(run(sys.executable, str(Path(__file__).resolve().parent / "test-shell-completion.py"),
+              "--path", str(binary.parent), "--fpath", str(script.parent)), end="")
 
 
 def test(package):
@@ -43,6 +79,7 @@ def test(package):
         assert result.returncode != 0 and "unknown command" in result.stderr
         run("npm", "exec", "--offline", "--yes", "--package", str(package), "--",
             "csquad", "version", cwd=root)
+        check_completion(root, binary)
         # Substitute only the packaged binary to check transparent argument,
         # cwd, environment and exit-status forwarding without starting agents.
         native = prefix / "lib/node_modules/csquad/native"

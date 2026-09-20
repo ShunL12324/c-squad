@@ -32,6 +32,41 @@ Install and sign in to Claude Code or Codex separately. Agents use your native
 engine configuration and accounts. By default, C Squad bypasses native agent
 permission prompts; this is configurable.
 
+## Shell completion
+
+This package runs no install scripts and never edits your shell configuration,
+so npm cannot enable completion for you. One command does it.
+
+Load it into the **current shell** only:
+
+```sh
+source <(csquad completion zsh)     # bash: source <(csquad completion bash)
+csquad completion fish | source     # fish
+```
+
+Install it **persistently**:
+
+```sh
+csquad completion install           # writes a script and prints any line to add
+csquad completion status            # what is installed, and how to verify it
+```
+
+Fish needs nothing else, and neither does bash once the bash-completion v2
+package is installed: it reads the target directory and supplies helpers the
+generated script calls. For zsh, add the
+printed `fpath=(...)` line to `~/.zshrc` above the command that runs
+`compinit` — with Oh My Zsh, above `source $ZSH/oh-my-zsh.sh` — then open a new
+terminal. If completion still does not appear, the cached index is stale: run
+`rm -f ~/.zcompdump*` and open another terminal.
+
+In that new shell, `csquad sta` + **Tab** expands to `csquad start`; in zsh,
+`print -r -- ${_comps[csquad]:-missing}` prints `_csquad` once completion is
+registered.
+
+The installed script resolves `csquad` from `PATH` when you press Tab and lives
+in your own data directory rather than the Node prefix, so it keeps working
+after `nvm use`, a Node upgrade, or `npm install -g csquad@latest`.
+
 ## Update or remove
 
 ```sh

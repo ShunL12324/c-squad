@@ -60,8 +60,8 @@ def command(*args, timeout=60, check=True, **kwargs):
             try:
                 kill_tree(process.pid)
             except (OSError, subprocess.SubprocessError):
-                # A successful tree cleanup already killed the group leader.
-                # Signalling that empty group again can return EPERM on macOS.
+                # A redundant group signal after successful tree cleanup
+                # returned EPERM on the macOS runner.
                 # Keep the group fallback only for failed tree cleanup.
                 try:
                     os.killpg(process.pid, signal.SIGKILL)

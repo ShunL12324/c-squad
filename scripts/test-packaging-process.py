@@ -50,8 +50,9 @@ class ProcessTests(unittest.TestCase):
         self.check_timeout_cleanup()
 
     def test_denied_group_signal_still_reaps_directly_killed_processes(self):
-        with mock.patch("packaging_test_support.os.killpg", side_effect=PermissionError("group signal denied")):
+        with mock.patch("packaging_test_support.os.killpg", side_effect=PermissionError("group signal denied")) as group_signal:
             self.check_timeout_cleanup()
+            group_signal.assert_not_called()
 
     def check_timeout_cleanup(self):
         with tempfile.TemporaryDirectory() as directory:

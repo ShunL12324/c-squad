@@ -252,6 +252,8 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 			}
 			t.State = TaskPhaseInProgress
 			t.Approval = nil
+			t.Submission = ""
+			t.SubmissionSummary = ""
 			t.Candidate = ""
 			t.CandidateAuthor = ""
 			t.Evidence = nil
@@ -272,6 +274,12 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 			}
 			if o["summary"] == "" {
 				return errors.New("--summary required")
+			}
+			if t.Submission != "" && t.SubmissionSummary != o["summary"] {
+				return errors.New("submission frozen; master must task reopen before changing it")
+			}
+			if t.Workspace == "" && o["sha"] != "" {
+				return errors.New("non-code submissions do not accept --sha")
 			}
 			if t.Workspace != "" {
 				sha := o["sha"]
@@ -305,13 +313,18 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 				}
 				t.Candidate = candidate
 			}
+			if t.Submission == "" {
+				t.SubmissionRevision++
+				t.Submission = submissionID(t)
+				t.SubmissionSummary = o["summary"]
+			}
 			if t.CandidateAuthor == "" {
 				t.CandidateAuthor = t.Owner
 			}
 			t.Progress = o["summary"]
 			t.State = TaskPhaseInReview
 			t.Approval = nil
-			notice = "Task submitted: " + t.ID + " " + t.Progress + " candidate=" + t.Candidate
+			notice = "Task submitted: " + t.ID + " " + t.Progress + " submission=" + t.Submission + " candidate=" + t.Candidate
 		case "close-external":
 			if e = closeExternal(s, actor, t, o); e != nil {
 				return e
@@ -324,8 +337,8 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 			if t.State != TaskPhaseInReview && t.State != TaskPhaseAwaitingMerge {
 				return errors.New("submit candidate before evidence")
 			}
-			if o["sha"] != t.Candidate {
-				return errors.New("evidence SHA must match candidate")
+			if e = validateEvidenceSelector(t, o); e != nil {
+				return e
 			}
 			if o["summary"] == "" {
 				return errors.New("--summary required")
@@ -336,7 +349,7 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 			if EvidenceKind(o["kind"]) == EvidenceReview && (actor == t.Owner || actor == t.CandidateAuthor) {
 				return errors.New("author cannot review own candidate")
 			}
-			t.Evidence = append(t.Evidence, Evidence{actor, EvidenceKind(o["kind"]), t.Candidate, o["passed"] == "true", o["summary"]})
+			t.Evidence = append(t.Evidence, Evidence{Member: actor, Kind: EvidenceKind(o["kind"]), SHA: t.Candidate, Submission: t.Submission, Passed: o["passed"] == "true", Summary: o["summary"]})
 			t.Approval = nil
 			t.State = TaskPhaseInReview
 			notice = "Evidence recorded: " + t.ID + " " + o["kind"] + " passed=" + o["passed"]
@@ -345,6 +358,9 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 				return errors.New("task not submitted for review")
 			}
 			if t.Workspace == "" {
+				if e = checkEvidence(t); e != nil {
+					return e
+				}
 				t.State = TaskPhaseDone
 				break
 			}
@@ -397,7 +413,7 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 func checkEvidence(t *Task) error {
 	latest := map[string]Evidence{}
 	for _, ev := range t.Evidence {
-		if ev.SHA == t.Candidate {
+		if t.Submission != "" && ev.Submission == t.Submission && ev.SHA == t.Candidate {
 			latest[ev.Member+":"+string(ev.Kind)] = ev
 		}
 	}
@@ -408,7 +424,7 @@ func checkEvidence(t *Task) error {
 		}
 		seen[ev.Kind] = true
 	}
-	if !seen[EvidenceReview] || !seen[EvidenceTest] {
+	if t.Workspace != "" && (!seen[EvidenceReview] || !seen[EvidenceTest]) {
 		return errors.New("passing review and test evidence for candidate required")
 	}
 	return nil

@@ -55,31 +55,34 @@ type Milestone struct {
 // Task records ownership, workspace, progress, and delivery evidence.
 // State is the workflow phase; Blockers independently describe why work cannot proceed.
 type Task struct {
-	ID              string       `json:"id"`
-	Title           string       `json:"title"`
-	Description     string       `json:"description"`
-	Acceptance      string       `json:"acceptance"`
-	State           TaskPhase    `json:"state"`
-	Dispatch        DispatchMode `json:"dispatch"`
-	RequestKey      string       `json:"request_key,omitempty"`
-	Blockers        []string     `json:"blockers"`
-	MergeIntent     *Approval    `json:"merge_intent,omitempty"`
-	Setup           string       `json:"setup,omitempty"`
-	Owner           string       `json:"owner,omitempty"`
-	Participants    []string     `json:"participants"`
-	Dependencies    []string     `json:"dependencies"`
-	Workspace       string       `json:"workspace,omitempty"`
-	Branch          string       `json:"branch,omitempty"`
-	Base            string       `json:"base,omitempty"`
-	Target          string       `json:"target,omitempty"`
-	Progress        string       `json:"progress,omitempty"`
-	Updated         string       `json:"updated"`
-	Candidate       string       `json:"candidate,omitempty"`
-	CandidateAuthor string       `json:"candidate_author,omitempty"`
-	Milestones      []Milestone  `json:"milestones"`
-	Evidence        []Evidence   `json:"evidence"`
-	Approval        *Approval    `json:"approval,omitempty"`
-	MergeCommit     string       `json:"merge_commit,omitempty"`
+	ID                 string       `json:"id"`
+	Title              string       `json:"title"`
+	Description        string       `json:"description"`
+	Acceptance         string       `json:"acceptance"`
+	State              TaskPhase    `json:"state"`
+	Dispatch           DispatchMode `json:"dispatch"`
+	RequestKey         string       `json:"request_key,omitempty"`
+	Blockers           []string     `json:"blockers"`
+	MergeIntent        *Approval    `json:"merge_intent,omitempty"`
+	Setup              string       `json:"setup,omitempty"`
+	Owner              string       `json:"owner,omitempty"`
+	Participants       []string     `json:"participants"`
+	Dependencies       []string     `json:"dependencies"`
+	Workspace          string       `json:"workspace,omitempty"`
+	Branch             string       `json:"branch,omitempty"`
+	Base               string       `json:"base,omitempty"`
+	Target             string       `json:"target,omitempty"`
+	Progress           string       `json:"progress,omitempty"`
+	Updated            string       `json:"updated"`
+	Candidate          string       `json:"candidate,omitempty"`
+	CandidateAuthor    string       `json:"candidate_author,omitempty"`
+	Submission         string       `json:"submission,omitempty"`
+	SubmissionRevision uint64       `json:"submission_revision,omitempty"`
+	SubmissionSummary  string       `json:"submission_summary,omitempty"`
+	Milestones         []Milestone  `json:"milestones"`
+	Evidence           []Evidence   `json:"evidence"`
+	Approval           *Approval    `json:"approval,omitempty"`
+	MergeCommit        string       `json:"merge_commit,omitempty"`
 	// ExternalClosure is set only by task close-external and never alongside MergeCommit.
 	ExternalClosure *ExternalClosure `json:"external_closure,omitempty"`
 }
@@ -101,13 +104,14 @@ type ExternalClosure struct {
 	Branch    string `json:"branch,omitempty"`
 }
 
-// Evidence records a member review or test result for a specific candidate commit.
+// Evidence records a result for an immutable submission and, for code, its exact commit.
 type Evidence struct {
-	Member  string       `json:"member"`
-	Kind    EvidenceKind `json:"kind"`
-	SHA     string       `json:"sha"`
-	Passed  bool         `json:"passed"`
-	Summary string       `json:"summary"`
+	Member     string       `json:"member"`
+	Kind       EvidenceKind `json:"kind"`
+	SHA        string       `json:"sha,omitempty"`
+	Submission string       `json:"submission,omitempty"`
+	Passed     bool         `json:"passed"`
+	Summary    string       `json:"summary"`
 }
 
 // Approval binds master approval to both the candidate and target commits.
@@ -313,6 +317,7 @@ func normalizeState(s *State) {
 				t.State = TaskPhaseInProgress
 			}
 		}
+		migrateSubmission(t)
 		t.Blockers = []string{}
 		if t.State == TaskPhaseDone {
 			continue

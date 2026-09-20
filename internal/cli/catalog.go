@@ -19,7 +19,8 @@ type definition struct {
 var startupFlags = []string{"name", "engine", "model", "env", "detach", "color"}
 var flagChoices = map[string][]string{"output": {"json", "table"}, "view": {"members", "tasks", "both", "hide"}, "color": tmux.ColorNames(), "engine": {string(config.Claude), string(config.Codex)}, "dispatch": {"assigned", "open"}, "kind": {"review", "test"}, "passed": {"true", "false"}, "direction": {"previous", "next"}}
 var flagDescriptions = map[string]string{
-	"submission": "Immutable task submission ID for evidence", "dry-run": "Show saved-team removal inventory without deleting",
+	"discard-ignored": "Allow removal of ignored files listed by saved-team dry-run",
+	"submission":      "Immutable task submission ID for evidence", "dry-run": "Show saved-team removal inventory without deleting",
 	"output": "Query format: json or table (omitted preserves the existing default)",
 	"cwd":    "Member startup directory; relative paths resolve from the calling directory",
 	"view":   "Visible panels: members, tasks, both or hide", "popup": "Render a temporary popup panel",
@@ -38,7 +39,7 @@ func addFlags(cmd *cobra.Command, names []string) {
 			panic("undocumented flag: " + name)
 		}
 		switch name {
-		case "detach", "fresh", "full", "code", "all", "strict", "popup", "dry-run":
+		case "detach", "fresh", "full", "code", "all", "strict", "popup", "dry-run", "discard-ignored":
 			cmd.Flags().Bool(name, false, description)
 		case "env":
 			cmd.Flags().StringArray(name, nil, description)
@@ -81,7 +82,7 @@ func groupDescription(name string) string {
 }
 func definitions() []definition {
 	defs := []definition{
-		{path: "team remove", args: " NAME", min: 1, max: 1, complete: "team", summary: "Remove a stopped saved team after safety checks", flags: []string{"dry-run"}},
+		{path: "team remove", args: " NAME", min: 1, max: 1, complete: "team", summary: "Remove a stopped saved team after safety checks", flags: []string{"dry-run", "discard-ignored"}},
 		{path: "start", args: " [NAME]", max: 1, summary: "Create a new team; existing names require attach or resume", flags: startupFlags, example: "  csquad start my-team --engine claude\n  csquad start --detach --env CODEX_HOME=/path/to/codex-home"},
 		{path: "resume", args: " [TEAM]", max: 1, complete: "team", summary: "Recover a stopped team from its ledger", flags: []string{"name", "env", "fresh", "detach"}, example: "  csquad resume my-team\n  csquad resume --fresh --detach"},
 		{path: "attach", args: " [TEAM_OR_MEMBER]", summary: "Enter a team, or select a member with --name TEAM", max: 1, complete: "team-or-member", flags: []string{"name"}, example: "  csquad attach research\n  csquad attach --name research reviewer"},

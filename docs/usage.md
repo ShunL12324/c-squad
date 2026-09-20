@@ -408,4 +408,6 @@ Saved-team removal is separate from stopping. From an outside terminal, inspect
 requires stopped state, no remaining processes or sessions, no pending merge,
 and clean, fully merged owned worktrees. It removes eligible task worktrees and
 the saved ledger, preserves Git branches, and refuses unknown or external
-worktree paths. There is no force flag to discard uncommitted or unmerged work.
+worktree paths, unknown payload, or nested repositories. Ignored files are listed
+by dry-run and prevent removal unless `--discard-ignored` is supplied explicitly.
+There is no force flag to discard uncommitted or unmerged work.

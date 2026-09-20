@@ -28,6 +28,13 @@ func (st *Store) deliver(id string) error {
 					return e
 				}
 				if member.State == MemberStateRemoved || member.State == MemberStateStopped || member.State == MemberStateStopping || member.State == MemberStateNeedsAttention || member.State == MemberStateCrashed {
+					// Returning without a reason left the sender no signal at all.
+					// Record why delivery paused, exactly as the branch below does,
+					// and keep the message pending so the runtime retries once the
+					// recipient is available again.
+					if v.State == DeliveryStatePending {
+						v.Error = "recipient is " + string(member.State) + "; delivery paused until it is available"
+					}
 					return nil
 				}
 				if member.Engine == config.Claude && (member.EngineID == "" || member.Peer == "") {

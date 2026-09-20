@@ -117,6 +117,12 @@ type Approval struct {
 	By        string `json:"by"`
 }
 
+// UserSender marks a message the human raised from a panel rather than an agent.
+// It is a reserved sender identity only: no Member carries it, it is never a CLI
+// actor, and nothing can be delivered to it. Member IDs reserve it so the origin
+// of such a message cannot be forged by recruiting a member of the same name.
+const UserSender = "user"
+
 // Message is a durable outbox entry retained until the recipient acknowledges it.
 // Attempt and RecipientGeneration fence delivery retries across member restarts.
 type Message struct {

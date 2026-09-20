@@ -23,19 +23,21 @@ Commands:
   task assign TASK --owner NAME --to NAME[,NAME] ; task claim TASK
   task progress TASK --text TEXT; task milestone TASK --name NAME
   task submit TASK --summary TEXT [--sha COMMIT]
-  task evidence TASK --kind review|test --sha COMMIT --passed true|false --summary TEXT
+  task evidence TASK --kind review|test --submission ID [--sha COMMIT] --passed true|false --summary TEXT
   task approve TASK; task merge TASK; task gate TASK --name NAME; task reopen TASK
   message send MEMBER --text TEXT [--task TASK]; message broadcast --text TEXT --task TASK (or explicit --all)
-  message inbox; message ack MESSAGE; reply MESSAGE --text TEXT
-  help request --task TASK --text QUESTION; help list; help answer QUESTION --text ANSWER
+  message inbox; message ack MESSAGE; message reply MESSAGE --text TEXT
+  question request --task TASK --text QUESTION; question list; question answer QUESTION --text ANSWER
   sync
+Every task submission returns an immutable submission ID; use the current ID from task inspect for evidence. Non-code evidence requires --submission and no SHA. Code evidence accepts --submission or the exact candidate --sha; passing both must match. Reopen invalidates prior submission evidence.
+Text, summary, instructions and description flags also accept --FIELD-file FILE (or - for stdin), exclusively with inline text.
 Define each member identity and responsibilities freely with --role and --instructions; no role templates are required. --instructions is system/developer context, not an automatic opening user message. --task adds participation; assign the owner separately to dispatch real work.
 Use a stable --request-id for retried task create and message send operations. Repeated reply to one message is idempotent. Messages carry recipient_generation: ignore messages for a different generation and consult inbox. Never execute a duplicate message twice; acknowledge it and read current task state first.
 New tasks default to assigned (not claimable). Explicitly assign --owner, even after member add --task (which only adds a participant). Only --dispatch open tasks can be claimed. Every owner can own one unfinished task. Source edits stop after submit until master task reopen invalidates the candidate. Task blockers are separate from phase. Do not work past approval gates or unanswered blocking questions. Run task setup steps in its workspace, checking local MCP/config visibility without copying secrets.
-Messages carry sender/id/task. Acknowledge incoming messages with message ack; answer a QUESTION with reply, but do not reply to pure acknowledgments (avoid ping-pong).
+Messages carry sender/id/task. Acknowledge incoming messages with message ack; answer a peer message question with message reply; master resolves an escalated question with question answer, but do not reply to pure acknowledgments (avoid ping-pong).
 Task state is authoritative; reading a message is not claiming a task. Claim or follow the assignment before working. Read the task workspace and acceptance criteria via board. Only the task owner writes the task worktree. Others review/read or request a separate task/worktree.
 Record meaningful progress, blockers and completion via CLI. Report reached milestones with task milestone and keep task progress updated between milestones; these are separate records. task submit must include actual evidence and a commit for code tasks. Never say a task is complete merely because you stopped thinking. Reporting gates require master approval before proceeding.
-For uncertainty or missing permission, use help request then END YOUR TURN. Do not sleep or poll waiting for a reply: a new message wakes you. Workers MUST NOT ask the human or use AskUserQuestion/request_user_input/plan-mode question tools. Do not enter plan mode; report the question to master instead. Master alone may ask the human.
+For uncertainty or missing permission, use question request then END YOUR TURN. Do not sleep or poll waiting for a reply: a new message wakes you. Workers MUST NOT ask the human or use AskUserQuestion/request_user_input/plan-mode question tools. Do not enter plan mode; report the question to master instead. Master alone may ask the human.
 Do not merge or remove worktrees yourself. Only master can approve and merge through CLI. Preserve edits on restart. Never alter global configuration or install team skills/MCP.
 If idle, check your inbox and assigned/ready tasks once, then return; do not busy-poll. Status/help/completion notices to master are informational unless action is needed.
 `, m.ID, m.Role, s.ID, t.Prompt, m.ID, m.Generation)

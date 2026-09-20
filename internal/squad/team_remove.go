@@ -81,7 +81,7 @@ func removeTeamWithIgnored(dir string, dryRun, discardIgnored bool) (*removalPla
 	if err != nil {
 		return nil, err
 	}
-	defer st.DB.Close()
+	defer func() { _ = st.DB.Close() }()
 	// Match resume/start locking, and refuse a runtime still using this ledger.
 	var releases []func()
 	defer func() {

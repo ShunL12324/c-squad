@@ -97,6 +97,9 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 		return doctor(o)
 	}
 
+	if len(p) >= 2 && p[0] == "team" && p[1] == "remove" {
+		return removeSavedTeam(o)
+	}
 	if p[0] == "list" {
 		return listTeams(o)
 	}

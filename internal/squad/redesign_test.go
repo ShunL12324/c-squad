@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/ShunL12324/c-squad/internal/config"
 )
 
 func TestStartCollisionIsReadOnlyBeforePreflight(t *testing.T) {
@@ -117,5 +119,36 @@ func TestResourceTablesAreConciseRows(t *testing.T) {
 		if !strings.Contains(text, tc.header) || !strings.Contains(text, tc.content) || strings.Contains(text, "FIELD") || strings.Count(text, "\n") != 2 {
 			t.Fatalf("not a resource row: %s", text)
 		}
+	}
+}
+
+func TestIntegratedRemovalDispatch(t *testing.T) {
+	st, _ := savedRemovalTeam(t, false)
+	s, err := st.read()
+	must(t, err)
+	t.Chdir(s.Root)
+	t.Setenv("CSQUAD_HOME", "")
+	must(t, Execute([]string{"team", "remove"}, options{"name": "old", "dry-run": "true"}, nil))
+	if _, err = os.Stat(filepath.Join(st.Dir, "state.db")); err != nil {
+		t.Fatal("dry run removed ledger", err)
+	}
+	bindSession(t, st, "master", "1")
+	if err = Execute([]string{"team", "remove"}, options{"name": "old", "dry-run": "true"}, nil); err == nil || !strings.Contains(err.Error(), "outside the team") {
+		t.Fatalf("bound removal reached wrong dispatch: %v", err)
+	}
+}
+
+func TestPromptUsesCanonicalCLIAndSubmissionIdentity(t *testing.T) {
+	st := testStore(t)
+	s, err := st.read()
+	must(t, err)
+	text := prompt(s, s.Members["a"], config.Template{})
+	for _, want := range []string{"csquad COMMAND", "message reply MESSAGE", "question request", "question answer", "--submission ID", "Non-code evidence requires --submission", "Acknowledge each message_id through message ack"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("prompt missing %q", want)
+		}
+	}
+	if strings.Contains(text, "help request") {
+		t.Fatal("prompt retained old escalation spelling")
 	}
 }

@@ -21,6 +21,8 @@ def quote(value):
 
 
 def check_origin(loaded, directory):
+    if not loaded or not Path(loaded).is_absolute():
+        raise AssertionError(f"completion source must be an absolute path, got {loaded!r}")
     # macOS /var and /private/var may name the same installed directory.
     expected = (directory / "_csquad").resolve(strict=True)
     if Path(loaded).resolve(strict=True) != expected:

@@ -28,6 +28,9 @@ class ProcessTests(unittest.TestCase):
             alias = root / "alias"
             alias.symlink_to(installed, target_is_directory=True)
             shell_completion.check_origin(str(alias / "_csquad"), installed)
+            for invalid in ("", "_csquad"):
+                with self.assertRaises(AssertionError):
+                    shell_completion.check_origin(invalid, installed)
             other = root / "_csquad"
             other.write_text("unrelated completion")
             with self.assertRaises(AssertionError):

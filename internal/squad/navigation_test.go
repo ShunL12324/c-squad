@@ -109,7 +109,14 @@ func TestNavigationIsScopedAndRefreshesRoster(t *testing.T) {
 }
 
 func TestMemberSwitchKeysAreBoundAndConfigurable(t *testing.T) {
-	st, socket := reproTeam(t, "180", "40")
+	for _, height := range []string{"40", "28"} {
+		t.Run("height_"+height, func(t *testing.T) { testMemberSwitchKeys(t, height) })
+	}
+}
+
+func testMemberSwitchKeys(t *testing.T, height string) {
+	t.Helper()
+	st, socket := reproTeam(t, "180", height)
 	s, err := st.read()
 	must(t, err)
 	root, _ := navigationTables(st)
@@ -122,7 +129,7 @@ func TestMemberSwitchKeysAreBoundAndConfigurable(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "python3", "testdata/member_switch.py", socket, "layout-master", "layout-a", "layout-b").CombinedOutput()
+	out, err := exec.CommandContext(ctx, "python3", "testdata/member_switch.py", socket, "layout-master", "layout-a", "layout-b", height).CombinedOutput()
 	if err != nil {
 		t.Fatalf("member switching: %v\n%s", err, out)
 	}

@@ -520,6 +520,28 @@ func TestShortRosterDrawsNoScrollbar(t *testing.T) {
 	}
 }
 
+func TestMemberResizeFillsViewportAfterInitialSnapshot(t *testing.T) {
+	// A detached panel may read its roster before receiving its real size.
+	// At the initial height only the owner fits below the pinned Master.
+	m := model{kind: "members", width: 24, height: 24, current: "b", selectedID: "b", loading: true}
+	data := Snapshot{Active: true, Members: []Member{{ID: "master"}, {ID: "a"}, {ID: "b", Color: "115"}}}
+	next, _ := m.Update(snapshotMsg{data: data})
+	m = next.(model)
+	if m.top != 2 {
+		t.Fatalf("initial viewport should reveal b, got top %d", m.top)
+	}
+	next, _ = m.Update(tea.WindowSizeMsg{Width: 28, Height: 34})
+	m = next.(model)
+	if m.top != 1 {
+		t.Fatalf("expanded viewport still hides a: top=%d\n%s", m.top, ansi.Strip(m.View()))
+	}
+	for _, cell := range scrollColumn(m) {
+		if cell == '│' || cell == '┃' {
+			t.Fatal("expanded roster fits but still shows a scrollbar")
+		}
+	}
+}
+
 func TestMemberCardShowsItsOwnGitState(t *testing.T) {
 	for _, tt := range []struct {
 		name           string

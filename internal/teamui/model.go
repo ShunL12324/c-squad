@@ -158,9 +158,15 @@ func (m *model) remember() {
 	}
 }
 func (m *model) reveal() {
-	if m.kind == "members" && m.hasMaster() {
-		m.top = max(1, m.top)
-		if m.selected == 0 {
+	if m.kind == "members" {
+		first := 0
+		if m.hasMaster() {
+			first = 1
+		}
+		// A larger pane can fit cards that were above the old viewport.
+		// Clamp before the pinned-Master return as well as for other members.
+		m.top = max(first, min(m.top, max(first, m.count()-m.rows())))
+		if m.hasMaster() && m.selected == 0 {
 			return
 		}
 	}

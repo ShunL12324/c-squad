@@ -7,6 +7,7 @@ team's tmux root table, which is consumed before the pane sees the key.
 import errno, fcntl, os, pty, select, signal, struct, subprocess, sys, termios, time
 
 socket, master, first, last = sys.argv[1:5]
+height = int(sys.argv[5]) if len(sys.argv) > 5 else 40
 env = dict(os.environ, TERM="xterm-256color")
 for key in ("TMUX", "TMUX_PANE"):
     env.pop(key, None)
@@ -55,15 +56,19 @@ def owner_highlighted(session, member):
     while time.monotonic() < deadline:
         screen = tm("capture-pane", "-p", "-t", panel(session, "members"))
         for row in screen.splitlines():
-            if "▎" in row and row.replace("▎", "").replace("◆", "").strip() == member:
+            # The right gutter may show a scrollbar independently of the
+            # owner's stripe on the left. It is not part of the member name.
+            title = row.rstrip().removesuffix("│").removesuffix("┃").strip()
+            if title.startswith("▎") and title[1:].strip().removeprefix("◆").strip() == member:
                 return True
         drain(.05)
+    print(f"Missing owner highlight for {member!r} in {session}:\n{screen}", flush=True)
     return False
 
 
 try:
     fd, slave = pty.openpty()
-    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 180, 0, 0))
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", height, 180, 0, 0))
     child = subprocess.Popen(["tmux", "-S", socket, "attach", "-t", master],
                              stdin=slave, stdout=slave, stderr=slave, env=env, start_new_session=True)
     os.close(slave)

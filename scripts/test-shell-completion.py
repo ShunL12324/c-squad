@@ -93,13 +93,16 @@ def main():
             log(f"PTY cleanup: pid={pid}")
             try:
                 kill_tree(pid)
-                deadline = time.monotonic() + 5
-                while os.waitpid(pid, os.WNOHANG)[0] == 0:
-                    if time.monotonic() >= deadline:
-                        raise RuntimeError(f"PTY child {pid} did not exit after SIGKILL")
-                    time.sleep(0.01)
             finally:
+                # Release the PTY before reaping: macOS can keep a killed shell
+                # in terminal teardown while the master descriptor stays open.
                 os.close(terminal)
+            log("PTY cleanup: master closed; waiting for child")
+            deadline = time.monotonic() + 5
+            while os.waitpid(pid, os.WNOHANG)[0] == 0:
+                if time.monotonic() >= deadline:
+                    raise RuntimeError(f"PTY child {pid} did not exit after SIGKILL")
+                time.sleep(0.01)
             log("PTY cleanup: complete")
         loaded = origin.read_text().strip()
         if args.fpath:

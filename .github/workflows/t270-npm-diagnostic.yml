@@ -25,5 +25,6 @@ jobs:
           run-id: 35525350986
           name: npm-package
           path: dist/npm
+      - run: python3 scripts/test-packaging-process.py
       - name: Exercise unchanged npm artifact with bounded diagnostics
         run: python3 -u scripts/test-npm.py dist/npm/*.tgz

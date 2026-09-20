@@ -67,6 +67,24 @@ func TestCompletionInstallIsIdempotent(t *testing.T) {
 	}
 }
 
+// Supplementary format check: the shell-level proof lives in
+// scripts/test-npm.py, which runs these lines in Zsh and Bash. A path the user
+// pastes unquoted splits into several words and kills completion silently.
+func TestCompletionInstallQuotesPastedPaths(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "dir with spaces")
+	for _, test := range []struct{ shell, want string }{
+		{"zsh", "\n\tfpath=('" + directory + "' $fpath)\n"},
+		{"bash", "\n\tsource '" + filepath.Join(directory, "csquad") + "'"},
+		{"powershell", "\n\t. '" + filepath.Join(directory, "csquad.ps1") + "'"},
+	} {
+		t.Run(test.shell, func(t *testing.T) {
+			if out := runCLI(t, "completion", "install", "--shell", test.shell, "--dir", directory); !strings.Contains(out, test.want) {
+				t.Fatalf("missing %q in: %s", test.want, out)
+			}
+		})
+	}
+}
+
 // The installer owns one directory; shell configuration stays the user's.
 func TestCompletionInstallTouchesNoShellConfiguration(t *testing.T) {
 	home := t.TempDir()
@@ -85,7 +103,7 @@ func TestCompletionInstallTouchesNoShellConfiguration(t *testing.T) {
 		t.Fatalf("shell configuration was modified: %q %v", content, err)
 	}
 	// The user has to add the fpath entry, so the command must print it.
-	if !strings.Contains(out, "fpath=("+filepath.Join(home, "data", "zsh", "site-functions")+" $fpath)") {
+	if !strings.Contains(out, "fpath=('"+filepath.Join(home, "data", "zsh", "site-functions")+"' $fpath)") {
 		t.Fatalf("missing fpath instruction: %s", out)
 	}
 }

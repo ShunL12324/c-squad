@@ -125,6 +125,10 @@ csquad completion status            # installed files, and the check for each sh
 | Fish | `~/.config/fish/completions/csquad.fish` | none |
 | PowerShell | `~/.local/share/csquad/csquad.ps1` | source it from `$PROFILE` |
 
+Paste the line the command prints rather than retyping it: it quotes the
+directory, which matters when the path contains a space, where an unquoted entry
+would silently become two `fpath` elements.
+
 **Zsh ordering matters.** The `fpath` entry must come *before* the command that
 runs `compinit`; with Oh My Zsh, put it above `source $ZSH/oh-my-zsh.sh`, which
 calls `compinit` itself:

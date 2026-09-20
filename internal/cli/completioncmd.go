@@ -52,7 +52,7 @@ func completionShells() []shellCompletion {
 				// _get_comp_words_by_ref, so that package is a hard requirement.
 				return "bash-completion v2 reads that directory automatically and provides the\n" +
 					"helpers this script needs; start a new shell.\n" +
-					"If nothing completes, source " + path + " from ~/.bashrc\nafter bash-completion itself is loaded."
+					"If nothing completes, add this to ~/.bashrc after bash-completion loads:\n\n\tsource " + quoteShell(path)
 			},
 			check: "complete -p csquad",
 			long: "Generate the bash completion script for csquad.\n\nLoad it into the CURRENT shell only:\n\n\tsource <(csquad completion bash)\n\n" +
@@ -70,7 +70,7 @@ func completionShells() []shellCompletion {
 			directory: func() (string, error) { return dataDirectory("zsh", "site-functions") },
 			loading: func(path string) string {
 				return "Add this line to ~/.zshrc above the command that runs compinit (with Oh My\nZsh, above 'source $ZSH/oh-my-zsh.sh'), then start a new shell:\n\n\tfpath=(" +
-					filepath.Dir(path) + " $fpath)\n\nIf completion still does not appear, the cached index is stale: run\n'rm -f ~/.zcompdump*' and start another shell."
+					quoteShell(filepath.Dir(path)) + " $fpath)\n\nIf completion still does not appear, the cached index is stale: run\n'rm -f ~/.zcompdump*' and start another shell."
 			},
 			check: "print -r -- ${_comps[csquad]:-missing}",
 			long: "Generate the zsh completion script for csquad.\n\nLoad it into the CURRENT shell only:\n\n\tsource <(csquad completion zsh)\n\n" +
@@ -103,13 +103,26 @@ func completionShells() []shellCompletion {
 			// goes next to other csquad data and the profile sources it.
 			directory: func() (string, error) { return dataDirectory("csquad") },
 			loading: func(path string) string {
-				return "Add this line to your profile ($PROFILE), then start a new shell:\n\n\t. " + path
+				return "Add this line to your profile ($PROFILE), then start a new shell:\n\n\t. " + quotePowerShell(path)
 			},
 			check: "Get-Command csquad",
 			long: "Generate the powershell completion script for csquad.\n\nLoad it into the CURRENT session only:\n\n\tcsquad completion powershell | Out-String | Invoke-Expression\n\n" +
 				fmt.Sprintf(completionPersistence, "powershell"),
 		},
 	}
+}
+
+// quoteShell renders a path as one Bourne/Zsh word. Every printed line is meant
+// to be pasted into a startup file, where an unquoted space would silently
+// become two fpath entries and leave completion dead with no error.
+func quoteShell(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
+}
+
+// quotePowerShell does the same for a PowerShell single-quoted string, which
+// escapes an embedded quote by doubling it instead.
+func quotePowerShell(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
 func dataDirectory(parts ...string) (string, error) {

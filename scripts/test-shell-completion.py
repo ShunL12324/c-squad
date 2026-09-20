@@ -25,7 +25,12 @@ def main():
                         help="Directory prepended to PATH, for a csquad outside the system prefix")
     parser.add_argument("--fpath", type=Path,
                         help="Directory prepended to fpath, for a completion script the shell does not autoload")
+    parser.add_argument("--eval", dest="evaluate",
+                        help="Zsh line run verbatim before compinit; use it to execute the exact"
+                             " instruction csquad printed instead of a line this script composes")
     args = parser.parse_args()
+    if args.evaluate and not args.fpath:
+        parser.error("--eval needs --fpath, the directory the completion must come from")
     with tempfile.TemporaryDirectory(prefix="csquad-completion-") as temporary:
         origin = Path(temporary) / "origin"
         pid, terminal = pty.fork()
@@ -50,13 +55,21 @@ def main():
                         return
             raise AssertionError(f"Missing {expected!r} in terminal output: {output!r}")
 
-        # A caller-supplied directory stands in for the fpath line that the user
-        # adds to ~/.zshrc; the test must never edit a real shell configuration.
-        prologue = f"fpath=({quote(args.fpath.resolve())} $fpath); ".encode() if args.fpath else b""
+        # These stand in for the fpath line the user adds to ~/.zshrc; the test
+        # must never edit a real shell configuration. --eval runs the printed
+        # instruction unmodified, so a quoting defect in it fails the test.
+        prologue = b""
+        if args.evaluate:
+            prologue = args.evaluate.encode() + b"; "
+        elif args.fpath:
+            prologue = f"fpath=({quote(args.fpath.resolve())} $fpath); ".encode()
         try:
             # Load the shell's normal completion system, without sourcing or
             # generating any C Squad completion script explicitly.
-            os.write(terminal, prologue + b"unsetopt ZLE; autoload -Uz compinit; compinit -D; "
+            # -u accepts group-writable temporary directories: without it compinit
+            # stops for an interactive prompt and the run times out instead of
+            # reporting what actually went wrong.
+            os.write(terminal, prologue + b"unsetopt ZLE; autoload -Uz compinit; compinit -D -u; "
                      b"PROMPT=''; setopt ZLE; print CSQ_READY\n")
             wait_for(b"\r\nCSQ_READY\r\n")
             os.write(terminal, b"function csq_buffer() { print -r -- \"CSQ_BUFFER=$BUFFER\"; "

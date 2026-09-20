@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ShunL12324/c-squad/internal/teamui"
 )
 
 // resetGitCache keeps one test's resolutions out of the next one's counts.
@@ -212,22 +214,22 @@ func TestPanelSnapshotShowsTheMemberBranchNotTheTaskWorkspace(t *testing.T) {
 	}))
 	snapshot, err := st.panelSnapshot()
 	must(t, err)
-	var card *struct{ branch string }
-	for _, member := range snapshot.Members {
+	var card *teamui.Member
+	for i, member := range snapshot.Members {
 		if member.ID == "a" {
-			card = &struct{ branch string }{member.Branch}
-			if member.Worktree {
-				t.Fatal("the member's own plain repository was reported as a linked worktree")
-			}
+			card = &snapshot.Members[i]
 		}
 	}
 	if card == nil {
 		t.Fatal("member a is missing from the snapshot")
 	}
-	if card.branch == "csquad/csquad/T99" {
+	if card.Branch == "csquad/csquad/T99" {
 		t.Fatal("the card shows the task's branch instead of the member's own")
 	}
-	if card.branch != "feature/their-own" {
-		t.Fatalf("branch %q, want feature/their-own", card.branch)
+	if card.Branch != "feature/their-own" {
+		t.Fatalf("branch %q, want feature/their-own", card.Branch)
+	}
+	if card.Worktree {
+		t.Fatal("the member's own plain repository was reported as a linked worktree")
 	}
 }

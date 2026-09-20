@@ -94,8 +94,8 @@ def main():
             try:
                 kill_tree(pid)
             finally:
-                # Release the PTY before reaping: macOS can keep a killed shell
-                # in terminal teardown while the master descriptor stays open.
+                # Release the PTY before reaping. On the macOS runner, waiting
+                # with the master still open stalled even after SIGKILL.
                 os.close(terminal)
             log("PTY cleanup: master closed; waiting for child")
             deadline = time.monotonic() + 5

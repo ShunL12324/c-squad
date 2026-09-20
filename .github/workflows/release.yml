@@ -153,6 +153,7 @@ jobs:
         with:
           name: npm-package
           path: dist/npm
+      - run: python3 scripts/test-packaging-process.py
       - run: python3 scripts/test-npm.py dist/npm/*.tgz
 
   npm:

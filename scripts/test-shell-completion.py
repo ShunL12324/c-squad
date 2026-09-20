@@ -7,11 +7,12 @@ import os
 from pathlib import Path
 import pty
 import select
-import signal
 import struct
 import tempfile
 import termios
 import time
+
+from packaging_test_support import kill_tree, log
 
 
 def quote(value):
@@ -33,6 +34,7 @@ def main():
         parser.error("--eval needs --fpath, the directory the completion must come from")
     with tempfile.TemporaryDirectory(prefix="csquad-completion-") as temporary:
         origin = Path(temporary) / "origin"
+        log("PTY fork: starting")
         pid, terminal = pty.fork()
         if pid == 0:
             os.environ["ZDOTDIR"] = temporary
@@ -40,11 +42,13 @@ def main():
             if args.path:
                 os.environ["PATH"] = f"{args.path.resolve()}{os.pathsep}{os.environ['PATH']}"
             os.execvp("zsh", ["zsh", "-f"])
+        log(f"PTY fork: child pid={pid}, fd={terminal}")
         # A wide window keeps echoed commands on one line, so the markers below
         # cannot be split by wrapping.
         fcntl.ioctl(terminal, termios.TIOCSWINSZ, struct.pack("HHHH", 50, 400, 0, 0))
 
         def wait_for(expected):
+            log(f"PTY waiting for {expected!r}")
             output = b""
             deadline = time.monotonic() + 15
             while time.monotonic() < deadline:
@@ -52,6 +56,7 @@ def main():
                 if ready:
                     output += os.read(terminal, 65536)
                     if expected in output:
+                        log(f"PTY received {expected!r}")
                         return
             raise AssertionError(f"Missing {expected!r} in terminal output: {output!r}")
 
@@ -85,9 +90,17 @@ def main():
                      + quote(origin).encode() + b"; print CSQ_ORIGIN\n")
             wait_for(b"\r\nCSQ_ORIGIN\r\n")
         finally:
-            os.kill(pid, signal.SIGKILL)
-            os.waitpid(pid, 0)
-            os.close(terminal)
+            log(f"PTY cleanup: pid={pid}")
+            try:
+                kill_tree(pid)
+                deadline = time.monotonic() + 5
+                while os.waitpid(pid, os.WNOHANG)[0] == 0:
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError(f"PTY child {pid} did not exit after SIGKILL")
+                    time.sleep(0.01)
+            finally:
+                os.close(terminal)
+            log("PTY cleanup: complete")
         loaded = origin.read_text().strip()
         if args.fpath:
             expected = str(args.fpath.resolve() / "_csquad")

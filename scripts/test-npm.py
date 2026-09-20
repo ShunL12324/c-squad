@@ -7,14 +7,15 @@ import os
 import platform
 from pathlib import Path
 import shutil
-import subprocess
 import sys
 import tarfile
 import tempfile
 
+from packaging_test_support import command, log
+
 
 def run(*args, **kwargs):
-    return subprocess.run(args, check=True, text=True, capture_output=True, **kwargs).stdout
+    return command(*args, **kwargs).stdout
 
 
 def check_bash_instruction(printed):
@@ -24,9 +25,8 @@ def check_bash_instruction(printed):
         print("SKIP: bash is missing; the printed source line was not exercised")
         return
     instruction = next(line.strip() for line in printed.splitlines() if line.strip().startswith("source "))
-    result = subprocess.run(["bash", "--noprofile", "--norc", "-c",
-                             f"{instruction}; declare -F __start_csquad > /dev/null && complete -p csquad"],
-                            capture_output=True, text=True)
+    result = command("bash", "--noprofile", "--norc", "-c",
+                             f"{instruction}; declare -F __start_csquad > /dev/null && complete -p csquad", check=False)
     assert result.returncode == 0 and "-F __start_csquad csquad" in result.stdout, (instruction, result)
 
 
@@ -73,6 +73,7 @@ def check_completion(root, binary):
 
 
 def test(package):
+    log(f"PACKAGE {package} on {platform.system()} {platform.machine()}")
     with tarfile.open(package) as archive:
         metadata = json.load(archive.extractfile("package/package.json"))
         names = set(archive.getnames())
@@ -96,7 +97,7 @@ def test(package):
         assert f"csquad {version} " in run(str(link), "version", cwd=root)
         assert "start" in run(str(binary), "--help")
         assert "csquad" in run(str(binary), "completion", "bash")
-        result = subprocess.run([str(binary), "not-a-command"], capture_output=True, text=True)
+        result = command(str(binary), "not-a-command", check=False)
         assert result.returncode != 0 and "unknown command" in result.stderr
         run("npm", "exec", "--offline", "--yes", "--package", str(package), "--",
             "csquad", "version", cwd=root)
@@ -109,8 +110,8 @@ def test(package):
         executable = native / f"{system}-{arch}/csquad"
         executable.write_text('#!/bin/sh\nprintf "%s\\n" "$PWD" "$CSQUAD_NPM_TEST" "$@"\nexit 23\n')
         environment = dict(os.environ, CSQUAD_NPM_TEST="preserved")
-        result = subprocess.run([str(binary), "argument with spaces", "--flag"],
-                                cwd=root, env=environment, capture_output=True, text=True)
+        result = command(str(binary), "argument with spaces", "--flag",
+                         cwd=root, env=environment, check=False)
         assert result.returncode == 23
         assert result.stdout.splitlines() == [str(root.resolve()), "preserved", "argument with spaces", "--flag"]
         run("npm", "uninstall", "--global", "--prefix", str(prefix), "csquad",

@@ -52,7 +52,32 @@ func TestCrashCleanupAndProjectResume(t *testing.T) {
 		}
 		return out
 	}
-	cli("start", "--name", "test", "--engine", "claude", "--detach")
+	// Two creators of the same name must produce exactly one live team.
+	type creation struct {
+		out []byte
+		err error
+	}
+	results := make(chan creation, 2)
+	for range 2 {
+		go func() {
+			c := exec.Command(binary, "start", "test", "--engine", "claude", "--detach")
+			c.Dir, c.Env = root, env
+			out, err := c.CombinedOutput()
+			results <- creation{out, err}
+		}()
+	}
+	successes := 0
+	for range 2 {
+		result := <-results
+		if result.err == nil {
+			successes++
+		} else if !strings.Contains(string(result.out), "already exists") {
+			t.Fatalf("concurrent create: %v %s", result.err, result.out)
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("concurrent creators succeeded %d times", successes)
+	}
 	dir := filepath.Join(root, ".csquad", "teams", "test")
 	st, e := openStore(dir)
 	must(t, e)
@@ -145,7 +170,19 @@ func TestCrashCleanupAndProjectResume(t *testing.T) {
 	if out := string(cli("list")); !strings.Contains(out, "test") || !strings.Contains(out, "stopped") {
 		t.Fatal("stopped team missing from list:", out)
 	}
-	cli("start", "--name", "test", "--detach")
+	for _, args := range [][]string{{"start", "test", "--detach"}, {"--name", "test", "--detach"}} {
+		c := exec.Command(binary, args...)
+		c.Dir, c.Env = root, env
+		prior := read()
+		if out, err := c.CombinedOutput(); err == nil || !strings.Contains(string(out), "already exists") {
+			t.Fatalf("collision %v: %v %s", args, err, out)
+		}
+		next := read()
+		if next.Epoch != prior.Epoch || next.Active != prior.Active || next.Phase != prior.Phase {
+			t.Fatal("rejected start resumed interrupted team")
+		}
+	}
+	cli("resume", "test", "--detach")
 	after := wait(func(s *State) bool {
 		return s.Active && s.Phase == TeamPhaseRunning && s.Members["alice"].EnginePID > 0
 	})
@@ -158,7 +195,11 @@ func TestCrashCleanupAndProjectResume(t *testing.T) {
 		t.Fatal("work lost")
 	}
 	epoch := read().Epoch
-	cli("start", "--name", "test", "--detach")
+	c := exec.Command(binary, "start", "test", "--detach")
+	c.Dir, c.Env = root, env
+	if out, err := c.CombinedOutput(); err == nil || !strings.Contains(string(out), "already exists") {
+		t.Fatalf("start collision: %v %s", err, out)
+	}
 	if read().Epoch != epoch {
 		t.Fatal("start restarted a running team")
 	}

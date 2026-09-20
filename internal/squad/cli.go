@@ -98,7 +98,7 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 	}
 
 	if p[0] == "list" {
-		return listTeams()
+		return listTeams(o)
 	}
 	if p[0] == "start" {
 		return start(o)
@@ -115,45 +115,24 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 			return e
 		}
 	}
-	dir := o["team"]
-	if dir == "" {
-		dir = os.Getenv("CSQUAD_STATE_DIR")
-	}
-	if dir == "" {
-		b, _ := os.ReadFile(filepath.Join(currentProjectBase(), "last-team"))
-		if len(b) == 0 {
-			b, _ = os.ReadFile(filepath.Join(stateBase(), "last-team"))
+	name := o["team-name"]
+	if o["name"] != "" && contains([]string{"resume", "attach", "board", "stop", "ui", "recover"}, p[0]) {
+		if name != "" {
+			return errors.New("specify only one team selector")
 		}
-		dir = strings.TrimSpace(string(b))
+		name = o["name"]
 	}
-	if o["name"] != "" && contains([]string{"resume", "attach", "board", "stop", "ui"}, p[0]) && o["team"] == "" {
-		if !validID.MatchString(o["name"]) {
-			return errors.New("invalid team name")
-		}
-		var err error
-		dir, err = namedTeam(o["name"])
-		if err != nil {
-			return err
-		}
-	}
-	// --name selects a team by name, so it escapes the --team agreement above.
-	// A member session is bound to one team, and cross-team work from inside it
-	// cannot succeed: the caller is not a member of the other team, or is one
-	// only because both teams happen to share an identity and a generation.
-	// Refuse with the workaround instead of failing later on an unrelated member
-	// lookup, or acting on the other team by coincidence. This applies to
-	// plumbing too, unlike the identity rules: only the five commands above
-	// resolve --name, and no argv C Squad builds itself passes it.
-	if bound := os.Getenv("CSQUAD_STATE_DIR"); bound != "" && cleanPath(dir) != cleanPath(bound) {
-		return fmt.Errorf("this session is bound to team %q, so it cannot act on team %q; run that command from a terminal outside the team", filepath.Base(cleanPath(bound)), filepath.Base(cleanPath(dir)))
-	}
-	// A bare attach argument selects a team when no explicit team/member context
-	// exists. Inside an agent session, the same argument remains a member name.
-	if p[0] == "attach" && len(p) > 1 && o["team"] == "" && o["name"] == "" && os.Getenv("CSQUAD_STATE_DIR") == "" {
-		if found, err := namedTeam(p[1]); err == nil {
-			dir = found
+	// Preserve legacy attach MEMBER in explicit/bound context, and attach TEAM
+	// outside that context. member attach always names a member unambiguously.
+	if p[0] == "attach" && len(p) > 1 && o["team"] == "" && name == "" && os.Getenv("CSQUAD_STATE_DIR") == "" {
+		if _, err := namedTeam(p[1]); err == nil {
+			name = p[1]
 			p = []string{"attach"}
 		}
+	}
+	dir, e := ResolveTeamDirectory(o["team"], name)
+	if e != nil {
+		return e
 	}
 	st, e := openStore(dir)
 	if e != nil {
@@ -219,6 +198,9 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 	if p[0] == "hook" {
 		return hook(st, actor, gen)
 	}
+	if p[0] == "member" && len(p) == 3 && p[1] == "attach" {
+		return attach(st, p[2])
+	}
 	if p[0] == "attach" {
 		id := "master"
 		if len(p) > 1 {
@@ -250,7 +232,7 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 			return e
 		}
 		if o["full"] == "true" {
-			return jsonOut(s)
+			return queryOut(o, s)
 		}
 		messages := s.Messages
 		if len(messages) > 5 {
@@ -260,7 +242,7 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 		if len(events) > 10 {
 			events = events[len(events)-10:]
 		}
-		return jsonOut(map[string]any{"team": s.ID, "root": s.Root, "active": s.Active, "phase": s.Phase, "stop_reason": s.StopReason, "runtime_seen": s.RuntimeSeen, "members": s.Members, "tasks": s.Tasks, "questions": s.Questions, "recent_messages": messages, "recent_activity": events})
+		return queryOut(o, map[string]any{"team": s.ID, "root": s.Root, "active": s.Active, "phase": s.Phase, "stop_reason": s.StopReason, "runtime_seen": s.RuntimeSeen, "members": s.Members, "tasks": s.Tasks, "questions": s.Questions, "recent_messages": messages, "recent_activity": events})
 	}
 	if p[0] == "runtime" {
 		return st.runRuntime()
@@ -324,6 +306,22 @@ func start(o options) error {
 	if r, e := git(cwd, "rev-parse", "--show-toplevel"); e == nil {
 		root = r
 	}
+	b := make([]byte, 4)
+	if _, e = rand.Read(b); e != nil {
+		return e
+	}
+	id := o["name"]
+	if id == "" {
+		id = "team-" + hex.EncodeToString(b)
+	}
+	if !validID.MatchString(id) {
+		return fmt.Errorf("invalid team name")
+	}
+	base := projectBase(root)
+	dir := filepath.Join(base, "teams", id)
+	if e = rejectExistingTeam(root, dir, id); e != nil {
+		return e
+	}
 	cfg, e := config.Load(root)
 	if e != nil {
 		return e
@@ -341,42 +339,11 @@ func start(o options) error {
 		return e
 	}
 	cfg.StartupEnv = agentenv.Merge(cfg.StartupEnv, startupEnv)
-	b := make([]byte, 4)
-	rand.Read(b)
-	id := o["name"]
-	if id == "" {
-		id = "team-" + hex.EncodeToString(b)
-	}
-	if !validID.MatchString(id) {
-		return fmt.Errorf("invalid team name")
-	}
-	base := projectBase(root)
 	if e = excludeProjectState(root); e != nil {
 		return e
 	}
 	if e = os.MkdirAll(base, 0700); e != nil {
 		return e
-	}
-	if e = reapProjectTeams(base); e != nil {
-		return e
-	}
-	dir := filepath.Join(base, "teams", id)
-	if existing, err := namedTeam(id); err == nil {
-		old, err := openStore(existing)
-		if err != nil {
-			return err
-		}
-		state, err := old.read()
-		_ = old.DB.Close()
-		if err != nil {
-			return err
-		}
-		if state.Root == root {
-			return startExisting(existing, o)
-		}
-	}
-	if _, e = os.Stat(filepath.Join(dir, "state.db")); e == nil {
-		return startExisting(dir, o)
 	}
 	st, e := openStore(dir)
 	if e != nil {
@@ -392,6 +359,9 @@ func start(o options) error {
 		return errors.New("team already exists; use attach or resume")
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return err
+	}
+	if e = reapProjectTeams(base); e != nil {
+		return e
 	}
 	bin, e := os.Executable()
 	if e != nil {

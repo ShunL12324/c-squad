@@ -51,7 +51,7 @@ func messageCommand(st *Store, actor string, p []string, o options) error {
 					a = append(a, m)
 				}
 			}
-			return jsonOut(a)
+			return queryOut(o, a)
 		case "retry":
 			if actor != "master" || len(p) < 3 {
 				return errors.New("master must specify message ID")

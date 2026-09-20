@@ -408,7 +408,7 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 	}
 	// The durable outbox retains failed deliveries for runtime retry.
 	_ = st.syncMessages()
-	return jsonOut(result)
+	return queryOut(o, result)
 }
 func checkEvidence(t *Task) error {
 	latest := map[string]Evidence{}

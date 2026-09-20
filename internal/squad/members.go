@@ -25,7 +25,7 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 		if e != nil {
 			return e
 		}
-		return jsonOut(s.Members)
+		return queryOut(o, s.Members)
 	}
 	if len(p) < 2 {
 		return errors.New("member ID required")
@@ -48,7 +48,7 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 		if state, ok := memberGit(m.Cwd); ok {
 			record["git"] = state
 		}
-		return jsonOut(record)
+		return queryOut(o, record)
 	}
 	if actor != "master" {
 		return fmt.Errorf("only master manages members: %w", ErrMasterRequired)

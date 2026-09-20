@@ -73,10 +73,14 @@ func Report(w io.Writer, err error) int {
 }
 
 func newCommand(run runner) *cobra.Command {
-	root := &cobra.Command{Use: "csquad", Short: "Coordinate Claude Code and Codex teams in tmux", Long: "Start a master session, delegate tasks, and recover teams in the current project.\nWith no command, csquad starts a new team. Use --help on any command for details.\nUse 'help request' to ask master a question; '--help' displays CLI usage.", SilenceUsage: true, SilenceErrors: true, Args: cobra.NoArgs, Example: "  csquad start --name my-team\n  csquad member add reviewer --engine claude --role reviewer\n  csquad board\n  csquad resume --name my-team"}
+	root := &cobra.Command{Use: "csquad", Short: "Coordinate Claude Code and Codex teams in tmux", Long: "Start a master session, delegate tasks, and recover teams in the current project.\nWith no command, csquad starts a new team. Use --help on any command for details.\nUse 'question request' to ask master a question; '--help' displays CLI usage.", SilenceUsage: true, SilenceErrors: true, Args: cobra.NoArgs, Example: "  csquad start my-team\n  csquad member add reviewer --engine claude --role reviewer\n  csquad board\n  csquad resume my-team"}
 	root.SetOut(os.Stdout)
 	root.SetErr(os.Stderr)
 	root.PersistentFlags().String("team", "", "Team state directory (defaults to the current project's last team)")
+	root.PersistentFlags().String("state-dir", "", "Team state directory (alias of --team)")
+	root.PersistentFlags().String("team-name", "", "Select an existing team by exact name")
+	_ = root.MarkPersistentFlagDirname("state-dir")
+	_ = root.RegisterFlagCompletionFunc("team-name", completeResource("team"))
 	root.PersistentFlags().String("member", "", "Calling member identity; inside a member session identity is bound and a conflicting value is refused")
 	root.PersistentFlags().Int("generation", 0, "Session generation for stale-write protection; not a turn limit")
 	if err := root.MarkPersistentFlagDirname("team"); err != nil {
@@ -102,7 +106,7 @@ func newCommand(run runner) *cobra.Command {
 				}
 			}
 			if next == nil {
-				next = &cobra.Command{Use: name, Short: groupDescription(name), Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error { return c.Help() }}
+				next = &cobra.Command{Use: name, Hidden: name == "_internal", Short: groupDescription(name), Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error { return c.Help() }}
 				parent.AddCommand(next)
 			}
 			parent = next
@@ -113,6 +117,10 @@ func newCommand(run runner) *cobra.Command {
 		}
 		addFlags(cmd, def.flags)
 		for _, name := range def.required {
+			if fileInput(name) {
+				cmd.MarkFlagsOneRequired(name, name+"-file")
+				continue
+			}
 			if err := cmd.MarkFlagRequired(name); err != nil {
 				panic(err)
 			}
@@ -158,12 +166,18 @@ func execute(run runner, path []string) func(*cobra.Command, []string) error {
 				values[flag.Name] = flag.Value.String()
 			}
 		})
-		if path[0] == "resume" && len(args) == 1 {
-			if values["name"] != "" || values["team"] != "" {
-				return &usageError{fmt.Errorf("specify the team once: resume TEAM, --name TEAM, or --team DIR"), cmd.CommandPath()}
-			}
-			values["name"] = args[0]
-			args = nil
+		operation := append([]string(nil), path...)
+		if operation[0] == "_internal" {
+			operation = operation[1:]
+		}
+		if operation[0] == "question" {
+			operation[0] = "help"
+		}
+		if len(operation) == 2 && operation[0] == "message" && operation[1] == "reply" {
+			operation = []string{"reply"}
+		}
+		if err := normalizeInputs(cmd, operation, values, &args); err != nil {
+			return &usageError{err, cmd.CommandPath()}
 		}
 		for _, name := range []string{"generation", "epoch", "expected-generation"} {
 			if value, ok := values[name]; ok {
@@ -174,14 +188,14 @@ func execute(run runner, path []string) func(*cobra.Command, []string) error {
 			}
 		}
 		for name, choices := range flagChoices {
-			if path[0] == "ui-panel" && name == "view" && values[name] == "header" {
+			if operation[0] == "ui-panel" && name == "view" && values[name] == "header" {
 				continue
 			}
 			if value, ok := values[name]; ok && !contains(choices, value) {
 				return &usageError{fmt.Errorf("invalid --%s %q; choose %s", name, value, strings.Join(choices, "|")), cmd.CommandPath()}
 			}
 		}
-		for _, name := range []string{"text", "acceptance", "summary", "sha", "owner", "reason", "repo"} {
+		for _, name := range []string{"text", "acceptance", "summary", "sha", "submission", "owner", "reason", "repo"} {
 			if v, ok := values[name]; ok && strings.TrimSpace(v) == "" {
 				return &usageError{fmt.Errorf("--%s must not be empty", name), cmd.CommandPath()}
 			}
@@ -190,10 +204,10 @@ func execute(run runner, path []string) func(*cobra.Command, []string) error {
 			cmd.Annotations = map[string]string{}
 		}
 		cmd.Annotations["executed"] = "true"
-		if path[0] == "run-engine" {
-			return run(path, values, args)
+		if operation[0] == "run-engine" {
+			return run(operation, values, args)
 		}
-		return run(append(append([]string(nil), path...), args...), values, nil)
+		return run(append(append([]string(nil), operation...), args...), values, nil)
 	}
 }
 func contains(values []string, value string) bool {
@@ -203,4 +217,73 @@ func contains(values []string, value string) bool {
 		}
 	}
 	return false
+}
+
+// Normalize aliases before dispatch so authorization sees the original operation.
+func normalizeInputs(cmd *cobra.Command, path []string, values map[string]string, args *[]string) error {
+	selectors := []string{"team", "state-dir", "team-name"}
+	if contains([]string{"start", "resume", "stop", "recover", "attach", "board", "ui"}, path[0]) {
+		selectors = append(selectors, "name")
+	}
+	count := 0
+	for _, key := range selectors {
+		if value, ok := values[key]; ok {
+			if strings.TrimSpace(value) == "" {
+				return fmt.Errorf("--%s must not be empty", key)
+			}
+			count++
+		}
+	}
+	if (contains([]string{"start", "resume", "stop", "recover"}, path[0]) || (len(path) == 2 && path[0] == "team" && path[1] == "remove")) && len(*args) == 1 {
+		count++
+		values["name"] = (*args)[0]
+		*args = nil
+	}
+	if count > 1 {
+		return fmt.Errorf("specify the team once: positional name, --name, --team-name, --state-dir, or --team")
+	}
+	if path[0] == "start" && (values["team"] != "" || values["state-dir"] != "" || values["team-name"] != "") {
+		return fmt.Errorf("start creates a new team; use start NAME or --name NAME")
+	}
+	if value, ok := values["state-dir"]; ok {
+		values["team"] = value
+		delete(values, "state-dir")
+	}
+	stdinCount := 0
+	for _, key := range []string{"text", "summary", "instructions", "description"} {
+		if filename, ok := values[key+"-file"]; ok {
+			if _, inline := values[key]; inline {
+				return fmt.Errorf("--%s and --%s-file are mutually exclusive", key, key)
+			}
+			if filename == "" {
+				return fmt.Errorf("--%s-file requires a filename or '-'", key)
+			}
+			if filename == "-" {
+				stdinCount++
+			}
+		}
+	}
+	if stdinCount > 1 {
+		return fmt.Errorf("only one input field may read stdin")
+	}
+	for _, key := range []string{"text", "summary", "instructions", "description"} {
+		if filename, ok := values[key+"-file"]; ok {
+			var data []byte
+			var err error
+			if filename == "-" {
+				data, err = io.ReadAll(cmd.InOrStdin())
+			} else {
+				data, err = os.ReadFile(filename)
+			}
+			if err != nil {
+				return fmt.Errorf("read --%s-file: %w", key, err)
+			}
+			if strings.TrimSpace(string(data)) == "" {
+				return fmt.Errorf("--%s-file must not be empty", key)
+			}
+			values[key] = string(data)
+			delete(values, key+"-file")
+		}
+	}
+	return nil
 }

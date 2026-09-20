@@ -49,14 +49,17 @@ func teamDirectories() ([]string, error) {
 	sort.Strings(dirs)
 	return dirs, nil
 }
-func listTeams() error {
+func listTeams(o options) error {
 	dirs, err := teamDirectories()
 	if err != nil {
 		return err
 	}
+	rows := []map[string]any{}
 	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	if _, err = fmt.Fprintln(w, "TEAM\tSTATUS\tMEMBERS\tTASKS\tLOCATION"); err != nil {
-		return err
+	if o["output"] != "json" {
+		if _, err = fmt.Fprintln(w, "TEAM\tSTATUS\tMEMBERS\tTASKS\tLOCATION"); err != nil {
+			return err
+		}
 	}
 	for _, dir := range dirs {
 		st, e := openStore(dir)
@@ -75,28 +78,42 @@ func listTeams() error {
 				status = "interrupted"
 			}
 		}
-		if _, err = fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%s\n", s.ID, status, len(s.Members), len(s.Tasks), dir); err != nil {
-			return err
+		rows = append(rows, map[string]any{"team": s.ID, "status": status, "members": len(s.Members), "tasks": len(s.Tasks), "location": dir})
+		if o["output"] != "json" {
+			if _, err = fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%s\n", s.ID, status, len(s.Members), len(s.Tasks), dir); err != nil {
+				return err
+			}
 		}
+	}
+	if o["output"] == "json" {
+		return jsonOut(rows)
 	}
 	return w.Flush()
 }
 
-func startExisting(dir string, o options) error {
-	st, err := openStore(dir)
+// Never open a local collision for writing. Also retain legacy same-project
+// detection so relocating state storage cannot silently duplicate a saved team.
+func rejectExistingTeam(root, dir, id string) error {
+	if _, err := os.Stat(filepath.Join(dir, "state.db")); err == nil {
+		return fmt.Errorf("team %q already exists; use attach or resume", id)
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	legacy := filepath.Join(stateBase(), "teams", id)
+	if legacy == dir {
+		return nil
+	}
+	if _, err := os.Stat(filepath.Join(legacy, "state.db")); os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	old, err := readCompletionState(legacy)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = st.DB.Close() }()
-	s, err := st.read()
-	if err != nil {
-		return err
+	if old.Root == root {
+		return fmt.Errorf("team %q already exists; use attach or resume", id)
 	}
-	if s.Active && !masterGone(s) {
-		if o["detach"] == "true" {
-			return jsonOut(map[string]string{"team": dir, "state": "running"})
-		}
-		return attach(st, "master")
-	}
-	return resumeTeam(st, o)
+	return nil
 }

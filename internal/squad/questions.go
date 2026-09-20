@@ -75,5 +75,5 @@ func helpCommand(st *Store, actor string, p []string, o options) error {
 		// The durable outbox retains failed deliveries for runtime retry.
 		_ = st.deliver(message)
 	}
-	return jsonOut(result)
+	return queryOut(o, result)
 }

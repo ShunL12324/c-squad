@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -10,13 +11,36 @@ import (
 
 func completeResource(kind string) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 	return func(cmd *cobra.Command, args []string, prefix string) ([]string, cobra.ShellCompDirective) {
-		team, _ := cmd.Flags().GetString("team")
+		selection := map[string]string{}
+		for _, key := range []string{"team", "state-dir", "team-name"} {
+			if cmd.Flags().Changed(key) {
+				selection[key], _ = cmd.Flags().GetString(key)
+			}
+		}
+		if contains([]string{"attach", "resume", "stop", "recover", "board", "ui"}, cmd.Name()) && cmd.Flags().Changed("name") {
+			selection["name"], _ = cmd.Flags().GetString("name")
+		}
+		argsForSelection := []string{}
+		if err := normalizeInputs(cmd, []string{cmd.Name()}, selection, &argsForSelection); err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		team, name := selection["team"], selection["team-name"]
+		if selection["name"] != "" {
+			name = selection["name"]
+		}
 		resource := kind
 		if kind == "team-or-member" {
 			resource = "member"
 		}
+		if resource != "team" {
+			resolved, err := squad.ResolveTeamDirectory(team, name)
+			if err != nil {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			team = resolved
+		}
 		values, err := squad.CompletionValues(team, resource)
-		if kind == "team-or-member" {
+		if kind == "team-or-member" && len(selection) == 0 && os.Getenv("CSQUAD_STATE_DIR") == "" {
 			names, e := squad.CompletionValues("", "team")
 			if e == nil {
 				values = append(values, names...)

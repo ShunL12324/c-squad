@@ -1,9 +1,15 @@
 # Using C Squad
 
-List saved teams with `csquad list`. Run `csquad start --name research` to create
-a team, resume it after stopping, or enter it if it is already running.
-Use `csquad attach research` to enter a running team, or
-`csquad attach --name research reviewer` to open one member.
+List saved teams with `csquad list`. Run `csquad start research` to create a new
+team. An existing name is always an error, whether the team is running, stopped,
+or interrupted; rejection does not clean up or resume that team. Bare `csquad`
+also creates a new team, and `--name NAME` remains supported.
+Use `csquad resume research` to continue a stopped or interrupted team,
+`csquad attach research` to enter a running team, or
+`csquad --team-name research member attach reviewer` to open one member.
+`csquad stop research` stops processes while keeping recoverable work.
+`csquad recover research` restarts only master in an active team from an outside
+terminal; it does not replace whole-team `resume`.
 
 Start a team in your project with `csquad start --engine claude` or
 `csquad start --engine codex`. This opens the Master session. Tell it what you
@@ -26,8 +32,21 @@ or inspect the underlying state with `csquad board`.
 | Stop the team | `csquad stop` |
 | Recover an interrupted team | `csquad resume` |
 
-Outside a team session, use `csquad --team /path/to/team COMMAND`; team state is
-normally in `.csquad/teams/<name>/`. Team shortcuts do not modify `~/.tmux.conf`.
+Outside a team session, use `csquad --team-name research COMMAND` or
+`csquad --state-dir /path/to/team COMMAND`. The existing `--team DIR` still means
+a state directory. Supply only one selector: positional team name, `--name`,
+`--team-name`, `--state-dir`, or `--team`. `start` accepts only a new positional
+name or `--name`; it never selects existing state. With no selector, existing-team
+operations use the bound session, then the current project's last team, then the
+legacy global last team. Names match exactly. Team state is normally in
+`.csquad/teams/<name>/`. Member sessions cannot select another team or override
+bound caller/generation identity. Completion uses the same selection rules.
+
+Member instructions use `csquad COMMAND`, with the selected executable made
+available on the member's PATH. `--member` identifies the caller, not an attach
+target. Legacy `attach --name TEAM MEMBER` and bound-session `attach MEMBER`
+remain supported; prefer `member attach MEMBER` for an unambiguous member target.
+Team shortcuts do not modify `~/.tmux.conf`.
 
 Mouse support is enabled only in team sessions. Click a member in the sidebar to
 switch sessions, use the wheel to scroll, and drag pane borders to resize.
@@ -96,7 +115,8 @@ terminal, type `csquad sta` and press **Tab** to complete `csquad start`. No
 completion system enabled (for example, Oh My Zsh already enables Zsh completion).
 
 Completion includes commands, flags, and IDs from the current team. It reads the
-ledger without waking agents. `csquad help request` is a team escalation command;
+ledger without waking agents. `csquad question request` is a team escalation command
+(the old `help request` alias remains available);
 use `--help` or `csquad usage` for command documentation.
 
 ### npm, npx, and manual installs
@@ -345,3 +365,47 @@ Restart resumes the conversation. Replace starts a new conversation.
 The mouse wheel scrolls panel content without changing selection. Click a member
 to switch terminals; arrow keys move the selection and Enter opens it. Master
 remains pinned while the member list scrolls.
+
+## Text inputs, query output, and compatibility
+
+Use `question request|list|answer` for escalation and `message reply MESSAGE` for
+replies. Existing `help request|list|answer` and top-level `reply` retain their
+behavior, including question blockers and reply deduplication. `sync` starts an
+active team's runtime when needed and retries delivery; `reconcile` separately
+reconciles durable merge intents.
+
+Commands accepting `--text`, `--summary`, `--instructions`, or `--description`
+also accept the corresponding `--FIELD-file FILE`. A filename of `-` reads stdin.
+Inline and file forms are mutually exclusive; only one field may consume stdin.
+File content is preserved exactly, including newlines; empty files are rejected.
+Required text/summary fields accept either form. For example:
+
+```sh
+csquad message send reviewer --text-file ./review-request.txt
+csquad task submit T7 --summary-file ./result.md
+csquad question request --task T7 --text-file - < ./question.txt
+csquad member add reviewer --instructions-file ./responsibilities.md
+csquad task create 'Fix login' --acceptance 'Regression passes' --description-file ./issue.md
+```
+
+`list`, `board`, `member list|inspect`, `task list|inspect`, `message inbox`, and
+`question list` accept `--output json|table`. Omitting the flag preserves existing
+output: saved-team `list` uses a table; other queries use JSON. JSON result shapes
+are unchanged. List tables show one resource per row with its identity, state, and relevant
+owner, sender/recipient, or text columns. Board tables show team status plus
+members, tasks, and questions. These are concise projections; use JSON for full
+history and metadata. Inspect tables retain detailed fields with nested JSON.
+Embedded control characters are escaped to preserve table rows. Output format flags do not apply to interactive startup, attach,
+or completion script generation. Usage failures exit 2; operational failures exit 1.
+
+Hidden runtime commands remain callable at their original paths. The additive
+`_internal COMMAND` aliases normalize to the same operation before identity and
+permission checks; the namespace itself grants no extra authority. Native
+`run-engine -- ...` arguments remain opaque, including through its internal alias.
+
+Saved-team removal is separate from stopping. From an outside terminal, inspect
+`csquad team remove NAME --dry-run` before `csquad team remove NAME`. Removal
+requires stopped state, no remaining processes or sessions, no pending merge,
+and clean, fully merged owned worktrees. It removes eligible task worktrees and
+the saved ledger, preserves Git branches, and refuses unknown or external
+worktree paths. There is no force flag to discard uncommitted or unmerged work.

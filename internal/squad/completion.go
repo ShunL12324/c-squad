@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 )
 
 // CompletionValues reads identifiers without creating a store, refreshing tmux,
@@ -25,38 +24,16 @@ func CompletionValues(dir, kind string) ([]string, error) {
 		sort.Strings(names)
 		return names, nil
 	}
-	if dir == "" {
-		dir = os.Getenv("CSQUAD_STATE_DIR")
-	}
-	if dir == "" {
-		b, _ := os.ReadFile(filepath.Join(currentProjectBase(), "last-team"))
-		if len(b) == 0 {
-			b, _ = os.ReadFile(filepath.Join(stateBase(), "last-team"))
-		}
-		dir = strings.TrimSpace(string(b))
+	var err error
+	dir, err = ResolveTeamDirectory(dir, "")
+	if err != nil {
+		return nil, err
 	}
 	if dir == "" {
 		return nil, nil
 	}
-	path, err := filepath.Abs(filepath.Join(dir, "state.db"))
+	state, err := readCompletionState(dir)
 	if err != nil {
-		return nil, err
-	}
-	if _, err = os.Stat(path); err != nil {
-		return nil, err
-	}
-	uri := url.URL{Scheme: "file", Path: path, RawQuery: "mode=ro&_pragma=busy_timeout(100)"}
-	db, err := sql.Open("sqlite", uri.String())
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = db.Close() }()
-	var raw string
-	if err = db.QueryRow("SELECT data FROM state WHERE id=1").Scan(&raw); err != nil {
-		return nil, err
-	}
-	var state State
-	if err = json.Unmarshal([]byte(raw), &state); err != nil {
 		return nil, err
 	}
 	values := []string{}
@@ -82,4 +59,29 @@ func CompletionValues(dir, kind string) ([]string, error) {
 	}
 	sort.Strings(values)
 	return values, nil
+}
+
+func readCompletionState(dir string) (*State, error) {
+	path, err := filepath.Abs(filepath.Join(dir, "state.db"))
+	if err != nil {
+		return nil, err
+	}
+	if _, err = os.Stat(path); err != nil {
+		return nil, err
+	}
+	uri := url.URL{Scheme: "file", Path: path, RawQuery: "mode=ro&_pragma=busy_timeout(100)"}
+	db, err := sql.Open("sqlite", uri.String())
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	var raw string
+	if err = db.QueryRow("SELECT data FROM state WHERE id=1").Scan(&raw); err != nil {
+		return nil, err
+	}
+	var state State
+	if err = json.Unmarshal([]byte(raw), &state); err != nil {
+		return nil, err
+	}
+	return &state, nil
 }

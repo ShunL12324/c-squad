@@ -144,6 +144,58 @@ func TestExternalTerminalIdentityIsUnchanged(t *testing.T) {
 	}
 }
 
+// namedTeamStore creates a team that namedTeam can resolve by name.
+func namedTeamStore(t *testing.T, home, name string) *Store {
+	t.Helper()
+	st, e := openStore(filepath.Join(home, "teams", name))
+	must(t, e)
+	t.Cleanup(func() { st.DB.Close() })
+	must(t, st.update(func(s *State) error {
+		*s = State{Version: 1, ID: name, Root: t.TempDir(), Active: true, Members: map[string]*Member{}, Tasks: map[string]*Task{}, Questions: map[string]*Question{}}
+		s.Members["master"] = &Member{ID: "master", Engine: config.Claude, State: MemberStateIdle, Generation: 1}
+		return nil
+	}))
+	return st
+}
+
+// --name resolves a team by name, which escapes the --team agreement. Acting on
+// another team from inside a member session cannot succeed, so it must say so
+// with the workaround rather than fail later on an unrelated member lookup or,
+// when both teams happen to share an identity and generation, quietly proceed.
+func TestCrossTeamFromMemberSessionIsRefusedWithWorkaround(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CSQUAD_HOME", home)
+	bound := namedTeamStore(t, home, "bound")
+	namedTeamStore(t, home, "other")
+	t.Setenv("CSQUAD_STATE_DIR", bound.Dir)
+	t.Setenv("CSQUAD_MEMBER_ID", "master")
+	t.Setenv("CSQUAD_GENERATION", "1")
+	for _, path := range [][]string{{"board"}, {"stop"}, {"resume"}, {"ui"}} {
+		e := Execute(path, options{"name": "other"}, nil)
+		if e == nil || !strings.Contains(e.Error(), "bound to team") {
+			t.Fatalf("%v --name other: want the binding refusal, got %v", path, e)
+		}
+		for _, want := range []string{`"bound"`, `"other"`, "outside the team"} {
+			if !strings.Contains(e.Error(), want) {
+				t.Fatalf("%v: refusal must name both teams and the workaround, %q missing from %v", path, want, e)
+			}
+		}
+	}
+	// Naming the team the session is already bound to is not a cross-team call.
+	if e := Execute([]string{"board"}, options{"name": "bound"}, nil); e != nil && strings.Contains(e.Error(), "bound to team") {
+		t.Fatalf("naming the session's own team must not be refused: %v", e)
+	}
+}
+
+func TestCrossTeamFromExternalTerminalIsAllowed(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CSQUAD_HOME", home)
+	namedTeamStore(t, home, "other")
+	if e := Execute([]string{"board"}, options{"name": "other"}, nil); e != nil && strings.Contains(e.Error(), "bound to team") {
+		t.Fatalf("an outside terminal must reach any team: %v", e)
+	}
+}
+
 func TestExecutablePathIsNormalised(t *testing.T) {
 	npm := "/opt/lib/node_modules/csquad/bin/../native/darwin-arm64/csquad"
 	if got := cleanPath(npm); got != "/opt/lib/node_modules/csquad/native/darwin-arm64/csquad" {

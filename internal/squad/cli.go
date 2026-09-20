@@ -136,6 +136,17 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 			return err
 		}
 	}
+	// --name selects a team by name, so it escapes the --team agreement above.
+	// A member session is bound to one team, and cross-team work from inside it
+	// cannot succeed: the caller is not a member of the other team, or is one
+	// only because both teams happen to share an identity and a generation.
+	// Refuse with the workaround instead of failing later on an unrelated member
+	// lookup, or acting on the other team by coincidence. This applies to
+	// plumbing too, unlike the identity rules: only the five commands above
+	// resolve --name, and no argv C Squad builds itself passes it.
+	if bound := os.Getenv("CSQUAD_STATE_DIR"); bound != "" && cleanPath(dir) != cleanPath(bound) {
+		return fmt.Errorf("this session is bound to team %q, so it cannot act on team %q; run that command from a terminal outside the team", filepath.Base(cleanPath(bound)), filepath.Base(cleanPath(dir)))
+	}
 	// A bare attach argument selects a team when no explicit team/member context
 	// exists. Inside an agent session, the same argument remains a member name.
 	if p[0] == "attach" && len(p) > 1 && o["team"] == "" && o["name"] == "" && os.Getenv("CSQUAD_STATE_DIR") == "" {

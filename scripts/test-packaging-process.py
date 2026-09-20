@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 from packaging_test_support import command
 
@@ -46,16 +47,25 @@ class ProcessTests(unittest.TestCase):
         self.assertEqual(failure.exception.output, "failure\n")
 
     def test_timeout_kills_descendant_in_another_session(self):
+        self.check_timeout_cleanup()
+
+    def test_denied_group_signal_still_reaps_directly_killed_processes(self):
+        with mock.patch("packaging_test_support.os.killpg", side_effect=PermissionError("group signal denied")):
+            self.check_timeout_cleanup()
+
+    def check_timeout_cleanup(self):
         with tempfile.TemporaryDirectory() as directory:
             marker = Path(directory) / "child"
-            script = ("import subprocess,sys,time; from pathlib import Path; "
+            script = ("import os,subprocess,sys,time; from pathlib import Path; "
                       "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)'],start_new_session=True); "
-                      "Path(sys.argv[1]).write_text(str(child.pid)); time.sleep(30)")
+                      "Path(sys.argv[1]).write_text(str(child.pid)+' '+str(os.getpid())); time.sleep(30)")
             started = time.monotonic()
             with self.assertRaises(subprocess.TimeoutExpired):
                 command(sys.executable, "-c", script, marker, timeout=1)
             self.assertLess(time.monotonic() - started, 8)
-            pid = int(marker.read_text())
+            pid, parent = map(int, marker.read_text().split())
+            with self.assertRaises(ChildProcessError):
+                os.waitpid(parent, os.WNOHANG)
             state = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True, timeout=2)
             # Orphans may briefly remain zombies until the system reaper runs.
             self.assertTrue(state.returncode != 0 or state.stdout.strip().startswith("Z"), state.stdout)

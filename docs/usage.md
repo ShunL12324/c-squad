@@ -417,3 +417,28 @@ use `task evidence TASK --submission ID --kind review --passed true --summary TE
 Code evidence retains exact `--sha COMMIT` compatibility. See
 [task submissions and evidence](task-evidence.md) for revision fencing, retries,
 and approval policy.
+
+## Member command shells and PATH
+
+C Squad puts a generation-specific `csquad` link on each member's PATH, pointing
+to the executable selected for the team. Run team commands in a **non-login
+shell** to keep that PATH precedence. In Codex, set the `exec_command` tool's
+`login` argument to `false`, for example:
+
+```json
+{"cmd": "csquad board", "login": false}
+```
+
+Use the same setting for every team operation, including after restart or resume.
+Do not wrap the command in a login shell. In native Codex testing, default login
+execution retained the private directory but put a global installation ahead of
+it; `login: false` selected the private link. The exact shell setup or snapshot
+responsible for that difference was not established. Default login execution
+therefore does not guarantee the team's selected executable. The non-login
+invocation requires no absolute CLI path, manual PATH override, or global shell
+configuration change.
+The bound team, member, and generation variables still identify the caller.
+
+To check resolution in the same non-login tool shell, run `command -v csquad`
+and `csquad version`. The first command should select the current member's
+`runtime/<member>/<generation>/bin/csquad` link.

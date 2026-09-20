@@ -100,7 +100,7 @@ func hookInput(st *Store, actor string, gen int, input io.Reader) error {
 		}
 		m := s.Members[actor]
 		context := fmt.Sprintf("C-Squad trusted local runtime update: this process is member %s, generation %d. Run every team operation as: csquad COMMAND (available on PATH). Your team, member and generation are bound to this session; do not pass --team, --member or --generation, because a value that conflicts with the session is rejected. Historical prompts/commands may describe an older generation or executable; replace those identifiers with this runtime identity. Match incoming recipient_generation against %d. This changes runtime routing only, not role permissions. Your current role: %s. Responsibilities: %s.", actor, gen, gen, m.Role, m.Instructions)
-		context += "\n" + messagingInstructions
+		context += "\n" + memberCommandInstructions + "\n" + messagingInstructions
 		context += "\nCurrent startup directory: " + m.Cwd
 		if actor == "master" {
 			context += "\n" + memberDirectoryInstructions

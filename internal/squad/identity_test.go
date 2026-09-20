@@ -225,7 +225,7 @@ func TestInjectedPrefixDropsIdentityFlags(t *testing.T) {
 			t.Fatalf("injected prefix still carries %q", unwanted)
 		}
 	}
-	for _, want := range []string{"csquad COMMAND", "bound to this session", "rejected"} {
+	for _, want := range []string{"csquad COMMAND", "bound to this session", "rejected", "non-login shell", "Codex exec_command, set login:false", "without an absolute executable path or manual PATH overrides"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("injected prefix missing %q", want)
 		}

@@ -99,6 +99,69 @@ Completion includes commands, flags, and IDs from the current team. It reads the
 ledger without waking agents. `csquad help request` is a team escalation command;
 use `--help` or `csquad usage` for command documentation.
 
+### npm, npx, and manual installs
+
+These channels ship the completion scripts but cannot enable them: the npm
+package runs no lifecycle scripts, and no channel edits your shell
+configuration. Enable completion yourself, with or without Homebrew.
+
+**Current shell only.** Nothing is written to disk, and the effect ends with the
+shell:
+
+```sh
+source <(csquad completion zsh)     # bash: source <(csquad completion bash)
+csquad completion fish | source     # fish
+```
+
+**Persistently.** `csquad completion install` writes the script for one shell
+into a directory you own, defaulting to your login shell and to
+`$XDG_DATA_HOME` / `$XDG_CONFIG_HOME` (`--shell` and `--dir` override both). It
+rewrites the file only when the content changed, so repeating it is harmless,
+and it prints the remaining step instead of performing it:
+
+```sh
+csquad completion install
+csquad completion status            # installed files, and the check for each shell
+```
+
+| Shell | Default target | Remaining step |
+| --- | --- | --- |
+| Bash | `~/.local/share/bash-completion/completions/csquad` | none, but bash-completion v2 must be installed: it reads that directory and provides helpers the script calls |
+| Zsh | `~/.local/share/zsh/site-functions/_csquad` | add the printed `fpath=(...)` line to `~/.zshrc` |
+| Fish | `~/.config/fish/completions/csquad.fish` | none |
+| PowerShell | `~/.local/share/csquad/csquad.ps1` | source it from `$PROFILE` |
+
+Paste the line the command prints rather than retyping it: it quotes the
+directory, which matters when the path contains a space, where an unquoted entry
+would silently become two `fpath` elements.
+
+**Zsh ordering matters.** The `fpath` entry must come *before* the command that
+runs `compinit`; with Oh My Zsh, put it above `source $ZSH/oh-my-zsh.sh`, which
+calls `compinit` itself:
+
+```sh
+fpath=(~/.local/share/zsh/site-functions $fpath)
+source $ZSH/oh-my-zsh.sh            # or: autoload -Uz compinit && compinit
+```
+
+**Then restart the shell.** Completion is read at startup, so the current shell
+will not pick it up. If a new terminal still does not complete, Zsh is using a
+cached index: `rm -f ~/.zcompdump*` and open another terminal.
+
+**Verify** in that new terminal with `csquad sta` + **Tab**, or query the shell
+directly — `print -r -- ${_comps[csquad]:-missing}` in Zsh (prints `_csquad`),
+`complete -p csquad` in Bash, `complete -c csquad` in Fish. `csquad completion
+status` reports the files on disk; it cannot see a running shell's state,
+because no shell exports its `fpath` or its loaded completion functions.
+
+**nvm and upgrades.** The installed script locates `csquad` on `PATH` when you
+press Tab and lives in your data directory rather than under the Node prefix,
+so switching Node versions with `nvm use`, upgrading Node, or running
+`npm install -g csquad@latest` leaves it working. Re-run
+`csquad completion install` only to pick up completions for newly added
+commands; `csquad completion status` reports `differs` when the file no longer
+matches the installed binary.
+
 ## Compatibility and limitations
 
 - **Early-stage software.** Linux has been exercised with real Claude Code/Codex
@@ -127,6 +190,21 @@ A code task gets a Git worktree, even when it has only one developer. Its owner
 writes the code; other members review or test it. Separate implementation tasks
 use separate worktrees. Code tasks require a Git repository with an existing
 commit; research tasks can run without Git.
+
+A code task worktree is always created in the team repository. It does not follow
+a member's `--cwd`, so a member working in a different repository cannot submit
+its commits: `csquad` warns about this when the task is created or assigned. When
+work has genuinely landed in another repository, Master can close the task on that
+commit:
+
+```sh
+csquad task close-external T7 --repo /path/to/other-repo --sha 9f3c1ab \
+  --reason 'Work was pushed from the member repository'
+```
+
+That records the commit, the reason and what was not verified, and frees the
+owner. It is not a merge: nothing is fetched into the team repository, and the
+task is shown as closed externally rather than merged.
 
 Review and test evidence refer to a specific candidate commit. Master approves
 and performs the merge through C Squad. If you want a human checkpoint, tell

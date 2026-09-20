@@ -134,7 +134,7 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 			if o["task"] != "" {
 				t := s.Tasks[o["task"]]
 				t.Participants = append(t.Participants, id)
-
+				noticeCrossRepo(s, actor, t, s.Members[id])
 			}
 			s.event(actor, "member_added", id)
 			return nil

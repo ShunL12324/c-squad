@@ -422,3 +422,26 @@ func TestSidebarRevealsTheCurrentMemberOnFirstRead(t *testing.T) {
 		t.Fatal("a refresh snapped the list back to the selection")
 	}
 }
+
+// An externally closed task must not render like a merged one.
+func TestExternalClosureIsVisibleOnCardAndDetail(t *testing.T) {
+	task := Task{ID: "T7", Title: "Cross repository work", State: "done", Owner: "dev",
+		Note: "Closed externally · not merged · 9f3c1ab", Detail: "Closed externally by master — NOT merged"}
+	m := model{kind: "tasks", width: 60, height: 40, completed: true, data: Snapshot{Active: true, Tasks: []Task{task}}}
+	card := ansi.Strip(strings.Join(m.taskCard(0), "\n"))
+	if !strings.Contains(card, "not merged") {
+		t.Errorf("card does not mark the external closure: %q", card)
+	}
+	m.detail = true
+	detail := ansi.Strip(strings.Join(m.boardView(), "\n"))
+	for _, want := range []string{"not merged", "NOT merged"} {
+		if !strings.Contains(detail, want) {
+			t.Errorf("detail view %q does not mention %q", detail, want)
+		}
+	}
+	plain := model{kind: "tasks", width: 60, height: 40, completed: true,
+		data: Snapshot{Active: true, Tasks: []Task{{ID: "T8", Title: "Merged work", State: "done", Owner: "dev"}}}}
+	if strings.Contains(ansi.Strip(strings.Join(plain.taskCard(0), "\n")), "merged") {
+		t.Error("a merged task card gained an external closure marker")
+	}
+}

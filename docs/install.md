@@ -29,7 +29,9 @@ sudo apt install tmux procps git
 Install and sign in to your chosen agent CLI separately. Update with
 `npm install -g csquad@latest`; remove with `npm uninstall -g csquad`.
 Use one installation channel to avoid competing executables on PATH.
-Shell completion files are included; see [shell completion](usage.md#help-and-completion).
+npm enables no completion by itself. Run `csquad completion install` once and
+apply the line it prints; see
+[npm, npx, and manual installs](usage.md#npm-npx-and-manual-installs).
 
 ## macOS / Homebrew
 
@@ -113,7 +115,9 @@ install -m 755 ./csquad "$HOME/.local/bin/csquad"
 
 Add `~/.local/bin` to PATH. Go is not needed for precompiled archives. Install
 tmux, ps, and the chosen agent CLI separately; Git is required for code tasks.
-Archives include Bash, Zsh, and Fish completion scripts in `completions/`.
+Archives include Bash, Zsh, and Fish completion scripts in `completions/`, which
+this channel does not enable either; `csquad completion install` does it for
+you. See [npm, npx, and manual installs](usage.md#npm-npx-and-manual-installs).
 
 ## After installation
 

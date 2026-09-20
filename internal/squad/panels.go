@@ -317,7 +317,16 @@ func (st *Store) panelSnapshot() (teamui.Snapshot, error) {
 		if t.Candidate != "" {
 			detail += "\n\nCandidate: " + t.Candidate
 		}
-		out.Tasks = append(out.Tasks, teamui.Task{ID: t.ID, Title: t.Title, State: strings.ReplaceAll(string(t.State), "_", " "), Owner: t.Owner, Color: color, Progress: t.Progress, Detail: detail, Milestones: milestones})
+		if t.MergeCommit != "" {
+			detail += "\n\nMerged: " + t.MergeCommit
+		}
+		// A task closed on outside evidence must never render like a merged one.
+		note := ""
+		if t.ExternalClosure != nil {
+			note = "Closed externally · not merged · " + short(t.ExternalClosure.SHA)
+			detail += "\n\n" + strings.Join(describeExternalClosure(t.ExternalClosure), "\n")
+		}
+		out.Tasks = append(out.Tasks, teamui.Task{ID: t.ID, Title: t.Title, State: strings.ReplaceAll(string(t.State), "_", " "), Owner: t.Owner, Color: color, Progress: t.Progress, Detail: detail, Note: note, Milestones: milestones})
 	}
 	return out, nil
 }

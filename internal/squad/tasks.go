@@ -95,6 +95,8 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 				t.Workspace = filepath.Join(st.Dir, "worktrees", t.ID)
 				// Persist the workspace intent before invoking Git.
 				t.State = TaskPhasePreparing
+				printNotice([]string{codeTaskBinding(s, t)})
+				noticeCrossRepoTeam(s, actor, t)
 			}
 			s.Tasks[t.ID] = t
 			s.event(actor, "task_created", t.ID+" "+t.Title)
@@ -115,13 +117,14 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 		}
 		op := p[0]
 		if op == "inspect" {
+			printNotice(describeExternalClosure(t.ExternalClosure))
 			result = t
 			return nil
 		}
 		if t.State == TaskPhaseDone || t.State == TaskPhaseMerging || t.State == TaskPhasePreparing {
 			return errors.New("task is completed or has a pending filesystem operation")
 		}
-		masterOnly := op == "assign" || op == "approve" || op == "merge" || op == "gate" || op == "reopen"
+		masterOnly := op == "assign" || op == "approve" || op == "merge" || op == "gate" || op == "reopen" || op == "close-external"
 		if masterOnly && actor != "master" {
 			return fmt.Errorf("only master may perform this task operation: %w", ErrMasterRequired)
 		}
@@ -172,8 +175,13 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 				if !contains(t.Participants, id) {
 					t.Participants = append(t.Participants, id)
 				}
+				crossRepo := noticeCrossRepo(s, actor, t, m)
 				if newlyAssigned {
-					s.message(actor, id, t.ID, "Assigned to task "+t.ID+". Read board for workspace, ownership, acceptance and milestones.", "")
+					text := "Assigned to task " + t.ID + ". Read board for workspace, ownership, acceptance and milestones."
+					if crossRepo != "" {
+						text += " WARNING: " + crossRepo
+					}
+					s.message(actor, id, t.ID, text, "")
 				}
 			}
 			t.Owner = owner
@@ -266,7 +274,11 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 				}
 				candidate, e := git(t.Workspace, "rev-parse", "--verify", sha+"^{commit}")
 				if e != nil {
-					return e
+					// Name both repositories: a bare "Needed a single revision" hides
+					// that the SHA was resolved against the task worktree, not the
+					// member's own working directory.
+					return fmt.Errorf("candidate %q does not resolve in the task worktree %s; %s. If the commit lives in another repository, master can close this task with task close-external --repo PATH --sha COMMIT --reason TEXT: %w",
+						sha, t.Workspace, codeTaskBinding(s, t), e)
 				}
 				head, e := git(t.Workspace, "rev-parse", "HEAD")
 				if e != nil {
@@ -294,6 +306,11 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 			t.State = TaskPhaseInReview
 			t.Approval = nil
 			notice = "Task submitted: " + t.ID + " " + t.Progress + " candidate=" + t.Candidate
+		case "close-external":
+			if e = closeExternal(s, actor, t, o); e != nil {
+				return e
+			}
+			printNotice(describeExternalClosure(t.ExternalClosure))
 		case "evidence":
 			if EvidenceKind(o["kind"]) != EvidenceReview && EvidenceKind(o["kind"]) != EvidenceTest {
 				return errors.New("--kind review|test required")

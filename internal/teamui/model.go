@@ -16,9 +16,11 @@ import (
 type Member struct{ ID, Engine, State, Color, Tasks, Cwd string }
 
 // Task is a presentation snapshot of a task and its delivery evidence.
+// Note carries a terse qualifier for a done task that was not merged, so the card
+// never reads identically to a merged one.
 type Task struct {
-	ID, Title, State, Owner, Color, Progress, Detail string
-	Milestones                                       []Milestone
+	ID, Title, State, Owner, Color, Progress, Detail, Note string
+	Milestones                                             []Milestone
 }
 
 // Milestone retains reporting and approval states without inferring completion.

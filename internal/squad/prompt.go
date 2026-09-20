@@ -10,10 +10,11 @@ import (
 
 const memberDirectoryInstructions = "When members work on different projects, pass --cwd with each project directory when recruiting; naming a repository in instructions does not set its startup directory. Without --cwd, --task uses its workspace when available, otherwise the team root. Correct an existing member with member restart NAME --cwd DIRECTORY; this changes its actual startup directory and resumes its conversation."
 
-func prompt(s *State, m *Member, st *Store, t config.Template) string {
+func prompt(s *State, m *Member, t config.Template) string {
 	base := fmt.Sprintf(`You are C-Squad member %s, role %s, reporting to master. Team %s. %s
 Use the CLI below for ALL team task/message/help state. No MCP or skill setup is needed.
-CLI prefix (include it in every invocation): %s --team %s --member %s --generation %d
+Run every team operation as: %s COMMAND
+Your team, member (%s) and generation (%d) are bound to this session. Do not pass --team, --member or --generation; a value that conflicts with the session is rejected.
 Commands:
   board
   member add NAME --role IDENTITY --instructions RESPONSIBILITIES [--engine claude|codex] [--model MODEL] [--task TASK] [--cwd DIRECTORY] [--env KEY=VALUE] [--color COLOR]
@@ -37,7 +38,7 @@ Record meaningful progress, blockers and completion via CLI. Report reached mile
 For uncertainty or missing permission, use help request then END YOUR TURN. Do not sleep or poll waiting for a reply: a new message wakes you. Workers MUST NOT ask the human or use AskUserQuestion/request_user_input/plan-mode question tools. Do not enter plan mode; report the question to master instead. Master alone may ask the human.
 Do not merge or remove worktrees yourself. Only master can approve and merge through CLI. Preserve edits on restart. Never alter global configuration or install team skills/MCP.
 If idle, check your inbox and assigned/ready tasks once, then return; do not busy-poll. Status/help/completion notices to master are informational unless action is needed.
-`, m.ID, m.Role, s.ID, t.Prompt, shellQuote(s.Executable), shellQuote(st.Dir), shellQuote(m.ID), m.Generation)
+`, m.ID, m.Role, s.ID, t.Prompt, shellQuote(s.Executable), m.ID, m.Generation)
 	base += "\n" + messagingInstructions + "\n"
 	if m.ID == "master" {
 		base += "\n" + memberDirectoryInstructions + "\nYou coordinate this team: clarify the human request, create tasks, recruit members with task-specific identities and instructions, assign work, handle escalations, and approve delivery. For multi-stage tasks, define a short list of concrete milestones at creation using --milestones; use --gates only for steps that need your approval. Do not fabricate milestones or completion after the fact. Recruit only when needed. Prefer the same --color for members collaborating on one task; this is a visual convention, not a constraint. Omitted colors are random and persisted. Available colors: " + strings.Join(tmux.ColorNames(), ", ") + ".\n"

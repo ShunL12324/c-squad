@@ -22,6 +22,39 @@ import (
 
 var validID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,40}$`)
 
+// plumbingCommands are the commands whose argv C Squad builds itself and runs
+// through tmux, never a command an agent types. This classification is
+// load-bearing, not a convenience: panels.go, navigation.go, recovery.go and
+// pump.go all pass "--member master --generation 0" into run-shell, and
+// run-shell inherits the target session's environment, so those panes name
+// master while CSQUAD_MEMBER_ID names the member who owns the pane. Making the
+// environment authoritative there would break panels, navigation and shutdown
+// for a running team. Every other command is a ledger command: its argv comes
+// from an agent or a human, so the session environment wins over the flags.
+// Unlisted commands are ledger commands by default; a new command fails closed.
+var plumbingCommands = []string{"run-engine", "hook", "ui", "ui-panel", "ui-toggle", "ui-layout", "navigate", "navigation", "runtime", "shutdown", "sync", "reconcile"}
+
+// cleanPath normalises a directory for comparison and for the prefix injected
+// into agents. It keeps an empty value empty, which filepath.Clean would not,
+// and deliberately does not resolve symlinks: a Homebrew bin/csquad would
+// resolve into a versioned Cellar path that brew cleanup later deletes.
+func cleanPath(p string) string {
+	if p == "" {
+		return ""
+	}
+	return filepath.Clean(p)
+}
+
+// agreement refuses a flag that contradicts the member session it runs inside.
+// Repeating the bound value stays legal, which is what keeps teams started
+// before this change working: their injected prefix passes exactly these values.
+func agreement(kind, flag, env string) error {
+	if flag == "" || env == "" || flag == env {
+		return nil
+	}
+	return fmt.Errorf("--%s %q conflicts with this session's %s %q; omit the flag, identity is bound to the session", kind, flag, kind, env)
+}
+
 type options map[string]string
 
 func list(s string) []string {
@@ -69,6 +102,18 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 	}
 	if p[0] == "start" {
 		return start(o)
+	}
+	ledger := !contains(plumbingCommands, p[0])
+	if ledger {
+		if e := agreement("team", cleanPath(o["team"]), cleanPath(os.Getenv("CSQUAD_STATE_DIR"))); e != nil {
+			return e
+		}
+		if e := agreement("member", o["member"], os.Getenv("CSQUAD_MEMBER_ID")); e != nil {
+			return e
+		}
+		if e := agreement("generation", o["generation"], os.Getenv("CSQUAD_GENERATION")); e != nil {
+			return e
+		}
 	}
 	dir := o["team"]
 	if dir == "" {
@@ -126,6 +171,13 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 		if err != nil || gen < 0 {
 			return errors.New("generation must be a nonnegative integer")
 		}
+	}
+	// Generation 0 skips the stale-write check below. That is correct for an
+	// outside terminal, which has no incarnation to be stale against, but inside
+	// a member session it is a bypass: the caller has a real generation and is
+	// discarding it. Plumbing is exempt because C Squad builds those argv itself.
+	if ledger && os.Getenv("CSQUAD_MEMBER_ID") != "" && gen == 0 {
+		return errors.New("generation 0 is not accepted inside a member session; it would skip the stale-write check")
 	}
 	if _, err := s.member(actor); err != nil {
 		return err
@@ -334,6 +386,9 @@ func start(o options) error {
 	if e != nil {
 		return e
 	}
+	// The npm launcher execs ../native/<platform>/csquad, so the raw path carries
+	// an unnormalised bin/.. segment into every prefix injected into an agent.
+	bin = cleanPath(bin)
 	socket := filepath.Join(os.TempDir(), fmt.Sprintf("csq-%d-%s.sock", os.Getuid(), hex.EncodeToString(b)))
 	if v := os.Getenv("TMUX"); v != "" {
 		socket = strings.Split(v, ",")[0]

@@ -280,6 +280,9 @@ func resumeTeam(st *Store, o options) error {
 	if e != nil {
 		return e
 	}
+	// Recovery rewrites State.Executable, so it must normalise too; otherwise a
+	// resume would reintroduce the unnormalised path that start just cleaned.
+	binary = cleanPath(binary)
 	if e = st.update(func(cur *State) error {
 		oldDefaults := map[string]string{}
 		newDefaults := currentConfig.Env

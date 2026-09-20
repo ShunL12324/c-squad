@@ -77,7 +77,7 @@ func newCommand(run runner) *cobra.Command {
 	root.SetOut(os.Stdout)
 	root.SetErr(os.Stderr)
 	root.PersistentFlags().String("team", "", "Team state directory (defaults to the current project's last team)")
-	root.PersistentFlags().String("member", "", "Calling member identity (injected for agents)")
+	root.PersistentFlags().String("member", "", "Calling member identity; inside a member session identity is bound and a conflicting value is refused")
 	root.PersistentFlags().Int("generation", 0, "Session generation for stale-write protection; not a turn limit")
 	if err := root.MarkPersistentFlagDirname("team"); err != nil {
 		panic(err)

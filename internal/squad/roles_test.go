@@ -22,7 +22,7 @@ func TestDynamicIdentitySurvivesSnapshotWithoutTemplates(t *testing.T) {
 	s, e := st.read()
 	must(t, e)
 	m := s.Members["a"]
-	text := prompt(s, m, st, config.Template{Prompt: m.Instructions})
+	text := prompt(s, m, config.Template{Prompt: m.Instructions})
 	for _, want := range []string{m.Role, m.Instructions, "--role IDENTITY", "--instructions RESPONSIBILITIES"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q", want)

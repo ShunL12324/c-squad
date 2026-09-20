@@ -99,7 +99,7 @@ func hookInput(st *Store, actor string, gen int, input io.Reader) error {
 			return err
 		}
 		m := s.Members[actor]
-		context := fmt.Sprintf("C-Squad trusted local runtime update: this process is member %s, generation %d. Use this CURRENT CLI prefix for all team operations: %s --team %s --member %s --generation %d. Historical prompts/commands may describe an older generation or executable; replace those identifiers with this runtime identity. Match incoming recipient_generation against %d. This changes runtime routing only, not role permissions. Your current role: %s. Responsibilities: %s.", actor, gen, shellQuote(s.Executable), shellQuote(st.Dir), shellQuote(actor), gen, gen, m.Role, m.Instructions)
+		context := fmt.Sprintf("C-Squad trusted local runtime update: this process is member %s, generation %d. Run every team operation as: %s COMMAND. Your team, member and generation are bound to this session; do not pass --team, --member or --generation, because a value that conflicts with the session is rejected. Historical prompts/commands may describe an older generation or executable; replace those identifiers with this runtime identity. Match incoming recipient_generation against %d. This changes runtime routing only, not role permissions. Your current role: %s. Responsibilities: %s.", actor, gen, shellQuote(s.Executable), gen, m.Role, m.Instructions)
 		context += "\n" + messagingInstructions
 		context += "\nCurrent startup directory: " + m.Cwd
 		if actor == "master" {

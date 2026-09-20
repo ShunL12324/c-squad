@@ -20,6 +20,13 @@ def quote(value):
     return "'" + str(value).replace("'", "'\\''") + "'"
 
 
+def check_origin(loaded, directory):
+    # macOS /var and /private/var may name the same installed directory.
+    expected = (directory / "_csquad").resolve(strict=True)
+    if Path(loaded).resolve(strict=True) != expected:
+        raise AssertionError(f"completion came from {loaded!r}, not the installed {str(expected)!r}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--path", type=Path,
@@ -106,9 +113,7 @@ def main():
             log("PTY cleanup: complete")
         loaded = origin.read_text().strip()
         if args.fpath:
-            expected = str(args.fpath.resolve() / "_csquad")
-            if loaded != expected:
-                raise AssertionError(f"completion came from {loaded!r}, not the installed {expected!r}")
+            check_origin(loaded, args.fpath)
         print(f"PASS: Zsh loaded {loaded} and expands csquad sta + Tab to csquad start")
 
 

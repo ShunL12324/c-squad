@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Regression checks for packaging-test subprocess deadlines and cleanup."""
 
+import importlib.util
 import os
 from pathlib import Path
 import subprocess
@@ -12,7 +13,28 @@ import unittest
 from packaging_test_support import command
 
 
+spec = importlib.util.spec_from_file_location("shell_completion", Path(__file__).with_name("test-shell-completion.py"))
+shell_completion = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(shell_completion)
+
+
 class ProcessTests(unittest.TestCase):
+    def test_completion_origin_resolves_alias_and_rejects_other_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            installed = root / "installed"
+            installed.mkdir()
+            (installed / "_csquad").write_text("installed completion")
+            alias = root / "alias"
+            alias.symlink_to(installed, target_is_directory=True)
+            shell_completion.check_origin(str(alias / "_csquad"), installed)
+            other = root / "_csquad"
+            other.write_text("unrelated completion")
+            with self.assertRaises(AssertionError):
+                shell_completion.check_origin(str(other), installed)
+            with self.assertRaises(FileNotFoundError):
+                shell_completion.check_origin(str(root / "missing"), installed)
+
     def test_output_and_expected_failure_are_preserved(self):
         result = command(sys.executable, "-c", "import sys; print('out'); print('err', file=sys.stderr); sys.exit(23)", check=False)
         self.assertEqual((result.returncode, result.stdout, result.stderr), (23, "out\n", "err\n"))

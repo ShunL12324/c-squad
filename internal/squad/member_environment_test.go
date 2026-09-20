@@ -1,6 +1,7 @@
 package squad
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -81,7 +82,7 @@ func TestRunEngineCommandPathAcrossGenerations(t *testing.T) {
 				}
 				previousLink = link
 			}
-			if err := runEngine(st, "a", 1, []string{"/bin/sh", "-c", "exit 99"}); err != ErrStaleGeneration {
+			if err := runEngine(st, "a", 1, []string{"/bin/sh", "-c", "exit 99"}); !errors.Is(err, ErrStaleGeneration) {
 				t.Fatalf("stale generation allowed: %v", err)
 			}
 		})

@@ -35,7 +35,7 @@ func (st *Store) memberEnvironment(s *State, m *Member) (map[string]string, erro
 		if err != nil {
 			return nil, err
 		}
-		defer os.RemoveAll(tmp)
+		defer func() { _ = os.RemoveAll(tmp) }()
 		if err = os.Symlink(s.Executable, filepath.Join(tmp, "csquad")); err != nil {
 			return nil, err
 		}

@@ -17,6 +17,13 @@ func messageCommand(st *Store, actor string, p []string, o options) error {
 					if m.To != actor {
 						return errors.New("not your message")
 					}
+					// The user has no inbox. A reply would queue a message addressed
+					// to a member that does not exist, which deliver cannot resolve
+					// and the runtime would retry forever, logging a cycle error on
+					// every pass.
+					if m.From == UserSender {
+						return errors.New("this request came from the user, who has no CLI inbox; answer them in your own session")
+					}
 					if o["text"] == "" {
 						return errors.New("--text required")
 					}

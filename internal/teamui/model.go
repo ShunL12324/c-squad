@@ -27,6 +27,7 @@ type Member struct {
 type Task struct {
 	ID, Title, State, Owner, Color, Progress, Detail, Note string
 	Milestones                                             []Milestone
+	Brief                                                  Brief
 }
 
 // Milestone retains reporting and approval states without inferring completion.
@@ -45,21 +46,24 @@ type Snapshot struct {
 }
 
 // Action describes a UI request; the controller owns session and pane operations.
-type Action struct{ Kind, Member string }
+type Action struct{ Kind, Member, Task string }
 
 // Source reads snapshots without refreshing or mutating agent state.
 type Source func() (Snapshot, error)
 
-// Handler performs a navigation action outside the renderer.
-type Handler func(Action) error
+// Handler performs an action outside the renderer, returning what to tell the
+// user about it. The renderer still owns no team state: it emits an intent and
+// renders the answer.
+type Handler func(Action) (string, error)
 
 type snapshotMsg struct {
 	data Snapshot
 	err  error
 }
 type actionMsg struct {
-	err  error
-	quit bool
+	kind, task, note string
+	err              error
+	quit             bool
 }
 type tickMsg time.Time
 
@@ -74,6 +78,7 @@ type model struct {
 	detail                               bool
 	loading                              bool
 	err                                  error
+	briefs                               map[string]briefFeedback
 }
 
 // Run owns only its pane's terminal; the native agent continues in another pane.
@@ -85,7 +90,7 @@ func Run(kind, current string, load Source, act Handler) error {
 		lipgloss.SetColorProfile(termenv.ANSI256)
 	}
 
-	m := model{kind: kind, current: current, load: load, act: act, width: 24, height: 24, loading: true}
+	m := model{kind: kind, current: current, load: load, act: act, width: 24, height: 24, loading: true, briefs: map[string]briefFeedback{}}
 	if kind == "members" {
 		m.selectedID = current
 	}
@@ -98,7 +103,26 @@ func tick() tea.Cmd           { return tea.Tick(time.Second, func(t time.Time) t
 // Init schedules the first ledger read.
 func (m model) Init() tea.Cmd { return m.read }
 func (m model) action(a Action) tea.Cmd {
-	return func() tea.Msg { return actionMsg{m.act(a), a.Kind == "close"} }
+	return func() tea.Msg {
+		note, err := m.act(a)
+		return actionMsg{kind: a.Kind, task: a.Task, note: note, err: err, quit: a.Kind == "close"}
+	}
+}
+
+// brief asks Master to summarise the selected task. It reports nothing about the
+// task itself: the request is a message, and the task is untouched by it.
+func (m model) brief() (tea.Model, tea.Cmd) {
+	if m.kind != "tasks" || m.count() == 0 {
+		return m, nil
+	}
+	if m.briefs == nil {
+		m.briefs = map[string]briefFeedback{}
+	}
+	id := m.tasks()[m.selected].ID
+	if !m.press(id) {
+		return m, nil
+	}
+	return m, m.action(Action{Kind: "brief", Task: id})
 }
 func (m model) count() int {
 	if m.kind == "members" {
@@ -238,6 +262,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.read
 	case actionMsg:
 		m.err = v.err
+		if v.kind == "brief" {
+			// Keep the outcome on the card it belongs to. The footer shows one
+			// error at a time and the user may have moved on already.
+			m.err = nil
+			f := briefFeedback{phase: briefDone, text: v.note, at: time.Now()}
+			if v.err != nil {
+				f = briefFeedback{phase: briefFailed, text: v.err.Error(), at: time.Now()}
+			}
+			if m.briefs == nil {
+				m.briefs = map[string]briefFeedback{}
+			}
+			m.briefs[v.task] = f
+		}
 		if v.quit && v.err == nil {
 			return m, tea.Quit
 		}
@@ -272,6 +309,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "o":
 			if m.kind == "tasks" {
 				return m, m.open()
+			}
+		case "b", "r":
+			// One key for both: a retry is the same request, and the ledger
+			// reuses the message rather than queueing a second one.
+			if m.kind == "tasks" {
+				return m.brief()
+			}
+		case "g":
+			// Master is offered, never opened for the user: asking about one
+			// card should not move someone who is working through several.
+			if m.kind == "tasks" {
+				return m, m.action(Action{Kind: "open", Member: "master"})
 			}
 		case "down", "j":
 			if m.kind == "tasks" && m.detail {
@@ -328,6 +377,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if m.detail {
 					if v.Y == taskFilterRow {
+						_, buttons := detailRow(m.width)
+						for _, button := range buttons {
+							if button.action == "brief" && v.X >= button.start && v.X < button.end {
+								return m.brief()
+							}
+						}
+						// Every other cell on this row still goes back, as it
+						// did before the row carried a second button.
 						m.detail = false
 						m.offset = 0
 					}
@@ -343,10 +400,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					for _, hit := range hits {
 						if v.Y >= hit.start+taskHeaderRows && v.Y < hit.end+taskHeaderRows {
 							m.selected = hit.index
-							m.detail = v.Y == hit.button+taskHeaderRows && v.X >= 2 && v.X < 18
 							m.remember()
-							if m.detail {
-								m.offset = 0
+							for _, button := range hit.buttons {
+								if v.Y != button.row+taskHeaderRows || v.X < button.start || v.X >= button.end {
+									continue
+								}
+								if button.action == "brief" {
+									return m.brief()
+								}
+								m.detail, m.offset = true, 0
+								break
 							}
 							break
 						}
@@ -376,7 +439,8 @@ func (m *model) scroll(direction int) {
 	if !m.detail {
 		total := 0
 		for i := m.top; i < len(m.tasks()); i++ {
-			total += len(m.taskCard(i))
+			card, _ := m.taskCard(i)
+			total += len(card)
 		}
 		m.offset = min(m.offset, max(0, total-max(0, m.height-taskHeaderRows-2)))
 	}

@@ -66,7 +66,7 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 		if !current.Active {
 			return ErrTeamStopped
 		}
-		if !validID.MatchString(id) || id == "master" {
+		if !validID.MatchString(id) || id == "master" || id == UserSender {
 			return errors.New("invalid/reserved member ID")
 		}
 		s, e := st.read()

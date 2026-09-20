@@ -32,6 +32,7 @@ type Snapshot struct {
 	Team    string
 	Members []Member
 	Tasks   []Task
+	Switch  string
 	Active  bool
 }
 
@@ -63,6 +64,7 @@ type model struct {
 	selectedID                           string
 	completed                            bool
 	detail                               bool
+	loading                              bool
 	err                                  error
 }
 
@@ -75,7 +77,7 @@ func Run(kind, current string, load Source, act Handler) error {
 		lipgloss.SetColorProfile(termenv.ANSI256)
 	}
 
-	m := model{kind: kind, current: current, load: load, act: act, width: 24, height: 24}
+	m := model{kind: kind, current: current, load: load, act: act, width: 24, height: 24, loading: true}
 	if kind == "members" {
 		m.selectedID = current
 	}
@@ -189,6 +191,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.reveal()
 	case snapshotMsg:
 		m.err = v.err
+		// The first read decides where the list starts; later reads must not
+		// fight a user who has scrolled the panel with the wheel.
+		first := m.loading
+		m.loading = false
 		if v.err == nil {
 			m.data = v.data
 			if !v.data.Active {
@@ -215,7 +221,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.detail = false
 			}
 			m.remember()
-			if !found {
+			if !found || first {
 				m.reveal()
 			}
 		}
@@ -406,9 +412,14 @@ func (m model) View() string {
 		return m.workspaceHeader()
 	}
 	var lines []string
-	if m.kind == "members" {
+	switch {
+	case m.loading:
+		// The pane is laid out before the first ledger read returns. Fill the
+		// fixed region with a placeholder rather than leaving it blank.
+		lines = []string{"", textStyle("  Loading…", muted, false)}
+	case m.kind == "members":
 		lines = m.memberBlocks()
-	} else {
+	default:
 		lines = m.boardView()
 	}
 	for len(lines) < m.height-2 {

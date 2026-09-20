@@ -158,6 +158,71 @@ func (st *Store) configurePanels() error {
 	return nil
 }
 
+// windowSize reports the geometry a session is rendered at. display-message
+// resolves #{window_*} against its target rather than against -c, so the
+// session has to be named explicitly even when a client is known.
+func windowSize(s *State, session string) string {
+	out, err := tm(s, "display-message", "-p", "-t", "="+session+":", "#{window_width} #{window_height}")
+	if err != nil || len(strings.Fields(out)) != 2 {
+		return ""
+	}
+	return out
+}
+
+func clientSession(s *State, client string) string {
+	rows, err := tm(s, "list-clients", "-F", "#{client_name}\t#{session_name}")
+	if err != nil {
+		return ""
+	}
+	for _, row := range strings.Split(rows, "\n") {
+		if name, session, ok := strings.Cut(row, "\t"); ok && name == client {
+			return session
+		}
+	}
+	return ""
+}
+
+// teamWindowSize births a member session at the geometry the team is actually
+// displayed at. The previous fixed size forced tmux to reflow every pane the
+// first time a client switched into a newly created member.
+func teamWindowSize(s *State) (string, string) {
+	rows, err := tm(s, "list-clients", "-F", "#{session_name}")
+	if err == nil {
+		for _, m := range navigationMembers(s) {
+			for _, session := range strings.Split(rows, "\n") {
+				if session == "" || session != m.Session {
+					continue
+				}
+				if size := strings.Fields(windowSize(s, session)); len(size) == 2 {
+					return size[0], size[1]
+				}
+			}
+		}
+	}
+	return "140", "42"
+}
+
+// fitSession lays the destination out at the switching client's size before the
+// client ever sees it. Member sessions are created detached at a fixed size, so
+// tmux would otherwise reflow every pane proportionally on the switch and the
+// asynchronous layout hook would only repair it a moment later.
+// It reports whether it pinned the window, which the caller has to undo.
+func (st *Store) fitSession(s *State, m *Member, client string) (bool, error) {
+	source := clientSession(s, client)
+	if source == "" {
+		return false, nil
+	}
+	want := windowSize(s, source)
+	if want == "" || want == windowSize(s, m.Session) {
+		return false, nil
+	}
+	size := strings.Fields(want)
+	if _, err := tm(s, "resize-window", "-t", "="+m.Session+":", "-x", size[0], "-y", size[1]); err != nil {
+		return false, err
+	}
+	return true, st.configurePanels()
+}
+
 func (st *Store) setPanelView(view string, toggle bool) error {
 	if err := st.update(func(s *State) error {
 		current := s.PanelView
@@ -208,7 +273,11 @@ func (st *Store) panelSnapshot() (teamui.Snapshot, error) {
 	if err != nil {
 		return teamui.Snapshot{}, err
 	}
-	out := teamui.Snapshot{Team: s.ID, Active: s.Active}
+	cfg, err := s.effectiveConfig()
+	if err != nil {
+		return teamui.Snapshot{}, err
+	}
+	out := teamui.Snapshot{Team: s.ID, Active: s.Active, Switch: switchHint(cfg)}
 	taskIDs := sortedTaskIDs(s)
 	for _, m := range navigationMembers(s) {
 		tasks := []string{}
@@ -311,10 +380,22 @@ func (st *Store) runPanel(owner, view string, popup bool) error {
 			}
 			client = candidates[0]
 		}
+		pinned, err := st.fitSession(s, m, client)
+		if err != nil {
+			return err
+		}
 		if _, err = tm(s, "select-pane", "-t", agentPane(m)); err != nil {
 			return err
 		}
-		_, err = tm(s, "switch-client", "-c", client, "-t", "="+m.Session)
+		if _, err = tm(s, "switch-client", "-c", client, "-t", "="+m.Session); err != nil {
+			return err
+		}
+		if !pinned {
+			return nil
+		}
+		// resize-window pinned the window; hand sizing back to tmux now that the
+		// client owns the session again.
+		_, err = tm(s, "set-option", "-w", "-t", "="+m.Session+":", "window-size", "latest")
 		return err
 	})
 }

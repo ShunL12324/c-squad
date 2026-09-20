@@ -1,6 +1,7 @@
 package teamui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -379,5 +380,45 @@ func TestTaskFilterClicksFollowRenderedSegments(t *testing.T) {
 	}
 	if !click(model{kind: "tasks", width: 40, height: 20, data: data}, 30) {
 		t.Fatal("right half must select Done")
+	}
+}
+
+func TestPanelShowsLoadingUntilTheFirstRead(t *testing.T) {
+	m := model{kind: "members", width: 28, height: 20, loading: true}
+	if !strings.Contains(ansi.Strip(m.View()), "Loading") {
+		t.Fatal("panel rendered an empty region before its first snapshot")
+	}
+	data := Snapshot{Active: true, Switch: "Alt+↑↓", Members: []Member{{ID: "master"}, {ID: "dev"}}}
+	next, _ := m.Update(snapshotMsg{data: data})
+	view := ansi.Strip(next.(model).View())
+	if strings.Contains(view, "Loading") || !strings.Contains(view, "dev") {
+		t.Fatal("loading state survived the first snapshot:", view)
+	}
+	if !strings.Contains(view, "Alt+↑↓ Switch") {
+		t.Fatal("member footer does not name the switch keys:", view)
+	}
+	bare, _ := model{kind: "members", width: 28, height: 20, loading: true}.Update(snapshotMsg{data: Snapshot{Active: true, Members: data.Members}})
+	if !strings.Contains(ansi.Strip(bare.(model).View()), "↑↓ Select") {
+		t.Fatal("unbound switch keys should leave the original hint in place")
+	}
+}
+
+func TestSidebarRevealsTheCurrentMemberOnFirstRead(t *testing.T) {
+	var members []Member
+	for i := range 20 {
+		members = append(members, Member{ID: fmt.Sprintf("member-%02d", i)})
+	}
+	m := model{kind: "members", width: 28, height: 24, loading: true, current: "member-17", selectedID: "member-17"}
+	next, _ := m.Update(snapshotMsg{data: Snapshot{Active: true, Members: members}})
+	shown := next.(model)
+	if !strings.Contains(ansi.Strip(shown.View()), "member-17") {
+		t.Fatal("a long roster left the current member scrolled out of view")
+	}
+	// Later reads must not fight the wheel.
+	shown.scroll(-1)
+	top := shown.top
+	again, _ := shown.Update(snapshotMsg{data: Snapshot{Active: true, Members: members}})
+	if again.(model).top != top {
+		t.Fatal("a refresh snapped the list back to the selection")
 	}
 }

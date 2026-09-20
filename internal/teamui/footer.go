@@ -30,6 +30,11 @@ func (m model) footerButtons() []footerButton {
 
 func (m model) footer() []string {
 	hint := textStyle("↑↓", foreground, false) + textStyle(" Select   ", muted, false) + textStyle("↵", foreground, false) + textStyle(" Open", muted, false)
+	// The sidebar rarely holds focus, so name the keys that switch member from
+	// anywhere ahead of the ones that only move this panel's cursor.
+	if m.kind == "members" && m.data.Switch != "" {
+		hint = textStyle(m.data.Switch, foreground, false) + textStyle(" Switch   ", muted, false) + textStyle("↵", foreground, false) + textStyle(" Open", muted, false)
+	}
 	if m.kind == "tasks" {
 		hint = textStyle("←→", foreground, false) + textStyle(" Filter  ", muted, false) + textStyle("↵", foreground, false) + textStyle(" Details  ", muted, false)
 		if m.detail {

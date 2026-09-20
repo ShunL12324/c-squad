@@ -16,6 +16,7 @@ or inspect the underlying state with `csquad board`.
 | Action | Shortcut or command |
 | --- | --- |
 | Open a member with the mouse | Click its name in the left sidebar |
+| Switch to the previous or next member | `Alt+Up` / `Alt+Down` |
 | Return to Master | `Ctrl-b 0` |
 | Open a numbered member | `Ctrl-b 1` … `Ctrl-b 9` |
 | Detach and leave the team running | `Ctrl-b d` |
@@ -67,6 +68,11 @@ Codex conversation in that configuration directory while preserving the task
 ledger and recovery handoff. Member
 limits are configurable; there is no conversation-turn cap. A member's
 `generation` identifies its current process incarnation, not an iteration limit.
+
+`previous_member_key` and `next_member_key` control the member switch shortcuts;
+they default to `M-Up` and `M-Down` (Alt/Option with the arrow keys). See
+[member switch keys](#member-switch-keys-and-your-agent) for what binding them
+takes away from your agent and how to release them.
 
 **Agents bypass native approval prompts by default.** Set
 `bypass_permissions = false` to retain approvals. With bypass enabled, C Squad
@@ -155,14 +161,19 @@ color themes can affect their appearance. `--color` supports shell completion.
 ![Members, native agent terminal, and task details](assets/workspace.png)
 
 On wide terminals, new teams open both the member sidebar and task board beside
-the native agent terminal. Click a member
-or select it with the arrow keys and press Enter to open its session. Each member
+the native agent terminal. `Alt+Up` and `Alt+Down` switch to the previous or
+next member in one keypress, from anywhere in the session; the list is cyclic,
+so `Alt+Down` on the last member returns to Master. You can also click a member,
+or focus the sidebar first and then select with the arrow keys and press Enter:
+the sidebar is a separate tmux pane, so plain arrow keys reach it only while it
+holds focus, which is why the Alt shortcuts exist. Each member
 block shows its engine, working directory, status, and assigned task IDs. Long
 paths retain their trailing directory components; task details show the full workspace. The agent's
 terminal remains a native tmux pane; click it to resume typing.
 
 | Action | Shortcut or command |
 | --- | --- |
+| Switch to the previous or next member | `Alt+Up` / `Alt+Down` |
 | Toggle the member sidebar | `Ctrl-b b` |
 | Toggle the task panel | `Ctrl-b t` |
 | Show members and tasks | `csquad ui` |
@@ -170,6 +181,33 @@ terminal remains a native tmux pane; click it to resume typing.
 | Hide both panels | `csquad ui --view hide` |
 | Collapse the task panel | Top-right **×**, `q` or `Esc` |
 | Return to Master | Click the pinned Master card |
+
+### Member switch keys and your agent
+
+The team binds `Alt+Up` and `Alt+Down` in its own tmux key table, which consumes
+them before the pane sees them. **The agent CLI in the engine pane no longer
+receives those keys.** For Claude Code that costs its `meta+up` / `meta+down`
+bindings, which move through the diff file list and jump the message selector to
+top or bottom; both actions keep their other default bindings (`ctrl+up` /
+`ctrl+down`, and `shift+up` / `shift+down` for the message selector), so nothing
+becomes unreachable. Codex does not bind these keys. tmux treats Alt and Meta as
+one `M-` namespace, so it cannot bind one encoding and pass the other through.
+
+Remap or release them in your configuration:
+
+```toml
+previous_member_key = "C-M-p"   # any tmux key name, for example M-Up, C-M-n, F5
+next_member_key = "C-M-n"
+```
+
+Set either to an empty string to leave that key to your agent and navigate with
+`Ctrl-b 0`–`9` or the sidebar instead. A key name tmux does not recognise is
+rejected when the configuration loads rather than producing a binding that never
+fires.
+
+On macOS, Terminal.app sends Option as an accent composer unless **Use Option as
+Meta key** is enabled in its keyboard settings; without it the Alt shortcuts
+never reach tmux. iTerm2 and most Linux terminals send Alt correctly.
 
 The workspace header displays the C Squad mark and team name.
 The bottom footer has clickable **Tasks** and **Detach** buttons.

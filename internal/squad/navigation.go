@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ShunL12324/c-squad/internal/config"
 	"github.com/ShunL12324/c-squad/internal/filelock"
 	"github.com/ShunL12324/c-squad/internal/tmux"
 )
@@ -19,6 +20,20 @@ func navigationTables(st *Store) (string, string) {
 	root := fmt.Sprintf("csquad-%x", h[:8])
 	return root, root + "-prefix"
 }
+
+// switchHint names the member switch keys for the status bar and the sidebar
+// footer. The default pair gets a friendlier label than its tmux spelling.
+func switchHint(cfg config.Config) string {
+	switch {
+	case cfg.PreviousKey == "" || cfg.NextKey == "":
+		return ""
+	case cfg.PreviousKey == "M-Up" && cfg.NextKey == "M-Down":
+		return "Alt+↑↓"
+	default:
+		return cfg.PreviousKey + "/" + cfg.NextKey
+	}
+}
+
 func navigationMembers(s *State) []*Member {
 	out := []*Member{}
 	for _, m := range s.Members {
@@ -85,6 +100,22 @@ func (st *Store) configureNavigation() error {
 		return err
 	}
 	cmd := shellQuote(s.Executable) + " --team " + shellQuote(st.Dir) + " --member master --generation 0 navigate --client '#{client_name}'"
+	cfg, err := s.effectiveConfig()
+	if err != nil {
+		return err
+	}
+	// Root-table bindings are consumed before the pane sees the key, so member
+	// switching works from the engine pane as well as from the sidebar, which
+	// never holds focus. Configurable because tmux cannot bind the Alt encoding
+	// and pass the Meta one through: see docs/usage.md.
+	for _, binding := range []struct{ key, direction string }{{cfg.PreviousKey, "previous"}, {cfg.NextKey, "next"}} {
+		if binding.key == "" {
+			continue
+		}
+		if _, err = tm(s, "bind-key", "-T", root, binding.key, "run-shell", "-b", cmd+" --direction "+binding.direction); err != nil {
+			return fmt.Errorf("bind %s: %w", binding.key, err)
+		}
+	}
 	for i := 0; i < 10; i++ {
 		if _, err = tm(s, "bind-key", "-T", prefix, strconv.Itoa(i), "run-shell", "-b", cmd+" --index "+strconv.Itoa(i)); err != nil {
 			return err
@@ -161,11 +192,15 @@ func (st *Store) configureNavigation() error {
 				}
 			}
 		}
+		switchKeys := "C-b 0–9"
+		if label := switchHint(cfg); label != "" {
+			switchKeys = label + " or " + switchKeys
+		}
 		hint := ""
 		for _, button := range []struct{ id, name, key string }{{"tasks", "Tasks", "t"}, {"detach", "Detach", "d"}} {
 			hint += "#[range=user|" + button.id + ",bg=colour236,fg=colour253] " + button.name + "  #[fg=colour245]C-b " + button.key + " #[norange,bg=colour234] "
 		}
-		for opt, val := range map[string]string{"prefix": "None", "prefix2": "None", "key-table": root, "mouse": "on", "status-style": "fg=colour252,bg=colour234", "status": "2", "status-position": "bottom", "status-left": "[" + s.ID + "] ", "status-left-length": "60", "status-format[0]": "#[fg=colour238]" + strings.Repeat("─", 500), "status-format[1]": "#[align=left,fg=colour245]  Click to select · C-b 0–9 switch member #[align=right]" + hint} {
+		for opt, val := range map[string]string{"prefix": "None", "prefix2": "None", "key-table": root, "mouse": "on", "status-style": "fg=colour252,bg=colour234", "status": "2", "status-position": "bottom", "status-left": "[" + s.ID + "] ", "status-left-length": "60", "status-format[0]": "#[fg=colour238]" + strings.Repeat("─", 500), "status-format[1]": "#[align=left,fg=colour245]  Click to select · " + switchKeys + " switch member #[align=right]" + hint} {
 			if _, err = tm(s, "set-option", "-t", target, opt, val); err != nil {
 				return err
 			}

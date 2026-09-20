@@ -2,6 +2,7 @@ package squad
 
 import (
 	"context"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -167,5 +168,86 @@ func TestPanelsPreserveEngineAndMasterLifecycle(t *testing.T) {
 	must(t, err)
 	if panes != pane {
 		t.Fatal("narrow screen squeezed the engine")
+	}
+}
+
+// reproTeam builds a team whose members are already running, so layout and
+// navigation can be exercised without launching real engines.
+func reproTeam(t *testing.T, newbieWidth, newbieHeight string) (*Store, string) {
+	t.Helper()
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux unavailable")
+	}
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 unavailable")
+	}
+	dir, err := os.MkdirTemp("", "csq-layout-")
+	must(t, err)
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	binary := filepath.Join(t.TempDir(), "csquad")
+	build := exec.Command("go", "build", "-o", binary, "./cmd/csquad")
+	build.Dir = "../.."
+	if out, buildErr := build.CombinedOutput(); buildErr != nil {
+		t.Fatalf("build: %s: %v", out, buildErr)
+	}
+	socket := filepath.Join(dir, "s")
+	pane, err := process.Run("", "tmux", "-f", "/dev/null", "-S", socket, "new-session", "-d", "-s", "layout-master", "-x", "180", "-y", "40", "-P", "-F", "#{pane_id}", "cat")
+	must(t, err)
+	t.Cleanup(func() { process.Run("", "tmux", "-S", socket, "kill-server") })
+	st := testStore(t)
+	must(t, st.update(func(s *State) error {
+		s.Socket = socket
+		s.Executable = binary
+		s.PanelView = panelBoth
+		s.Members["master"].Session = "layout-master"
+		s.Members["master"].Pane = pane
+		s.Members["a"].Session = "layout-a"
+		s.Members["b"].Session = "layout-b"
+		return nil
+	}))
+	s, _ := st.read()
+	// "a" was already visited at the client's size; "b" stands in for a freshly
+	// created member, born detached at a geometry no client is using.
+	for _, spec := range []struct{ id, width, height string }{{"a", "180", "40"}, {"b", newbieWidth, newbieHeight}} {
+		member, e := tm(s, "new-session", "-d", "-s", "layout-"+spec.id, "-x", spec.width, "-y", spec.height, "-P", "-F", "#{pane_id}", "cat")
+		must(t, e)
+		must(t, st.update(func(s *State) error { s.Members[spec.id].Pane = member; return nil }))
+	}
+	must(t, st.configureNavigation())
+	return st, socket
+}
+
+func TestNewMemberClickKeepsOuterLayoutStable(t *testing.T) {
+	_, socket := reproTeam(t, "140", "42")
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "python3", "testdata/panel_layout.py", "stable", socket, "layout-master", "layout-b").CombinedOutput()
+	if err != nil {
+		t.Fatalf("layout stability: %v\n%s", err, out)
+	}
+	t.Logf("%s", out)
+}
+
+func TestNewSessionsUseTheAttachedClientGeometry(t *testing.T) {
+	st, socket := reproTeam(t, "140", "42")
+	s, err := st.read()
+	must(t, err)
+	if width, height := teamWindowSize(s); width != "140" || height != "42" {
+		t.Fatalf("unattached team should fall back to the fixed size, got %sx%s", width, height)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	hold := exec.CommandContext(ctx, "python3", "testdata/panel_layout.py", "hold", socket, "layout-master", "20")
+	stdout, err := hold.StdoutPipe()
+	must(t, err)
+	must(t, hold.Start())
+	defer func() { _ = hold.Process.Kill(); _, _ = hold.Process.Wait() }()
+	buf := make([]byte, len("attached\n"))
+	if _, err = io.ReadFull(stdout, buf); err != nil {
+		t.Fatalf("client never attached: %v", err)
+	}
+	width, height := teamWindowSize(s)
+	if width != "180" || height != "38" {
+		t.Fatalf("new sessions ignored the attached client: %sx%s", width, height)
 	}
 }

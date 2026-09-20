@@ -125,7 +125,8 @@ func (st *Store) launch(id string, resume bool, initial string) error {
 	launch = append(launch, string(m.Engine))
 	launch = append(launch, args...)
 	// tmux accepts argv when more than one shell-command argument is supplied.
-	ta := []string{"new-session", "-d", "-s", m.Session, "-c", m.Cwd, "-x", "140", "-y", "42", "-P", "-F", "#{pane_id}"}
+	width, height := teamWindowSize(s)
+	ta := []string{"new-session", "-d", "-s", m.Session, "-c", m.Cwd, "-x", width, "-y", height, "-P", "-F", "#{pane_id}"}
 	for k, v := range map[string]string{"CSQUAD_STATE_DIR": st.Dir, "CSQUAD_MEMBER_ID": id, "CSQUAD_GENERATION": strconv.Itoa(m.Generation)} {
 		ta = append(ta, "-e", k+"="+v)
 	}

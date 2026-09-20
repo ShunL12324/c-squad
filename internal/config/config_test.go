@@ -94,3 +94,37 @@ func TestDocumentPreservesEnvironmentAndLegacyValues(t *testing.T) {
 		t.Fatalf("document round trip changed values:\ngot: %#v\nwant: %#v", got, want)
 	}
 }
+
+func TestMemberSwitchKeysDefaultAndValidate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	t.Setenv("CSQUAD_CONFIG", path)
+	c, err := Load("")
+	must(t, err)
+	if c.PreviousKey != "M-Up" || c.NextKey != "M-Down" {
+		t.Fatalf("member switch keys did not default to Alt+arrows: %q %q", c.PreviousKey, c.NextKey)
+	}
+	for _, test := range []struct {
+		body string
+		ok   bool
+	}{
+		{"previous_member_key = 'C-M-n'\n", true},
+		{"previous_member_key = 'F5'\n", true},
+		// An empty value leaves the key to the agent CLI in the engine pane.
+		{"previous_member_key = ''\nnext_member_key = ''\n", true},
+		{"next_member_key = 'Alt+Down'\n", false},
+		{"next_member_key = 'M Down'\n", false},
+	} {
+		t.Run(test.body, func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "config.toml")
+			t.Setenv("CSQUAD_CONFIG", file)
+			must(t, os.WriteFile(file, []byte(test.body), 0600))
+			_, err := Load("")
+			if test.ok != (err == nil) {
+				t.Fatalf("Load(%q) returned %v", test.body, err)
+			}
+			if err != nil && !strings.Contains(err.Error(), "tmux key name") {
+				t.Fatalf("unhelpful message for a mistyped key: %v", err)
+			}
+		})
+	}
+}

@@ -122,6 +122,21 @@ writes the code; other members review or test it. Separate implementation tasks
 use separate worktrees. Code tasks require a Git repository with an existing
 commit; research tasks can run without Git.
 
+A code task worktree is always created in the team repository. It does not follow
+a member's `--cwd`, so a member working in a different repository cannot submit
+its commits: `csquad` warns about this when the task is created or assigned. When
+work has genuinely landed in another repository, Master can close the task on that
+commit:
+
+```sh
+csquad task close-external T7 --repo /path/to/other-repo --sha 9f3c1ab \
+  --reason 'Work was pushed from the member repository'
+```
+
+That records the commit, the reason and what was not verified, and frees the
+owner. It is not a merge: nothing is fetched into the team repository, and the
+task is shown as closed externally rather than merged.
+
 Review and test evidence refer to a specific candidate commit. Master approves
 and performs the merge through C Squad. If you want a human checkpoint, tell
 Master to ask you before merging.

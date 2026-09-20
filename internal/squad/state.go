@@ -80,6 +80,25 @@ type Task struct {
 	Evidence        []Evidence   `json:"evidence"`
 	Approval        *Approval    `json:"approval,omitempty"`
 	MergeCommit     string       `json:"merge_commit,omitempty"`
+	// ExternalClosure is set only by task close-external and never alongside MergeCommit.
+	ExternalClosure *ExternalClosure `json:"external_closure,omitempty"`
+}
+
+// ExternalClosure records a master decision to close a code task on a commit that
+// lives in a repository the team does not own. It is never a merge: MergeCommit
+// stays empty, no object is imported, and Limits states what was not verified.
+type ExternalClosure struct {
+	Repo      string `json:"repo"`
+	GitDir    string `json:"git_dir"`
+	SHA       string `json:"sha"`
+	Subject   string `json:"subject,omitempty"`
+	Reason    string `json:"reason"`
+	Summary   string `json:"summary,omitempty"`
+	Limits    string `json:"limits"`
+	By        string `json:"by"`
+	At        string `json:"at"`
+	Workspace string `json:"workspace,omitempty"`
+	Branch    string `json:"branch,omitempty"`
 }
 
 // Evidence records a member review or test result for a specific candidate commit.

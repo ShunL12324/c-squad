@@ -178,7 +178,7 @@ func execute(run runner, path []string) func(*cobra.Command, []string) error {
 				return &usageError{fmt.Errorf("invalid --%s %q; choose %s", name, value, strings.Join(choices, "|")), cmd.CommandPath()}
 			}
 		}
-		for _, name := range []string{"text", "acceptance", "summary", "sha", "owner"} {
+		for _, name := range []string{"text", "acceptance", "summary", "sha", "owner", "reason", "repo"} {
 			if v, ok := values[name]; ok && strings.TrimSpace(v) == "" {
 				return &usageError{fmt.Errorf("--%s must not be empty", name), cmd.CommandPath()}
 			}

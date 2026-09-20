@@ -59,11 +59,16 @@ def command(*args, timeout=60, check=True, **kwargs):
             log(f"TIMEOUT after {timeout}s: pid={process.pid} {label}")
             try:
                 kill_tree(process.pid)
-            finally:
+            except (OSError, subprocess.SubprocessError):
+                # A successful tree cleanup already killed the group leader.
+                # Signalling that empty group again can return EPERM on macOS.
+                # Keep the group fallback only for failed tree cleanup.
                 try:
                     os.killpg(process.pid, signal.SIGKILL)
                 except ProcessLookupError:
                     pass
+                raise
+            finally:
                 process.wait(timeout=5)
         stdout.seek(0)
         stderr.seek(0)

@@ -1,0 +1,30 @@
+name: T270 npm diagnostic
+on:
+  push:
+    branches: ['csquad/team-3429f1de/T270']
+permissions:
+  actions: read
+  contents: read
+jobs:
+  npm-diagnostic:
+    if: github.ref == 'refs/heads/csquad/team-3429f1de/T270'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 35525350986
+          name: npm-package
+          path: dist/npm
+      - run: python3 scripts/test-packaging-process.py
+      - name: Exercise unchanged npm artifact with bounded diagnostics
+        run: python3 -u scripts/test-npm.py dist/npm/*.tgz

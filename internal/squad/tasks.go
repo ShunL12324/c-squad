@@ -19,6 +19,12 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 	if len(p) > 1 && p[0] == "merge" {
 		return mergeCommand(st, actor, p[1])
 	}
+	// Asking about a task is not an operation on it. Routed here so the phase
+	// rejection below, which exists to stop edits to finished work, cannot take
+	// the button away from exactly the done tasks the user wants explained.
+	if len(p) > 1 && p[0] == "brief" {
+		return briefCommand(st, actor, p[1])
+	}
 	var result any
 	var notice string
 	err := st.update(func(s *State) error {

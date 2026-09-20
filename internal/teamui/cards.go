@@ -4,10 +4,32 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
+// cardButton is one rendered action and the cells that trigger it. row is a line
+// index, resolved to the same coordinate space as cardHit.start by whoever holds
+// the button.
+type cardButton struct {
+	action     string
+	row        int
+	start, end int
+}
+
 // cardHit uses the same rendered bounds for pointer input and viewport selection.
-type cardHit struct{ index, start, end, button int }
+type cardHit struct {
+	index, start, end int
+	buttons           []cardButton
+}
+
+// cardContentX is the first screen column of card content: block paints two
+// gutter cells, then one cell of its own horizontal padding.
+const cardContentX = 3
+
+const (
+	detailsLabel = " View details › "
+	briefLabel   = " Brief report "
+)
 
 func (m model) taskCards() ([]string, []cardHit) {
 	if len(m.tasks()) == 0 {
@@ -20,10 +42,13 @@ func (m model) taskCards() ([]string, []cardHit) {
 	var lines []string
 	var hits []cardHit
 	for i := m.top; i < len(m.tasks()); i++ {
-		card := m.taskCard(i)
+		card, buttons := m.taskCard(i)
 		start := len(lines)
 		lines = append(lines, card...)
-		hits = append(hits, cardHit{i, start, len(lines), start + len(card) - 3})
+		for j := range buttons {
+			buttons[j].row += start
+		}
+		hits = append(hits, cardHit{index: i, start: start, end: len(lines), buttons: buttons})
 	}
 	offset := min(m.offset, max(0, len(lines)-available))
 	end := min(len(lines), offset+available)
@@ -35,14 +60,51 @@ func (m model) taskCards() ([]string, []cardHit) {
 		}
 		hit.start = max(0, hit.start-offset)
 		hit.end = min(available, hit.end-offset)
-		hit.button -= offset
+		kept := hit.buttons[:0]
+		for _, button := range hit.buttons {
+			button.row -= offset
+			// A button scrolled out of the viewport must stop being clickable,
+			// or its cells would trigger whatever row now occupies them.
+			if button.row < 0 || button.row >= available {
+				continue
+			}
+			kept = append(kept, button)
+		}
+		hit.buttons = kept
 		visible = append(visible, hit)
 	}
 	hits = visible
 	return lines, hits
 }
 
-func (m model) taskCard(index int) []string {
+// taskCardButtons lays out the card actions and the cells that trigger them.
+// The renderer and the mouse hit test read this one result, so a painted button
+// and its clickable region cannot drift apart - the discipline filterSplit
+// already applies to the task filter. Buttons stack when the row does not fit.
+func taskCardButtons(contentWidth int) ([]string, []cardButton) {
+	details, brief := ansi.StringWidth(detailsLabel), ansi.StringWidth(briefLabel)
+	clamp := func(b cardButton) cardButton {
+		// block truncates an overlong row, so never claim cells beyond the
+		// content it can actually paint.
+		b.end = min(b.end, cardContentX+contentWidth)
+		return b
+	}
+	painted := []string{paint(detailsLabel, accent, true), paint(briefLabel, accent, true)}
+	if details+1+brief <= contentWidth {
+		return []string{painted[0] + " " + painted[1]}, []cardButton{
+			clamp(cardButton{action: "details", row: 0, start: cardContentX, end: cardContentX + details}),
+			clamp(cardButton{action: "brief", row: 0, start: cardContentX + details + 1, end: cardContentX + details + 1 + brief}),
+		}
+	}
+	return painted, []cardButton{
+		clamp(cardButton{action: "details", row: 0, start: cardContentX, end: cardContentX + details}),
+		clamp(cardButton{action: "brief", row: 1, start: cardContentX, end: cardContentX + brief}),
+	}
+}
+
+// taskCard returns the rendered card and its buttons, whose rows are indices
+// into the returned slice.
+func (m model) taskCard(index int) ([]string, []cardButton) {
 	task := m.tasks()[index]
 	selected := index == m.selected
 	bg, stripe := surface, ""
@@ -80,6 +142,22 @@ func (m model) taskCard(index int) []string {
 		content = append(content, wrap(progress, 2)...)
 		content = append(content, "")
 	}
-	content = append(content, "", paint(" View details › ", accent, true))
-	return block(content, m.width, bg, stripe)
+	content = append(content, "")
+	rows, buttons := taskCardButtons(width)
+	base := len(content)
+	content = append(content, rows...)
+	if status := m.briefLine(task, width); status != "" {
+		content = append(content, status)
+	}
+	card := block(content, m.width, bg, stripe)
+	if len(card) == len(content) {
+		// block declines to frame a pane this narrow and returns the content
+		// unpadded, so there is no leading row to account for and nothing
+		// worth clicking either.
+		return card, nil
+	}
+	for j := range buttons {
+		buttons[j].row += base + 1
+	}
+	return card, buttons
 }

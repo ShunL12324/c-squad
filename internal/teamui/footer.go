@@ -36,9 +36,9 @@ func (m model) footer() []string {
 		hint = textStyle(m.data.Switch, foreground, false) + textStyle(" Switch   ", muted, false) + textStyle("↵", foreground, false) + textStyle(" Open", muted, false)
 	}
 	if m.kind == "tasks" {
-		hint = textStyle("←→", foreground, false) + textStyle(" Filter  ", muted, false) + textStyle("↵", foreground, false) + textStyle(" Details  ", muted, false)
+		hint = textStyle("←→", foreground, false) + textStyle(" Filter  ", muted, false) + textStyle("↵", foreground, false) + textStyle(" Details  ", muted, false) + textStyle("b", foreground, false) + textStyle(" Brief  ", muted, false) + textStyle("g", foreground, false) + textStyle(" Master", muted, false)
 		if m.detail {
-			hint = textStyle("↑↓", foreground, false) + textStyle(" Scroll   ", muted, false) + textStyle("PgUp/Dn", foreground, false) + textStyle(" Page", muted, false)
+			hint = textStyle("↑↓", foreground, false) + textStyle(" Scroll  ", muted, false) + textStyle("PgUp/Dn", foreground, false) + textStyle(" Page  ", muted, false) + textStyle("b", foreground, false) + textStyle(" Brief", muted, false)
 		}
 	}
 	if m.err != nil {

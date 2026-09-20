@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const taskHeaderRows = 6
@@ -60,11 +61,31 @@ func milestoneLines(milestones []Milestone, width, limit int) []string {
 	return lines
 }
 
+const backLabel = " ‹ Back to tasks "
+
+// detailRow lays out the detail header actions and the cells that trigger them,
+// so the renderer and the mouse hit test read one result. The brief button is
+// dropped rather than truncated when the pane cannot hold both.
+func detailRow(width int) (string, []cardButton) {
+	back := ansi.StringWidth(backLabel)
+	row := "  " + paint(backLabel, accent, true)
+	buttons := []cardButton{{action: "back", row: taskFilterRow, start: 2, end: 2 + back}}
+	if brief := ansi.StringWidth(briefLabel); 2+back+1+brief <= width {
+		row += " " + paint(briefLabel, accent, true)
+		buttons = append(buttons, cardButton{action: "brief", row: taskFilterRow, start: 2 + back + 1, end: 2 + back + 1 + brief})
+	}
+	return row, buttons
+}
+
 func (m model) boardView() []string {
 	if m.detail && m.count() > 0 {
 		task := m.tasks()[m.selected]
-		lines := []string{"", m.boardHeading("TASK DETAILS"), "", "  " + paint(" ‹ Back to tasks ", accent, true), "", ""}
+		header, _ := detailRow(m.width)
+		lines := []string{"", m.boardHeading("TASK DETAILS"), "", header, "", ""}
 		body := task.ID + " · " + label(task.State) + "\n\n" + task.Title + "\n\nOwner: " + task.Owner + "\n\n"
+		if status := m.briefLine(task, max(1, m.width-6)); status != "" {
+			body += status + "\n\n"
+		}
 		if task.Note != "" {
 			body += task.Note + "\n\n"
 		}

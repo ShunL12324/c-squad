@@ -85,7 +85,7 @@ func TestMemberNavigationDoesNotPersistOutgoingSelection(t *testing.T) {
 		{kind: "members", current: "b", selectedID: "b", selected: 1, width: 24, height: 40, data: data},
 	}
 	for i := range models {
-		models[i].act = func(a Action) error { opened = append(opened, a.Member); return nil }
+		models[i].act = func(a Action) (string, error) { opened = append(opened, a.Member); return "", nil }
 	}
 	for turn := 0; turn < 8; turn++ {
 		source, target := turn%2, 1-turn%2
@@ -112,7 +112,7 @@ func TestMemberNavigationDoesNotPersistOutgoingSelection(t *testing.T) {
 func TestDetailsButtonAndBack(t *testing.T) {
 	m := model{kind: "tasks", width: 40, height: 50, data: Snapshot{Active: true, Tasks: []Task{{ID: "T1", Title: "Research", Detail: strings.Repeat("Evidence\n", 100), Milestones: []Milestone{{Name: "Research", State: "reported"}, {Name: "Review", State: "awaiting_approval", Gate: true}, {Name: "Deliver", State: "pending"}}}}}}
 	_, hits := m.taskCards()
-	next, cmd := m.Update(tea.MouseMsg{X: 4, Y: hits[0].button + taskHeaderRows, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	next, cmd := m.Update(tea.MouseMsg{X: 4, Y: hits[0].buttons[0].row + taskHeaderRows, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
 	m = next.(model)
 	if cmd != nil || !m.detail {
 		t.Fatal("details button did not open local detail view")
@@ -176,7 +176,7 @@ func TestMasterStaysPinnedAndSidebarCannotClose(t *testing.T) {
 
 func TestTaskHeaderCloseButton(t *testing.T) {
 	var got Action
-	m := model{kind: "tasks", width: 40, height: 40, act: func(a Action) error { got = a; return nil }}
+	m := model{kind: "tasks", width: 40, height: 40, act: func(a Action) (string, error) { got = a; return "", nil }}
 	_, cmd := m.Update(tea.MouseMsg{X: 36, Y: taskTitleRow, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
 	if cmd == nil {
 		t.Fatal("header close button inactive")
@@ -428,7 +428,7 @@ func TestExternalClosureIsVisibleOnCardAndDetail(t *testing.T) {
 	task := Task{ID: "T7", Title: "Cross repository work", State: "done", Owner: "dev",
 		Note: "Closed externally · not merged · 9f3c1ab", Detail: "Closed externally by master — NOT merged"}
 	m := model{kind: "tasks", width: 60, height: 40, completed: true, data: Snapshot{Active: true, Tasks: []Task{task}}}
-	card := ansi.Strip(strings.Join(m.taskCard(0), "\n"))
+	card := ansi.Strip(strings.Join(cardLines(m, 0), "\n"))
 	if !strings.Contains(card, "not merged") {
 		t.Errorf("card does not mark the external closure: %q", card)
 	}
@@ -441,7 +441,13 @@ func TestExternalClosureIsVisibleOnCardAndDetail(t *testing.T) {
 	}
 	plain := model{kind: "tasks", width: 60, height: 40, completed: true,
 		data: Snapshot{Active: true, Tasks: []Task{{ID: "T8", Title: "Merged work", State: "done", Owner: "dev"}}}}
-	if strings.Contains(ansi.Strip(strings.Join(plain.taskCard(0), "\n")), "merged") {
+	if strings.Contains(ansi.Strip(strings.Join(cardLines(plain, 0), "\n")), "merged") {
 		t.Error("a merged task card gained an external closure marker")
 	}
+}
+
+// cardLines renders one card without its button rectangles.
+func cardLines(m model, index int) []string {
+	card, _ := m.taskCard(index)
+	return card
 }

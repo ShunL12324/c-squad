@@ -326,7 +326,7 @@ func (st *Store) panelSnapshot() (teamui.Snapshot, error) {
 			note = "Closed externally · not merged · " + short(t.ExternalClosure.SHA)
 			detail += "\n\n" + strings.Join(describeExternalClosure(t.ExternalClosure), "\n")
 		}
-		out.Tasks = append(out.Tasks, teamui.Task{ID: t.ID, Title: t.Title, State: strings.ReplaceAll(string(t.State), "_", " "), Owner: t.Owner, Color: color, Progress: t.Progress, Detail: detail, Note: note, Milestones: milestones})
+		out.Tasks = append(out.Tasks, teamui.Task{ID: t.ID, Title: t.Title, State: strings.ReplaceAll(string(t.State), "_", " "), Owner: t.Owner, Color: color, Progress: t.Progress, Detail: detail, Note: note, Milestones: milestones, Brief: briefFor(s, t.ID)})
 	}
 	return out, nil
 }
@@ -350,31 +350,37 @@ func (st *Store) runPanel(owner, view string, popup bool) error {
 		return errors.New("panel must be members or tasks")
 	}
 	pane := os.Getenv("TMUX_PANE")
-	return teamui.Run(view, owner, st.panelSnapshot, func(a teamui.Action) error {
+	return teamui.Run(view, owner, st.panelSnapshot, func(a teamui.Action) (string, error) {
 		s, err := st.read()
 		if err != nil {
-			return err
+			return "", err
 		}
 		if a.Kind == "close" {
 			if popup {
-				return nil
+				return "", nil
 			}
-			return st.setPanelView(view, true)
+			return "", st.setPanelView(view, true)
+		}
+		// The panel runs as master from argv C Squad builds itself, which is the
+		// identity the request is made under; the message records the user as
+		// its origin. It queues a question and touches no task state.
+		if a.Kind == "brief" {
+			return briefRequest(st, "master", a.Task)
 		}
 		m, err := s.member(a.Member)
 		if err != nil {
-			return err
+			return "", err
 		}
 		client, _ := tm(s, "show-options", "-pv", "-t", pane, "@csquad_client")
 		// A clicked panel records its originating client. Keyboard-only navigation
 		// is unambiguous when exactly one client is attached to this member session.
 		host, err := s.member(owner)
 		if err != nil {
-			return err
+			return "", err
 		}
 		rows, err := tm(s, "list-clients", "-F", "#{client_name}\t#{session_name}")
 		if err != nil {
-			return err
+			return "", err
 		}
 		candidates := []string{}
 		for _, line := range strings.Split(rows, "\n") {
@@ -385,27 +391,27 @@ func (st *Store) runPanel(owner, view string, popup bool) error {
 		}
 		if !slices.Contains(candidates, client) {
 			if len(candidates) != 1 {
-				return errors.New("click this panel to select a client")
+				return "", errors.New("click this panel to select a client")
 			}
 			client = candidates[0]
 		}
 		pinned, err := st.fitSession(s, m, client)
 		if err != nil {
-			return err
+			return "", err
 		}
 		if _, err = tm(s, "select-pane", "-t", agentPane(m)); err != nil {
-			return err
+			return "", err
 		}
 		if _, err = tm(s, "switch-client", "-c", client, "-t", "="+m.Session); err != nil {
-			return err
+			return "", err
 		}
 		if !pinned {
-			return nil
+			return "", nil
 		}
 		// resize-window pinned the window; hand sizing back to tmux now that the
 		// client owns the session again.
 		_, err = tm(s, "set-option", "-w", "-t", "="+m.Session+":", "window-size", "latest")
-		return err
+		return "", err
 	})
 }
 

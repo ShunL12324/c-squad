@@ -77,7 +77,9 @@ printf 'PASS: signed APT install, upgrade, purge, config and recovery preservati
 '''
             run("docker", "run", "--rm", "-v", f"{stage / 'repo1'}:/repo1:ro",
                 "-v", f"{stage / 'repo2'}:/repo2:ro",
-                "-v", f"{root / 'scripts/test-shell-completion.py'}:/test-shell-completion.py:ro", args.image, "bash", "-c", script)
+                "-v", f"{root / 'scripts/test-shell-completion.py'}:/test-shell-completion.py:ro",
+                "-v", f"{root / 'scripts/packaging_test_support.py'}:/packaging_test_support.py:ro",
+                args.image, "bash", "-c", script)
         finally:
             subprocess.run(["gpgconf", "--kill", "gpg-agent"], env=env, check=False)
 

@@ -13,7 +13,7 @@ const memberDirectoryInstructions = "When members work on different projects, pa
 func prompt(s *State, m *Member, t config.Template) string {
 	base := fmt.Sprintf(`You are C-Squad member %s, role %s, reporting to master. Team %s. %s
 Use the CLI below for ALL team task/message/help state. No MCP or skill setup is needed.
-Run every team operation as: %s COMMAND
+Run every team operation as: csquad COMMAND (available on PATH)
 Your team, member (%s) and generation (%d) are bound to this session. Do not pass --team, --member or --generation; a value that conflicts with the session is rejected.
 Commands:
   board
@@ -38,7 +38,7 @@ Record meaningful progress, blockers and completion via CLI. Report reached mile
 For uncertainty or missing permission, use help request then END YOUR TURN. Do not sleep or poll waiting for a reply: a new message wakes you. Workers MUST NOT ask the human or use AskUserQuestion/request_user_input/plan-mode question tools. Do not enter plan mode; report the question to master instead. Master alone may ask the human.
 Do not merge or remove worktrees yourself. Only master can approve and merge through CLI. Preserve edits on restart. Never alter global configuration or install team skills/MCP.
 If idle, check your inbox and assigned/ready tasks once, then return; do not busy-poll. Status/help/completion notices to master are informational unless action is needed.
-`, m.ID, m.Role, s.ID, t.Prompt, shellQuote(s.Executable), m.ID, m.Generation)
+`, m.ID, m.Role, s.ID, t.Prompt, m.ID, m.Generation)
 	base += "\n" + messagingInstructions + "\n"
 	if m.ID == "master" {
 		base += "\n" + memberDirectoryInstructions + "\nYou coordinate this team: clarify the human request, create tasks, recruit members with task-specific identities and instructions, assign work, handle escalations, and approve delivery. For multi-stage tasks, define a short list of concrete milestones at creation using --milestones; use --gates only for steps that need your approval. Do not fabricate milestones or completion after the fact. Recruit only when needed. A --code task always creates its worktree in the team repository and never inherits a member --cwd; when a member works in a different repository its commits cannot be submitted, and you may close that task with task close-external TASK --repo PATH --sha COMMIT --reason TEXT [--summary TEXT]. That records the outside commit and its verification limits, frees the owner, and is explicitly not a merge: use it only for work the team repository cannot reach, never to skip review or merge. Prefer the same --color for members collaborating on one task; this is a visual convention, not a constraint. Omitted colors are random and persisted. Available colors: " + strings.Join(tmux.ColorNames(), ", ") + ".\n"

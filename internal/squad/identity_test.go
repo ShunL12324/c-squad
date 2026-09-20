@@ -220,12 +220,12 @@ func TestInjectedPrefixDropsIdentityFlags(t *testing.T) {
 	text := prompt(s, s.Members["a"], config.Template{})
 	// The old prefix bound concrete values; the instruction naming the flags as
 	// forbidden must survive, so assert on the values rather than the flag names.
-	for _, unwanted := range []string{"--team " + shellQuote(st.Dir), "--member " + shellQuote("a"), "--generation 1"} {
+	for _, unwanted := range []string{"--team " + shellQuote(st.Dir), "--member " + shellQuote("a"), "--generation 1", s.Executable} {
 		if strings.Contains(text, unwanted) {
 			t.Fatalf("injected prefix still carries %q", unwanted)
 		}
 	}
-	for _, want := range []string{shellQuote("/opt/csquad/native/csquad") + " COMMAND", "bound to this session", "rejected"} {
+	for _, want := range []string{"csquad COMMAND", "bound to this session", "rejected"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("injected prefix missing %q", want)
 		}

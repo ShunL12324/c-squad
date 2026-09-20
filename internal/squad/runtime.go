@@ -18,7 +18,7 @@ func attach(st *Store, id string) error {
 		return e
 	}
 	if !s.Active || masterGone(s) {
-		return fmt.Errorf("team %q is stopped; run csquad start --name %s to resume it", s.ID, s.ID)
+		return fmt.Errorf("team %q is stopped; run csquad resume %s to resume it", s.ID, s.ID)
 	}
 	m, e := s.member(id)
 	if e != nil {
@@ -37,7 +37,7 @@ func attach(st *Store, id string) error {
 	}
 	err := c.Run()
 	if latest, readErr := st.read(); readErr == nil && !latest.Active {
-		_, _ = fmt.Fprintf(os.Stderr, "Team %s stopped (%s). All team sessions are closed; task records are saved.\nRestart: csquad start --name %s\n", latest.ID, latest.StopReason, latest.ID)
+		_, _ = fmt.Fprintf(os.Stderr, "Team %s stopped (%s). All team sessions are closed; task records are saved.\nRestart: csquad resume %s\n", latest.ID, latest.StopReason, latest.ID)
 	}
 	return err
 }
@@ -56,9 +56,13 @@ func runEngine(st *Store, actor string, gen int, args []string) error {
 	if gen != m.Generation || !s.Active {
 		return ErrStaleGeneration
 	}
+	memberEnv, e := st.memberEnvironment(s, m)
+	if e != nil {
+		return e
+	}
 	c := exec.Command(args[0], args[1:]...)
 	c.Dir = m.Cwd
-	c.Env = agentenv.Environ(m.Env)
+	c.Env = agentenv.Environ(memberEnv)
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr

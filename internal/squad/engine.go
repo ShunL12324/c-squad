@@ -36,6 +36,10 @@ func (st *Store) launch(id string, resume bool, initial string) error {
 	if e = os.MkdirAll(dir, 0700); e != nil {
 		return e
 	}
+	memberEnv, e := st.memberEnvironment(s, m)
+	if e != nil {
+		return e
+	}
 	pf := filepath.Join(dir, "prompt.txt")
 	if e = os.WriteFile(pf, []byte(prompt(s, m, t)), 0600); e != nil {
 		return e
@@ -130,7 +134,7 @@ func (st *Store) launch(id string, resume bool, initial string) error {
 	for k, v := range map[string]string{"CSQUAD_STATE_DIR": st.Dir, "CSQUAD_MEMBER_ID": id, "CSQUAD_GENERATION": strconv.Itoa(m.Generation)} {
 		ta = append(ta, "-e", k+"="+v)
 	}
-	for k, v := range m.Env {
+	for k, v := range memberEnv {
 		ta = append(ta, "-e", k+"="+v)
 	}
 	ta = append(ta, launch...)

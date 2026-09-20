@@ -37,6 +37,10 @@ func TestNativePeerEnvelopeAndCrossEngineHeader(t *testing.T) {
 
 func TestMessagingContextInjectedOnceAndOnResume(t *testing.T) {
 	st := testStore(t)
+	must(t, st.update(func(s *State) error {
+		s.Executable = "/missing/versioned csquad"
+		return nil
+	}))
 	for _, step := range []struct {
 		event, session string
 		want           bool
@@ -60,6 +64,16 @@ func TestMessagingContextInjectedOnceAndOnResume(t *testing.T) {
 		out, err := io.ReadAll(f)
 		must(t, err)
 		must(t, f.Close())
+		if step.want {
+			for _, want := range []string{"csquad COMMAND", "bound to this session", "recipient_generation against 1"} {
+				if !strings.Contains(string(out), want) {
+					t.Fatalf("runtime context missing %q: %s", want, out)
+				}
+			}
+			if strings.Contains(string(out), "/missing/versioned csquad") {
+				t.Fatalf("runtime context requires absolute command: %s", out)
+			}
+		}
 		if strings.Contains(string(out), "C-Squad coordinates a team") != step.want {
 			t.Fatalf("unexpected context injection on %s: %s", step.event, out)
 		}

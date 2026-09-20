@@ -68,6 +68,9 @@ func (m model) taskCard(index int) []string {
 	}
 	content = append([]string{spread(textStyle(task.ID, accent, true), badge(task.State), width, bg), ""}, content...)
 	content = append(content, textStyle(line("Owner: "+owner, width), muted, false))
+	if task.Note != "" {
+		content = append(content, textStyle(line(task.Note, width), "222", true))
+	}
 	progress := task.Progress
 	content = append(content, "", textStyle(strings.Repeat("─", width), "240", false))
 	content = append(content, milestoneLines(task.Milestones, width, 3)...)

@@ -65,6 +65,9 @@ func (m model) boardView() []string {
 		task := m.tasks()[m.selected]
 		lines := []string{"", m.boardHeading("TASK DETAILS"), "", "  " + paint(" ‹ Back to tasks ", accent, true), "", ""}
 		body := task.ID + " · " + label(task.State) + "\n\n" + task.Title + "\n\nOwner: " + task.Owner + "\n\n"
+		if task.Note != "" {
+			body += task.Note + "\n\n"
+		}
 		body += strings.Join(milestoneLines(task.Milestones, max(1, m.width-4), -1), "\n")
 		body += "\n\n" + task.Detail
 		return append(lines, m.details(body, m.height-taskHeaderRows-2)...)

@@ -118,6 +118,7 @@ The left sidebar shows your members. These shortcuts stay local to the team:
 | What you want to do | How |
 | --- | --- |
 | Open a member with the mouse | Click its name in the left sidebar |
+| See the next or previous member | `Alt+Down` / `Alt+Up` |
 | Show or hide tasks | Click **Tasks** in the footer, or press `Ctrl-b t` |
 | Open both panels | `csquad ui` |
 | Go back to Master | Press `Ctrl-b`, then `0` |
@@ -137,7 +138,10 @@ For work spanning several repositories, ask Master to start each member in its
 project directory using `member add --cwd /path/to/project`.
 
 **Detaching keeps the team running. Exiting Master stops the team.** Task records
-and worktrees remain in `.csquad/` for recovery.
+and worktrees remain in `.csquad/` for recovery. The team binds `Alt+Up` and
+`Alt+Down`, so your agent no longer receives them; remap or release them with
+`previous_member_key` and `next_member_key`. See
+[member switch keys](docs/usage.md#member-switch-keys-and-your-agent).
 
 ## Learn more
 

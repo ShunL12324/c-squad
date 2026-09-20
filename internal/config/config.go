@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
@@ -34,11 +35,34 @@ type Config struct {
 	Bypass       bool                `json:"bypass_permissions" toml:"bypass_permissions" comment:"Bypass native permission approvals: true (default) or false.\nWhen true, uses Claude --dangerously-skip-permissions or Codex --yolo.\nAlso confirms Claude's native workspace-trust dialog for the selected working directory; Claude saves its normal project trust record. When false, native approvals remain enabled and members may wait for human approval.\nThis does not authenticate accounts, supply quota, or override organization policy."`
 	MaxMembers   int                 `json:"max_members" toml:"max_members" comment:"Maximum team size, including Master. Default: 8; must be an integer of at least 1.\nRemoved members do not count. This does not limit conversation turns or task count."`
 	Templates    map[string]Template `json:"templates,omitempty" toml:"templates,omitempty" comment:"Legacy role template compatibility field; new configurations do not need it. Define member responsibilities with member add --role and --instructions."`
+	PreviousKey  string              `json:"previous_member_key" toml:"previous_member_key" comment:"Key that switches to the previous member, in tmux key syntax. Default: M-Up (Alt/Option+Up).\nThe team binds it, so the agent CLI in the engine pane no longer receives it: tmux treats Alt and Meta as one M- namespace.\nSet it to an empty string to leave the key to the agent and navigate with Ctrl-b 0-9 or the sidebar instead."`
+	NextKey      string              `json:"next_member_key" toml:"next_member_key" comment:"Key that switches to the next member, in tmux key syntax. Default: M-Down (Alt/Option+Down).\nSet it to an empty string to leave the key to the agent."`
 }
 
 // Defaults returns the built-in settings before user and project overlays.
 func Defaults() Config {
-	return Config{Version: 1, Bypass: true, MaxMembers: 8, Engine: Codex, MasterEngine: Claude, MasterModel: "opus"}
+	return Config{Version: 1, Bypass: true, MaxMembers: 8, Engine: Codex, MasterEngine: Claude, MasterModel: "opus",
+		PreviousKey: "M-Up", NextKey: "M-Down"}
+}
+
+// Keys are validated against tmux's own spelling so a mistyped binding fails at
+// config load instead of silently never firing. An empty value disables it.
+var (
+	tmuxModifiers   = regexp.MustCompile(`^([CMS]-)+`)
+	tmuxFunctionKey = regexp.MustCompile(`^[Ff]([1-9]|1[0-2])$`)
+	tmuxNamedKeys   = map[string]bool{"up": true, "down": true, "left": true, "right": true,
+		"bspace": true, "btab": true, "tab": true, "enter": true, "escape": true, "space": true,
+		"home": true, "end": true, "ic": true, "insert": true, "dc": true, "delete": true,
+		"npage": true, "pagedown": true, "pgdn": true, "ppage": true, "pageup": true, "pgup": true}
+)
+
+func validateKey(field, key string) error {
+	name := tmuxModifiers.ReplaceAllString(key, "")
+	switch {
+	case key == "", len([]rune(name)) == 1, tmuxFunctionKey.MatchString(name), tmuxNamedKeys[strings.ToLower(name)]:
+		return nil
+	}
+	return fmt.Errorf("%s: %q is not a tmux key name; use forms like M-Up, C-M-n or F5, or an empty string to leave the key unbound", field, key)
 }
 
 // EngineDefaults resolves launch defaults for master or worker.
@@ -207,6 +231,12 @@ func Load(root string) (Config, error) {
 		if err = engine.Validate(); err != nil {
 			return c, err
 		}
+	}
+	if err = validateKey("previous_member_key", c.PreviousKey); err != nil {
+		return c, err
+	}
+	if err = validateKey("next_member_key", c.NextKey); err != nil {
+		return c, err
 	}
 	if err = agentenv.Validate(c.Env); err != nil {
 		return c, err

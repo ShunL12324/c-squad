@@ -1,12 +1,16 @@
 package squad
 
 import (
+	"context"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/ShunL12324/c-squad/internal/config"
 	"github.com/ShunL12324/c-squad/internal/process"
 	"github.com/ShunL12324/c-squad/internal/tmux"
 )
@@ -80,8 +84,11 @@ func TestNavigationIsScopedAndRefreshesRoster(t *testing.T) {
 	root, prefix := navigationTables(st)
 	keys, e := tm(s, "list-keys", "-T", root)
 	must(t, e)
-	if strings.Contains(keys, "obsolete-navigation") || strings.Contains(keys, "--direction next") || strings.Contains(keys, "--direction previous") || !strings.Contains(keys, prefix) {
+	if strings.Contains(keys, "obsolete-navigation") || !strings.Contains(keys, prefix) {
 		t.Fatal("missing navigation bindings")
+	}
+	if !strings.Contains(keys, "--direction next") || !strings.Contains(keys, "--direction previous") {
+		t.Fatal("member switch keys are not bound:", keys)
 	}
 	must(t, st.update(func(s *State) error { s.Members["a"].State = MemberStateRemoved; return nil }))
 	must(t, st.configureNavigation())
@@ -98,5 +105,89 @@ func TestNavigationIsScopedAndRefreshesRoster(t *testing.T) {
 	st.clearNavigation(s)
 	if _, e = tm(s, "list-keys", "-T", root); e == nil {
 		t.Fatal("key table leaked")
+	}
+}
+
+func TestMemberSwitchKeysAreBoundAndConfigurable(t *testing.T) {
+	st, socket := reproTeam(t, "180", "40")
+	s, err := st.read()
+	must(t, err)
+	root, _ := navigationTables(st)
+	keys, err := tm(s, "list-keys", "-T", root)
+	must(t, err)
+	for _, want := range []string{"M-Up", "M-Down", "--direction previous", "--direction next"} {
+		if !strings.Contains(keys, want) {
+			t.Fatalf("default member switch keys missing %q: %s", want, keys)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "python3", "testdata/member_switch.py", socket, "layout-master", "layout-a", "layout-b").CombinedOutput()
+	if err != nil {
+		t.Fatalf("member switching: %v\n%s", err, out)
+	}
+	t.Logf("%s", out)
+
+	// A remapped pair replaces the defaults; an empty pair leaves the keys to
+	// the agent CLI in the engine pane.
+	for _, tt := range []struct{ previous, next, absent string }{{"M-p", "M-n", "M-Up"}, {"", "", "--direction"}} {
+		must(t, st.update(func(s *State) error {
+			cfg := config.Defaults()
+			cfg.PreviousKey, cfg.NextKey = tt.previous, tt.next
+			s.Config = &cfg
+			return nil
+		}))
+		must(t, st.configureNavigation())
+		keys, err = tm(s, "list-keys", "-T", root)
+		must(t, err)
+		if strings.Contains(keys, tt.absent) {
+			t.Fatalf("keys %q/%q left %q bound: %s", tt.previous, tt.next, tt.absent, keys)
+		}
+		if tt.previous != "" && !strings.Contains(keys, tt.previous) {
+			t.Fatalf("remapped key %q was not bound: %s", tt.previous, keys)
+		}
+	}
+}
+
+func TestMemberCycleWrapsAcrossManyMembers(t *testing.T) {
+	st, socket := reproTeam(t, "180", "40")
+	must(t, st.update(func(s *State) error {
+		for _, id := range []string{"c", "d", "e", "f"} {
+			s.Members[id] = &Member{ID: id, Engine: config.Claude, State: MemberStateIdle, Generation: 1, Session: "layout-" + id}
+		}
+		return nil
+	}))
+	s, err := st.read()
+	must(t, err)
+	for _, id := range []string{"c", "d", "e", "f"} {
+		pane, e := tm(s, "new-session", "-d", "-s", "layout-"+id, "-x", "180", "-y", "40", "-P", "-F", "#{pane_id}", "cat")
+		must(t, e)
+		must(t, st.update(func(s *State) error { s.Members[id].Pane = pane; return nil }))
+	}
+	must(t, st.configureNavigation())
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	hold := exec.CommandContext(ctx, "python3", "testdata/panel_layout.py", "hold", socket, "layout-master", "30")
+	stdout, err := hold.StdoutPipe()
+	must(t, err)
+	must(t, hold.Start())
+	defer func() { _ = hold.Process.Kill(); _, _ = hold.Process.Wait() }()
+	if _, err = io.ReadFull(stdout, make([]byte, len("attached\n"))); err != nil {
+		t.Fatalf("client never attached: %v", err)
+	}
+	client, err := tm(s, "list-clients", "-F", "#{client_name}")
+	must(t, err)
+
+	// Master sorts first and the ring is cyclic, matching the C-b 0-9 order.
+	want := []string{"layout-a", "layout-b", "layout-c", "layout-d", "layout-e", "layout-f", "layout-master"}
+	for _, session := range want {
+		must(t, st.navigate(client, "next", ""))
+		if got := clientSession(s, client); got != session {
+			t.Fatalf("next stopped at %s, want %s", got, session)
+		}
+	}
+	must(t, st.navigate(client, "previous", ""))
+	if got := clientSession(s, client); got != "layout-f" {
+		t.Fatalf("previous wrapped to %s, want layout-f", got)
 	}
 }

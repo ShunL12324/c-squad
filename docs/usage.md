@@ -16,6 +16,7 @@ or inspect the underlying state with `csquad board`.
 | Action | Shortcut or command |
 | --- | --- |
 | Open a member with the mouse | Click its name in the left sidebar |
+| Switch to the previous or next member | `Alt+Up` / `Alt+Down` |
 | Return to Master | `Ctrl-b 0` |
 | Open a numbered member | `Ctrl-b 1` … `Ctrl-b 9` |
 | Detach and leave the team running | `Ctrl-b d` |
@@ -68,6 +69,11 @@ ledger and recovery handoff. Member
 limits are configurable; there is no conversation-turn cap. A member's
 `generation` identifies its current process incarnation, not an iteration limit.
 
+`previous_member_key` and `next_member_key` control the member switch shortcuts;
+they default to `M-Up` and `M-Down` (Alt/Option with the arrow keys). See
+[member switch keys](#member-switch-keys-and-your-agent) for what binding them
+takes away from your agent and how to release them.
+
 **Agents bypass native approval prompts by default.** Set
 `bypass_permissions = false` to retain approvals. With bypass enabled, C Squad
 also confirms Claude's startup trust dialog for the member's selected working
@@ -92,6 +98,69 @@ completion system enabled (for example, Oh My Zsh already enables Zsh completion
 Completion includes commands, flags, and IDs from the current team. It reads the
 ledger without waking agents. `csquad help request` is a team escalation command;
 use `--help` or `csquad usage` for command documentation.
+
+### npm, npx, and manual installs
+
+These channels ship the completion scripts but cannot enable them: the npm
+package runs no lifecycle scripts, and no channel edits your shell
+configuration. Enable completion yourself, with or without Homebrew.
+
+**Current shell only.** Nothing is written to disk, and the effect ends with the
+shell:
+
+```sh
+source <(csquad completion zsh)     # bash: source <(csquad completion bash)
+csquad completion fish | source     # fish
+```
+
+**Persistently.** `csquad completion install` writes the script for one shell
+into a directory you own, defaulting to your login shell and to
+`$XDG_DATA_HOME` / `$XDG_CONFIG_HOME` (`--shell` and `--dir` override both). It
+rewrites the file only when the content changed, so repeating it is harmless,
+and it prints the remaining step instead of performing it:
+
+```sh
+csquad completion install
+csquad completion status            # installed files, and the check for each shell
+```
+
+| Shell | Default target | Remaining step |
+| --- | --- | --- |
+| Bash | `~/.local/share/bash-completion/completions/csquad` | none, but bash-completion v2 must be installed: it reads that directory and provides helpers the script calls |
+| Zsh | `~/.local/share/zsh/site-functions/_csquad` | add the printed `fpath=(...)` line to `~/.zshrc` |
+| Fish | `~/.config/fish/completions/csquad.fish` | none |
+| PowerShell | `~/.local/share/csquad/csquad.ps1` | source it from `$PROFILE` |
+
+Paste the line the command prints rather than retyping it: it quotes the
+directory, which matters when the path contains a space, where an unquoted entry
+would silently become two `fpath` elements.
+
+**Zsh ordering matters.** The `fpath` entry must come *before* the command that
+runs `compinit`; with Oh My Zsh, put it above `source $ZSH/oh-my-zsh.sh`, which
+calls `compinit` itself:
+
+```sh
+fpath=(~/.local/share/zsh/site-functions $fpath)
+source $ZSH/oh-my-zsh.sh            # or: autoload -Uz compinit && compinit
+```
+
+**Then restart the shell.** Completion is read at startup, so the current shell
+will not pick it up. If a new terminal still does not complete, Zsh is using a
+cached index: `rm -f ~/.zcompdump*` and open another terminal.
+
+**Verify** in that new terminal with `csquad sta` + **Tab**, or query the shell
+directly — `print -r -- ${_comps[csquad]:-missing}` in Zsh (prints `_csquad`),
+`complete -p csquad` in Bash, `complete -c csquad` in Fish. `csquad completion
+status` reports the files on disk; it cannot see a running shell's state,
+because no shell exports its `fpath` or its loaded completion functions.
+
+**nvm and upgrades.** The installed script locates `csquad` on `PATH` when you
+press Tab and lives in your data directory rather than under the Node prefix,
+so switching Node versions with `nvm use`, upgrading Node, or running
+`npm install -g csquad@latest` leaves it working. Re-run
+`csquad completion install` only to pick up completions for newly added
+commands; `csquad completion status` reports `differs` when the file no longer
+matches the installed binary.
 
 ## Compatibility and limitations
 
@@ -121,6 +190,21 @@ A code task gets a Git worktree, even when it has only one developer. Its owner
 writes the code; other members review or test it. Separate implementation tasks
 use separate worktrees. Code tasks require a Git repository with an existing
 commit; research tasks can run without Git.
+
+A code task worktree is always created in the team repository. It does not follow
+a member's `--cwd`, so a member working in a different repository cannot submit
+its commits: `csquad` warns about this when the task is created or assigned. When
+work has genuinely landed in another repository, Master can close the task on that
+commit:
+
+```sh
+csquad task close-external T7 --repo /path/to/other-repo --sha 9f3c1ab \
+  --reason 'Work was pushed from the member repository'
+```
+
+That records the commit, the reason and what was not verified, and frees the
+owner. It is not a merge: nothing is fetched into the team repository, and the
+task is shown as closed externally rather than merged.
 
 Review and test evidence refer to a specific candidate commit. Master approves
 and performs the merge through C Squad. If you want a human checkpoint, tell
@@ -155,14 +239,19 @@ color themes can affect their appearance. `--color` supports shell completion.
 ![Members, native agent terminal, and task details](assets/workspace.png)
 
 On wide terminals, new teams open both the member sidebar and task board beside
-the native agent terminal. Click a member
-or select it with the arrow keys and press Enter to open its session. Each member
+the native agent terminal. `Alt+Up` and `Alt+Down` switch to the previous or
+next member in one keypress, from anywhere in the session; the list is cyclic,
+so `Alt+Down` on the last member returns to Master. You can also click a member,
+or focus the sidebar first and then select with the arrow keys and press Enter:
+the sidebar is a separate tmux pane, so plain arrow keys reach it only while it
+holds focus, which is why the Alt shortcuts exist. Each member
 block shows its engine, working directory, status, and assigned task IDs. Long
 paths retain their trailing directory components; task details show the full workspace. The agent's
 terminal remains a native tmux pane; click it to resume typing.
 
 | Action | Shortcut or command |
 | --- | --- |
+| Switch to the previous or next member | `Alt+Up` / `Alt+Down` |
 | Toggle the member sidebar | `Ctrl-b b` |
 | Toggle the task panel | `Ctrl-b t` |
 | Show members and tasks | `csquad ui` |
@@ -170,6 +259,33 @@ terminal remains a native tmux pane; click it to resume typing.
 | Hide both panels | `csquad ui --view hide` |
 | Collapse the task panel | Top-right **×**, `q` or `Esc` |
 | Return to Master | Click the pinned Master card |
+
+### Member switch keys and your agent
+
+The team binds `Alt+Up` and `Alt+Down` in its own tmux key table, which consumes
+them before the pane sees them. **The agent CLI in the engine pane no longer
+receives those keys.** For Claude Code that costs its `meta+up` / `meta+down`
+bindings, which move through the diff file list and jump the message selector to
+top or bottom; both actions keep their other default bindings (`ctrl+up` /
+`ctrl+down`, and `shift+up` / `shift+down` for the message selector), so nothing
+becomes unreachable. Codex does not bind these keys. tmux treats Alt and Meta as
+one `M-` namespace, so it cannot bind one encoding and pass the other through.
+
+Remap or release them in your configuration:
+
+```toml
+previous_member_key = "C-M-p"   # any tmux key name, for example M-Up, C-M-n, F5
+next_member_key = "C-M-n"
+```
+
+Set either to an empty string to leave that key to your agent and navigate with
+`Ctrl-b 0`–`9` or the sidebar instead. A key name tmux does not recognise is
+rejected when the configuration loads rather than producing a binding that never
+fires.
+
+On macOS, Terminal.app sends Option as an accent composer unless **Use Option as
+Meta key** is enabled in its keyboard settings; without it the Alt shortcuts
+never reach tmux. iTerm2 and most Linux terminals send Alt correctly.
 
 The workspace header displays the C Squad mark and team name.
 The bottom footer has clickable **Tasks** and **Detach** buttons.

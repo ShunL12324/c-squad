@@ -74,7 +74,7 @@ func readCompletionState(dir string) (*State, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	var raw string
 	if err = db.QueryRow("SELECT data FROM state WHERE id=1").Scan(&raw); err != nil {
 		return nil, err

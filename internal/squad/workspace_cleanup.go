@@ -147,6 +147,17 @@ func workspaceCleanupReason(st *Store, s *State, t *Task) (string, bool) {
 	if _, e = git(path, "merge-base", "--is-ancestor", "HEAD", "refs/heads/"+t.Target); e != nil {
 		return "workspace contains commits not merged into the target", false
 	}
+	// Git status and even non-force worktree removal trust index flags that
+	// can hide changed files. Do not remove such checkouts, including sparse ones.
+	index, e := git(path, "ls-files", "-v", "-z")
+	if e != nil {
+		return "cannot inspect index flags", false
+	}
+	for _, entry := range strings.Split(index, "\x00") {
+		if len(entry) > 1 && (entry[0] == 'S' || entry[0] >= 'a' && entry[0] <= 'z') {
+			return "index contains assume-unchanged or skip-worktree entries", false
+		}
+	}
 	dirty, e := git(path, "status", "--porcelain", "--untracked-files=all", "--ignored")
 	if e != nil {
 		return "cannot inspect workspace files", false

@@ -128,7 +128,8 @@ csquad task clean-worktree T12
 The compact result reports `eligible`, `removed`, `already_removed`, or `retained`
 with a reason. Only a confirmed, completed merge qualifies. Modified, untracked,
 and ignored files, unmerged commits, changed repository/branch identities,
-symlinked paths and locked worktrees are retained. Worktrees referenced by a
+symlinked paths, locked worktrees, and assume-unchanged/skip-worktree index entries
+are retained. Worktrees referenced by a
 member's working directory are retained even when that member is stopped, so
 resume cannot inherit a deleted directory. Move the member to an appropriate
 existing directory through the member lifecycle commands before trying again.

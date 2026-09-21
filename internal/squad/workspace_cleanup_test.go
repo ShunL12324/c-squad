@@ -67,7 +67,7 @@ func TestCleanWorktreePreservesHistoryAndBranch(t *testing.T) {
 }
 
 func TestCleanWorktreeRetainsUnsafeCheckouts(t *testing.T) {
-	for _, mode := range []string{"unfinished", "no-merge", "member", "member-child", "ignored", "untracked", "dirty", "unmerged", "symlink", "branch", "locked"} {
+	for _, mode := range []string{"unfinished", "no-merge", "member", "member-child", "ignored", "untracked", "dirty", "unmerged", "symlink", "branch", "locked", "assume-unchanged", "skip-worktree"} {
 		t.Run(mode, func(t *testing.T) {
 			st, path := cleanupFixture(t)
 			switch mode {
@@ -95,6 +95,10 @@ func TestCleanWorktreeRetainsUnsafeCheckouts(t *testing.T) {
 				_, err = git(s.Root, "merge", "--ff-only", s.Tasks["T1"].Branch)
 				must(t, err)
 				must(t, os.WriteFile(filepath.Join(path, "cache"), []byte("keep"), 0600))
+			case "assume-unchanged", "skip-worktree":
+				_, err := git(path, "update-index", "--"+mode, "tracked")
+				must(t, err)
+				must(t, os.WriteFile(filepath.Join(path, "tracked"), []byte("hidden local edits"), 0600))
 			case "untracked":
 				must(t, os.WriteFile(filepath.Join(path, "new-file"), []byte("keep"), 0600))
 			case "dirty":

@@ -4,7 +4,7 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
-## v0.8.0 — Unreleased
+## v0.8.0 — 2026-09-21
 
 ### Added
 
@@ -42,7 +42,6 @@ release history; earlier releases remain available on
   setup hint stays suppressed across upgrades and Node-prefix switches; installed
   completion files remain in user-owned storage after npm uninstall. Installation
   alone does not activate completion in an already-open shell.
-
 
 ## [v0.7.1](https://github.com/ShunL12324/c-squad/releases/tag/v0.7.1) — 2026-09-21
 

@@ -48,13 +48,45 @@ packages; all keys and package state used by this test are disposable.
 
 ## Publish
 
-Ordinary pushes and pull requests run no workflows. Run `make check` locally,
-then push a version tag to trigger checks, compilation, and publication:
+Ordinary pushes and pull requests run no workflows. Before every release:
+
+1. Update [CHANGELOG.md](../CHANGELOG.md) in the release commit. Check each entry
+   against the integrated code and acceptance evidence; resolve all pending
+   integration entries before tagging. Use the intended version and UTC release
+   date, never present a planned release as already published. Keep historical
+   dates aligned with GitHub's actual `published_at` timestamps.
+2. Fetch the remote default branch and preserve any automated Formula commits.
+   Review unexpected remote changes before integrating them; do not force-push.
+3. Run `make check` on the final integrated source. Confirm the approved exact
+   commit is on the remote default branch and that the version is unused in
+   Git tags, GitHub Releases, and npm. Tag that explicit commit, not an
+   intermediate or moving branch tip.
+4. Prepare English GitHub Release notes from the matching changelog section.
+   Include the exact source SHA, check the tag/version and changes agree, and
+   omit preparation markers. GoReleaser changelog generation is disabled, so
+   these notes must be supplied explicitly.
+
+For example, after filling in the approved values:
 
 ```sh
-git tag -a v0.1.0 -m 'C Squad v0.1.0'
-git push origin v0.1.0
+RELEASE_TAG=vX.Y.Z
+RELEASE_SHA=APPROVED_FULL_COMMIT_SHA
+git tag -a "$RELEASE_TAG" "$RELEASE_SHA" -m "C Squad $RELEASE_TAG"
+git push origin "$RELEASE_TAG"
 ```
+
+The stable tag triggers checks, compilation, and publication. When the workflow
+creates its draft, apply the prepared notes with
+`gh release edit "$RELEASE_TAG" --notes-file /path/to/release-notes.md`.
+Recheck the public Release body against that tag's changelog after publication;
+do not assume an empty or automatically generated body is sufficient. If the
+actual publication crosses a UTC date boundary, correct the changelog date on
+the default branch in a follow-up commit; never move the published tag.
+
+After publication, verify GitHub assets and checksums, npm's version and packaged
+binaries, the Homebrew Formula and its archive checksums, and the public signed
+APT repository. Check installation and reported version/source where supported.
+Never overwrite or move a published tag.
 
 The Release workflow checks the source, builds a draft, and tests APT
 installation, upgrade, and removal before publishing GitHub assets. It then

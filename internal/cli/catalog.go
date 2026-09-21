@@ -88,6 +88,7 @@ func groupDescription(name string) string {
 }
 func definitions() []definition {
 	defs := []definition{
+		{path: "member set-cwd", args: " NAME", min: 1, max: 1, complete: "member", summary: "Repair a stopped team member directory before resume", flags: []string{"cwd"}, required: []string{"cwd"}},
 		{path: "team remove", args: " NAME", min: 1, max: 1, complete: "team", summary: "Remove a stopped saved team after safety checks", flags: []string{"dry-run", "discard-ignored"}},
 		{path: "new", args: " [NAME]", max: 1, summary: "Create a new team (tmux-style new -s NAME)", flags: startupFlags, example: "  csquad new -s research --engine codex\n  csquad new --detach"},
 		{path: "start", args: " [NAME]", max: 1, summary: "Create a new team; existing names require attach or resume", flags: startupFlags, example: "  csquad start my-team --engine claude\n  csquad start --detach --env CODEX_HOME=/path/to/codex-home"},

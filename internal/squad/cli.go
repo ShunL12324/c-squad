@@ -282,6 +282,9 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 		}
 		return stop(st)
 	}
+	if len(p) == 3 && p[0] == "member" && p[1] == "set-cwd" {
+		return memberCommand(st, actor, p[1:], o)
+	}
 	if !s.Active {
 		return ErrTeamStopped
 	}
@@ -392,7 +395,7 @@ func start(o options) error {
 		t.Model = o["model"]
 	}
 	e = st.update(func(s *State) error {
-		*s = State{Version: 2, Epoch: 1, Phase: TeamPhaseStarting, OwnSocket: os.Getenv("TMUX") == "", Config: &cfg, ID: id, Root: root, Socket: socket, Executable: bin, Active: true, Members: map[string]*Member{}, Tasks: map[string]*Task{}, Questions: map[string]*Question{}, Messages: []*Message{}, Events: []Event{}}
+		*s = State{StartupOverrides: &startupEnv, Version: 2, Epoch: 1, Phase: TeamPhaseStarting, OwnSocket: os.Getenv("TMUX") == "", Config: &cfg, ID: id, Root: root, Socket: socket, Executable: bin, Active: true, Members: map[string]*Member{}, Tasks: map[string]*Task{}, Questions: map[string]*Question{}, Messages: []*Message{}, Events: []Event{}}
 		s.Members["master"] = &Member{Color: tmux.Color(o["color"]), Env: memberEnv(cfg, t, nil), ID: "master", Engine: t.Engine, Model: t.Model, Role: "master", Session: "csq-" + id + "-master", Cwd: root, State: MemberStateStarting, Generation: 1}
 		return nil
 	})

@@ -3,6 +3,8 @@ package squad
 import (
 	"testing"
 
+	"github.com/ShunL12324/c-squad/internal/config"
+
 	"github.com/ShunL12324/c-squad/internal/process"
 )
 
@@ -53,5 +55,43 @@ func TestResumeEnvironmentUsesUpdatedDefaults(t *testing.T) {
 	m.applyResumeEnvironment(nil, nil, map[string]string{"CODEX_HOME": "/explicit"})
 	if m.Env["CODEX_HOME"] != "/explicit" || m.EngineID != "" {
 		t.Fatal("explicit account override was not applied")
+	}
+}
+
+func TestResumeRefreshesStartupConfiguration(t *testing.T) {
+	for _, modern := range []bool{false, true} {
+		s := &State{Config: &config.Config{Env: map[string]string{"REMOVED": "old"}, StartupEnv: map[string]string{"CODEX_HOME": "/old"}}}
+		if modern {
+			empty := map[string]string{}
+			s.StartupOverrides = &empty
+		}
+		m := Member{Engine: config.Codex, EngineID: "old-session", Env: map[string]string{"CODEX_HOME": "/old", "REMOVED": "old", "CUSTOM": "member"}}
+		old, current := refreshResumeDefaults(s, config.Config{StartupEnv: map[string]string{"CODEX_HOME": "/new"}}, nil)
+		m.applyResumeEnvironment(old, current, nil)
+		if m.Env["CODEX_HOME"] != "/new" || m.EngineID != "" || m.Env["CUSTOM"] != "member" {
+			t.Fatalf("refresh: %+v", m)
+		}
+		if _, ok := m.Env["REMOVED"]; ok {
+			t.Fatal("deleted config retained")
+		}
+		m.EngineID = "new-session"
+		old, current = refreshResumeDefaults(s, config.Config{StartupEnv: map[string]string{"CODEX_HOME": "/new"}}, nil)
+		m.applyResumeEnvironment(old, current, nil)
+		if m.EngineID != "new-session" {
+			t.Fatal("unchanged account cleared")
+		}
+	}
+}
+
+func TestResumeRetainsExplicitStartupOverride(t *testing.T) {
+	overrides := map[string]string{"CODEX_HOME": "/explicit"}
+	s := &State{StartupOverrides: &overrides, Config: &config.Config{StartupEnv: overrides}}
+	_, current := refreshResumeDefaults(s, config.Config{Env: map[string]string{"CODEX_HOME": "/configured"}}, nil)
+	if current["CODEX_HOME"] != "/explicit" {
+		t.Fatal("lost explicit startup override")
+	}
+	_, current = refreshResumeDefaults(s, config.Config{}, map[string]string{"CODEX_HOME": "/resume"})
+	if current["CODEX_HOME"] != "/resume" {
+		t.Fatal("resume override ignored")
 	}
 }

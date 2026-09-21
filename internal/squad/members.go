@@ -53,6 +53,9 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 	if actor != "master" {
 		return fmt.Errorf("only master manages members: %w", ErrMasterRequired)
 	}
+	if p[0] == "set-cwd" {
+		return setStoppedMemberDirectory(st, actor, id, o["cwd"])
+	}
 	if p[0] == "add" {
 		unlock, e := filelock.Acquire(st.Dir, "team-lifecycle", false)
 		if e != nil {

@@ -243,6 +243,9 @@ func resumeTeam(st *Store, o options) error {
 	if err != nil {
 		return err
 	}
+	if err := validateResumeDirectories(s); err != nil {
+		return err
+	}
 	for _, member := range s.Members {
 		if member.State != MemberStateRemoved {
 			if err := preflight.Check(member.Engine); err != nil {
@@ -284,16 +287,8 @@ func resumeTeam(st *Store, o options) error {
 	// resume would reintroduce the unnormalised path that start just cleaned.
 	binary = cleanPath(binary)
 	if e = st.update(func(cur *State) error {
-		oldDefaults := map[string]string{}
-		newDefaults := currentConfig.Env
-		if cur.Config != nil {
-			oldDefaults = agentenv.Merge(cur.Config.Env, cur.Config.StartupEnv)
-			newDefaults = agentenv.Merge(currentConfig.Env, cur.Config.StartupEnv)
-		}
-		if cur.Config != nil {
-			cur.Config.Env = agentenv.Merge(cur.Config.Env, currentConfig.Env)
-			cur.Config.StartupEnv = agentenv.Merge(cur.Config.StartupEnv, overrides)
-		}
+		oldDefaults, newDefaults := refreshResumeDefaults(cur, currentConfig, overrides)
+
 		cur.Epoch++
 		cur.Active = true
 		cur.Phase = TeamPhaseStarting

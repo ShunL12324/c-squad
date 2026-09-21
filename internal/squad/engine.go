@@ -12,13 +12,21 @@ import (
 	"github.com/ShunL12324/c-squad/internal/config"
 )
 
-func (st *Store) launch(id string, resume bool, initial string) error {
+func (st *Store) launch(id string, resume bool, initial string) (launchErr error) {
 	s, e := st.read()
 	if e != nil {
 		return e
 	}
 	m, e := s.member(id)
 	if e != nil {
+		return e
+	}
+	defer func() {
+		if launchErr != nil {
+			launchErr = fmt.Errorf("launch member %s (engine %s, cwd %q): %w", id, m.Engine, m.Cwd, launchErr)
+		}
+	}()
+	if _, e = memberDirectory("", m.Cwd); e != nil {
 		return e
 	}
 	cfg, e := s.effectiveConfig()

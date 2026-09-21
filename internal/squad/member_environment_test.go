@@ -74,9 +74,9 @@ func TestRunEngineCommandPathAcrossGenerations(t *testing.T) {
 				}
 				link := filepath.Join(st.Dir, "runtime", "a", gen, "bin", "csquad")
 				if previousLink != "" {
-					target, err := os.Readlink(previousLink)
+					target, err := os.ReadFile(previousLink)
 					must(t, err)
-					if target == selected {
+					if strings.Contains(string(target), selected) {
 						t.Fatal("restart retargeted previous generation")
 					}
 				}
@@ -93,5 +93,79 @@ func TestMemberCommandPathRejectsRelativeExecutable(t *testing.T) {
 	_, err := testStore(t).memberEnvironment(&State{Executable: "csquad"}, &Member{ID: "a", Generation: 1})
 	if err == nil || !strings.Contains(err.Error(), "absolute") {
 		t.Fatalf("relative executable accepted: %v", err)
+	}
+}
+
+// Exercise the real executable with only core environment variables, as Codex
+// tool subprocesses may receive even though their parent runner has CSQUAD_*.
+func TestFilteredToolEnvironmentRetainsLedgerIdentity(t *testing.T) {
+	st := testStore(t)
+	binary := filepath.Join(t.TempDir(), "native csquad")
+	out, err := exec.Command("go", "build", "-o", binary, "../../cmd/csquad").CombinedOutput()
+	if err != nil {
+		t.Fatalf("build: %v %s", err, out)
+	}
+	var incoming string
+	must(t, st.update(func(s *State) error {
+		s.Executable = binary
+		incoming = s.message("master", "a", "", "review", "").ID
+		s.Members["master"].State = MemberStateStopped
+		return nil
+	}))
+	s, err := st.read()
+	must(t, err)
+	env, err := st.memberEnvironment(s, s.Members["a"])
+	must(t, err)
+	run := func(args ...string) ([]byte, error) {
+		cmd := exec.Command("/bin/sh", append([]string{"-c", `exec csquad "$@"`, "tool"}, args...)...)
+		cmd.Env = []string{"PATH=" + env["PATH"], "HOME=" + t.TempDir()}
+		return cmd.CombinedOutput()
+	}
+	out, err = run("message", "inbox")
+	must(t, err)
+	if !strings.Contains(string(out), incoming) {
+		t.Fatalf("wrong inbox: %s", out)
+	}
+	out, err = run("message", "ack", incoming)
+	if err != nil {
+		t.Fatalf("ack: %v %s", err, out)
+	}
+	out, err = run("message", "send", "master", "--text", "filtered identity", "--request-id", "filtered")
+	if err != nil {
+		t.Fatalf("send: %v %s", err, out)
+	}
+	s, err = st.read()
+	must(t, err)
+	found := false
+	for _, msg := range s.Messages {
+		if msg.Text == "filtered identity" {
+			found = true
+			if msg.From != "a" {
+				t.Fatalf("wrong sender: %s", msg.From)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("message not persisted")
+	}
+	out, err = run("question", "request", "--text", "filtered question")
+	if err != nil {
+		t.Fatalf("question: %v %s", err, out)
+	}
+	s, err = st.read()
+	must(t, err)
+	for _, question := range s.Questions {
+		if question.Member != "a" {
+			t.Fatalf("wrong question owner: %s", question.Member)
+		}
+	}
+	out, err = run("--member", "master", "task", "list")
+	if err == nil || !strings.Contains(string(out), "conflicts with this session") {
+		t.Fatalf("identity override: %v %s", err, out)
+	}
+	must(t, st.update(func(s *State) error { s.Members["a"].Generation++; return nil }))
+	out, err = run("task", "list")
+	if err == nil || !strings.Contains(string(out), "outdated") {
+		t.Fatalf("stale entry: %v %s", err, out)
 	}
 }

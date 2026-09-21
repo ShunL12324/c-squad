@@ -166,25 +166,26 @@ type Event struct {
 // State is the persisted team ledger shared by CLI commands and the runtime.
 // Mutations must use Store.update so generation checks and transactions apply.
 type State struct {
-	PanelView   panelView            `json:"panel_view,omitempty"`
-	Epoch       int                  `json:"epoch,omitempty"`
-	Phase       TeamPhase            `json:"phase,omitempty"`
-	OwnSocket   bool                 `json:"own_socket,omitempty"`
-	StopReason  string               `json:"stop_reason,omitempty"`
-	Version     int                  `json:"version"`
-	ID          string               `json:"id"`
-	Root        string               `json:"root"`
-	Socket      string               `json:"tmux_socket"`
-	Executable  string               `json:"executable"`
-	Active      bool                 `json:"active"`
-	Members     map[string]*Member   `json:"members"`
-	Tasks       map[string]*Task     `json:"tasks"`
-	Messages    []*Message           `json:"messages"`
-	Questions   map[string]*Question `json:"questions"`
-	Events      []Event              `json:"events"`
-	Sequence    int                  `json:"sequence"`
-	Config      *config.Config       `json:"config,omitempty"`
-	RuntimeSeen string               `json:"runtime_seen,omitempty"`
+	StartupOverrides *map[string]string   `json:"startup_overrides,omitempty"`
+	PanelView        panelView            `json:"panel_view,omitempty"`
+	Epoch            int                  `json:"epoch,omitempty"`
+	Phase            TeamPhase            `json:"phase,omitempty"`
+	OwnSocket        bool                 `json:"own_socket,omitempty"`
+	StopReason       string               `json:"stop_reason,omitempty"`
+	Version          int                  `json:"version"`
+	ID               string               `json:"id"`
+	Root             string               `json:"root"`
+	Socket           string               `json:"tmux_socket"`
+	Executable       string               `json:"executable"`
+	Active           bool                 `json:"active"`
+	Members          map[string]*Member   `json:"members"`
+	Tasks            map[string]*Task     `json:"tasks"`
+	Messages         []*Message           `json:"messages"`
+	Questions        map[string]*Question `json:"questions"`
+	Events           []Event              `json:"events"`
+	Sequence         int                  `json:"sequence"`
+	Config           *config.Config       `json:"config,omitempty"`
+	RuntimeSeen      string               `json:"runtime_seen,omitempty"`
 }
 
 func now() string { return time.Now().UTC().Format(time.RFC3339Nano) }

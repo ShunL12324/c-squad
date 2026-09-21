@@ -450,3 +450,35 @@ The bound team, member, and generation variables still identify the caller.
 To check resolution in the same non-login tool shell, run `command -v csquad`
 and `csquad version`. The first command should select the current member's
 `runtime/<member>/<generation>/bin/csquad` link.
+
+### Recovery environment and missing directories
+
+`resume` reloads both `[env]` and the compatibility `[startup_env]` table.
+New teams record command-line startup overrides separately, so editing or
+removing a configuration default can take effect without confusing it with
+`start --env`. Explicit startup and member overrides retain precedence;
+`resume --env KEY=VALUE` overrides the saved value for every resumed member.
+For older saved teams, startup values have no provenance: unchanged historical
+values are retained, while entries in the current `[startup_env]` table replace
+the old defaults. Use `resume --env CODEX_HOME=/new/account` to resolve an
+ambiguous old override. Account changes start a fresh native conversation while
+preserving the team ledger and handoff. No environment values are printed by
+recovery diagnostics.
+
+Recovery checks all member directories before stopping old processes or starting
+any new ones. If a worktree was removed, restore it, or update the saved directory
+from an outside terminal while the team is stopped:
+
+```sh
+csquad --team-name research member set-cwd reviewer --cwd /existing/project
+csquad resume research
+```
+
+`set-cwd` validates and records the directory without starting a member or changing
+its task workspace. For a running team use `member restart NAME --cwd DIR`.
+Launch errors identify the member, engine/executable, and working directory.
+
+Member command launchers bind team, member, and generation even when an engine
+filters `CSQUAD_*` variables from tool subprocesses. Conflicting identity flags
+and launchers belonging to a stale generation still fail. Existing teams receive
+the new launcher when members restart or the team resumes with the updated binary.

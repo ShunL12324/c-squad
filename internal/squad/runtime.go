@@ -80,6 +80,9 @@ func runEngine(st *Store, actor string, gen int, args []string) error {
 		return e
 	}
 	e = c.Start()
+	if e != nil {
+		e = fmt.Errorf("start member %s (executable %q, cwd %q): %w", actor, c.Path, c.Dir, e)
+	}
 	if e == nil {
 		started, _ := process.Snapshot()
 		if err = st.update(func(s *State) error {

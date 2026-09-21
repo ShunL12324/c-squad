@@ -28,21 +28,45 @@ func (st *Store) memberEnvironment(s *State, m *Member) (map[string]string, erro
 	if err = os.MkdirAll(bin, 0700); err != nil {
 		return nil, err
 	}
+	// A symlink loses its binding when an engine filters CSQUAD_* from tool
+	// subprocesses. This generation-specific launcher restores identity before
+	// entering the native CLI, whose normal flag and stale-generation checks
+	// still apply. No user shell configuration or engine inheritance is changed.
+	binding := map[string]string{
+		"CSQUAD_STATE_DIR":  st.Dir,
+		"CSQUAD_MEMBER_ID":  m.ID,
+		"CSQUAD_GENERATION": strconv.Itoa(m.Generation),
+	}
+	var script strings.Builder
+	script.WriteString("#!/bin/sh\n")
+	for _, key := range []string{"CSQUAD_STATE_DIR", "CSQUAD_MEMBER_ID", "CSQUAD_GENERATION"} {
+		value := shellQuote(binding[key])
+		fmt.Fprintf(&script, "if [ -n \"${%s-}\" ] && [ \"$%s\" != %s ]; then echo 'csquad: runtime identity conflicts with this session' >&2; exit 1; fi\nexport %s=%s\n", key, key, value, key, value)
+	}
+	fmt.Fprintf(&script, "exec %s \"$@\"\n", shellQuote(s.Executable))
 	link := filepath.Join(bin, "csquad")
-	if target, _ := os.Readlink(link); target != s.Executable {
-		// Rename atomically so concurrent launches never observe a missing link.
-		tmp, err := os.MkdirTemp(bin, ".link-")
+	if current, err := os.ReadFile(link); err != nil || string(current) != script.String() {
+		tmp, err := os.CreateTemp(bin, ".launcher-")
 		if err != nil {
 			return nil, err
 		}
-		defer func() { _ = os.RemoveAll(tmp) }()
-		if err = os.Symlink(s.Executable, filepath.Join(tmp, "csquad")); err != nil {
+		defer func() { _ = os.Remove(tmp.Name()) }()
+		if _, err = tmp.WriteString(script.String()); err != nil {
+			_ = tmp.Close()
 			return nil, err
 		}
-		if err = os.Rename(filepath.Join(tmp, "csquad"), link); err != nil {
+		if err = tmp.Chmod(0700); err != nil {
+			_ = tmp.Close()
+			return nil, err
+		}
+		if err = tmp.Close(); err != nil {
+			return nil, err
+		}
+		if err = os.Rename(tmp.Name(), link); err != nil {
 			return nil, err
 		}
 	}
+
 	env := agentenv.Merge(m.Env)
 	path, overridden := env["PATH"]
 	if !overridden {

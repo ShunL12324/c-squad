@@ -29,7 +29,6 @@ type Task struct {
 	Confirmation                                           string
 	ID, Title, State, Owner, Color, Progress, Detail, Note string
 	Milestones                                             []Milestone
-	Brief                                                  Brief
 }
 
 // Milestone retains reporting and approval states without inferring completion.

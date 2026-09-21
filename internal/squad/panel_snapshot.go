@@ -84,7 +84,7 @@ func (st *Store) panelSnapshot() (teamui.Snapshot, error) {
 			confirmation = "User confirmed"
 			detail += "\n\nUser confirmation: " + t.UserConfirmation.At + " (" + t.UserConfirmation.Actor + ")"
 		}
-		out.Tasks = append(out.Tasks, teamui.Task{ID: t.ID, Title: t.Title, State: strings.ReplaceAll(string(t.State), "_", " "), Owner: t.Owner, Color: color, Progress: t.Progress, Detail: detail, Note: note, Confirmation: confirmation, CanConfirm: canConfirm, Milestones: milestones, Brief: briefFor(s, t.ID)})
+		out.Tasks = append(out.Tasks, teamui.Task{ID: t.ID, Title: t.Title, State: strings.ReplaceAll(string(t.State), "_", " "), Owner: t.Owner, Color: color, Progress: t.Progress, Detail: detail, Note: note, Confirmation: confirmation, CanConfirm: canConfirm, Milestones: milestones})
 	}
 	return out, nil
 }

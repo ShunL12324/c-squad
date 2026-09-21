@@ -101,8 +101,7 @@ proves task completion. Do not send a reply merely to acknowledge a receipt.
 
 Failed transport still uses the durable outbox and automatic backoff. Interrupted
 `sending` attempts can be retried during recovery because their outcome is unknown.
-Explicit `message retry MESSAGE` and a fresh human Brief report request can
-requeue a sent message intentionally. Stable `message send --request-id` and
+Explicit `message retry MESSAGE` can requeue a sent team message intentionally. Stable `message send --request-id` and
 `message reply` retain their idempotency. An optional ACK recorded before
 transport prevents delivery. A native engine crash between transport acceptance
 and the ledger commit can still cause a duplicate; check message ID, generation
@@ -114,6 +113,28 @@ is retained in `delivery_note`; it is not a read receipt. Other error causes are
 not inferred to be success. Normalization is visible on read and persisted by
 the next ledger update. Existing native-engine queued input cannot be withdrawn
 by this migration.
+
+## Brief: direct user input
+
+The **Brief report** button, `b` shortcut, and `task brief TASK` send a short
+English user prompt to master's native session: current progress, remaining
+work, and blockers, with a direct reply in the user's language. Its template
+lives in `internal/prompts/templates/brief.tmpl`. No task or team message record
+is written: there is no team message ID, sender envelope, ACK, or outbox retry.
+Codex uses its native thread queue through the configured executable/alias;
+Claude receives a plain native user frame scoped to its current session ID.
+Neither path types into the terminal composer. A missing native session,
+unavailable master, or stale caller generation fails explicitly.
+
+The panel suppresses rapid repeat clicks and concurrent requests. After feedback,
+each deliberate click is a new question, including after failure. Success means
+only that native transport completed, not that master read or answered it;
+feedback is local to the panel and disappears on respawn. Transport failures
+have no automatic retry; the user may click again. A lost transport response
+can leave acceptance uncertain, so a manual repeat can duplicate native input.
+Old Brief messages remain available for audit but no longer drive panel status,
+automatic delivery/recovery, or explicit message retry. Input already accepted
+by an engine cannot be withdrawn.
 
 ## User confirmation
 

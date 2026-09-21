@@ -26,6 +26,10 @@ release history; earlier releases remain available on
   launcher first.
 - Clarify layout, confirmation, and acknowledgment comments; remove redundant
   conditions and helpers; separate task operations and panel UI responsibilities.
+- Brief sends Master a short English native user prompt asking for task progress,
+  remaining work, and blockers, with a direct reply in the user's language.
+  It no longer creates team messages, ACK/reply chains, or outbox retries.
+  Each deliberate click is a new question; older Brief records remain audit-only.
 
 ### Fixed
 
@@ -39,12 +43,6 @@ release history; earlier releases remain available on
   completion files remain in user-owned storage after npm uninstall. Installation
   alone does not activate completion in an already-open shell.
 
-### Pending integration
-
-- Brief is being changed to send Master a short English native user prompt
-  asking for task progress, remaining work, and blockers, with a reply in the
-  user's language. This must be verified after integration before release:
-  Brief should no longer create a team message, ACK/reply chain, or outbox retry.
 
 ## [v0.7.1](https://github.com/ShunL12324/c-squad/releases/tag/v0.7.1) — 2026-09-21
 

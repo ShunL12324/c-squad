@@ -46,3 +46,18 @@ func Render(entry string, data Data) (string, error) {
 	}
 	return strings.TrimSpace(out.String()) + "\n", nil
 }
+
+// Brief renders a user request independently of the agent instruction policy.
+func Brief(taskID string) (string, error) {
+	if strings.TrimSpace(taskID) == "" {
+		return "", fmt.Errorf("brief requires task ID")
+	}
+	if parseErr != nil {
+		return "", fmt.Errorf("parse embedded prompts: %w", parseErr)
+	}
+	var out bytes.Buffer
+	if err := templates.ExecuteTemplate(&out, "brief", struct{ TaskID string }{taskID}); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out.String()), nil
+}

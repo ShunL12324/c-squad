@@ -20,6 +20,9 @@ func (st *Store) deliver(id string) error {
 		s.expireReports()
 		for _, v := range s.Messages {
 			if v.ID == id {
+				if legacyBrief(v) {
+					return nil
+				}
 				if v.State == DeliveryStateAcknowledged || v.State == DeliveryStateSuperseded {
 					return nil
 				}
@@ -187,7 +190,7 @@ func (st *Store) syncMessages() error {
 	var failed []string
 	for _, m := range s.Messages {
 		// Sent records remain visible without ACK; only unfinished transport needs work.
-		if m.State == DeliveryStatePending || m.State == DeliveryStateSending {
+		if !legacyBrief(m) && (m.State == DeliveryStatePending || m.State == DeliveryStateSending) {
 			if e = st.deliver(m.ID); e != nil {
 				failed = append(failed, m.ID+": "+e.Error())
 			}

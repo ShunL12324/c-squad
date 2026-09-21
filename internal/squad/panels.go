@@ -1,11 +1,7 @@
 package squad
 
 import (
-	"errors"
-	"fmt"
-	"os"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -29,10 +25,7 @@ func panelVisibility(view panelView, width int) (bool, bool) {
 	if width < 90 || view == panelHidden {
 		return false, false
 	}
-	if view == panelTasks {
-		return true, width >= 150
-	}
-	if view == panelBoth {
+	if view == panelTasks || view == panelBoth {
 		return true, width >= 150
 	}
 	return true, false
@@ -282,9 +275,9 @@ func teamWindowSize(s *State) (string, string) {
 }
 
 // fitSession lays the destination out at the switching client's size before the
-// client ever sees it. Member sessions are created detached at a fixed size, so
-// tmux would otherwise reflow every pane proportionally on the switch and the
-// asynchronous layout hook would only repair it a moment later.
+// client ever sees it. Destination geometry can differ after viewport changes
+// or fallback sizing; fitting before the switch avoids visible reflow while
+// waiting for the asynchronous layout hook.
 // It reports whether it pinned the window, which the caller has to undo.
 func (st *Store) fitSession(s *State, m *Member, client string) (bool, error) {
 	unlock, err := filelock.Acquire(st.Dir, "panels", false)
@@ -338,280 +331,6 @@ func (st *Store) fitSession(s *State, m *Member, client string) (bool, error) {
 		}
 	}
 	return pinned, applyPanelDimensions(s, m.Pane, g.dimensions)
-}
-
-func (st *Store) setPanelView(view string, toggle bool) error {
-	if err := st.update(func(s *State) error {
-		current := s.PanelView
-		if current == "" {
-			current = panelBoth
-		}
-		if toggle {
-			switch panelView(view) {
-			case panelTasks:
-				switch current {
-				case panelBoth:
-					view = "members"
-				case panelTasks:
-					view = "hide"
-				case panelHidden:
-					view = "tasks"
-				default:
-					view = "both"
-				}
-			case panelMembers:
-				switch current {
-				case panelBoth:
-					view = "tasks"
-				case panelMembers:
-					view = "hide"
-				case panelHidden:
-					view = "members"
-				default:
-					view = "both"
-				}
-			}
-		}
-		switch panelView(view) {
-		case panelMembers, panelTasks, panelBoth, panelHidden:
-			s.PanelView = panelView(view)
-		default:
-			return errors.New("view must be members, tasks, both or hide")
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-	return st.configurePanels()
-}
-
-func (st *Store) panelSnapshot() (teamui.Snapshot, error) {
-	s, err := st.read()
-	if err != nil {
-		return teamui.Snapshot{}, err
-	}
-	cfg, err := s.effectiveConfig()
-	if err != nil {
-		return teamui.Snapshot{}, err
-	}
-	out := teamui.Snapshot{Team: s.ID, Active: s.Active, Switch: switchHint(cfg)}
-	taskIDs := sortedTaskIDs(s)
-	for _, m := range navigationMembers(s) {
-		tasks := []string{}
-		for _, id := range taskIDs {
-			t := s.Tasks[id]
-			if t.State != TaskPhaseDone && (t.Owner == m.ID || slices.Contains(t.Participants, m.ID)) {
-				tasks = append(tasks, id)
-			}
-		}
-		card := teamui.Member{ID: m.ID, Engine: string(m.Engine), State: strings.ReplaceAll(string(m.State), "_", " "), Color: strings.TrimPrefix(m.Color.StyleValue(), "colour"), Cwd: displayDirectory(m.Cwd), Tasks: strings.Join(tasks, ", ")}
-		// Resolve from the raw cwd, never from displayDirectory's abbreviation and
-		// never from the task's workspace: in a cross-repository task the member
-		// is on another repository's branch entirely.
-		if state, ok := memberGit(m.Cwd); ok {
-			card.Branch, card.Commit, card.Worktree = state.Branch, state.Commit, state.Worktree
-		}
-		out.Members = append(out.Members, card)
-	}
-	for _, id := range taskIDs {
-		t := s.Tasks[id]
-		color := "252"
-		if owner := s.Members[t.Owner]; owner != nil {
-			color = strings.TrimPrefix(owner.Color.StyleValue(), "colour")
-		}
-		workspace := t.Workspace
-		if workspace == "" && s.Members[t.Owner] != nil {
-			workspace = s.Members[t.Owner].Cwd
-		}
-		detail := fmt.Sprintf("With: %s\n\nGoal\n%s\n\nAcceptance\n%s\n\nLatest update\n%s\n\nWorkspace\n%s\n\nUpdated: %s", strings.Join(t.Participants, ", "), t.Description, t.Acceptance, t.Progress, workspace, t.Updated)
-		if len(t.Blockers) > 0 {
-			detail += "\n\nBlocked\n" + strings.Join(t.Blockers, "\n")
-		}
-		milestones := make([]teamui.Milestone, 0, len(t.Milestones))
-		for _, ms := range t.Milestones {
-			milestones = append(milestones, teamui.Milestone{Name: ms.Name, State: string(ms.State), Gate: ms.Gate})
-		}
-		for _, e := range t.Evidence {
-			result := "failed"
-			if e.Passed {
-				result = "passed"
-			}
-			detail += fmt.Sprintf("\n\n%s · %s · %s\n%s", e.Member, e.Kind, result, e.Summary)
-		}
-		if t.Candidate != "" {
-			detail += "\n\nCandidate: " + t.Candidate
-		}
-		if t.MergeCommit != "" {
-			detail += "\n\nMerged: " + t.MergeCommit
-		}
-		// A task closed on outside evidence must never render like a merged one.
-		note := ""
-		if t.ExternalClosure != nil {
-			note = "Closed externally · not merged · " + short(t.ExternalClosure.SHA)
-			detail += "\n\n" + strings.Join(describeExternalClosure(t.ExternalClosure), "\n")
-		}
-		confirmation := ""
-		canConfirm := t.State == TaskPhaseDone && t.UserConfirmation == nil
-		if canConfirm {
-			confirmation = "Awaiting user confirmation"
-		}
-		if t.UserConfirmation != nil {
-			confirmation = "User confirmed"
-			detail += "\n\nUser confirmation: " + t.UserConfirmation.At + " (" + t.UserConfirmation.Actor + ")"
-		}
-		out.Tasks = append(out.Tasks, teamui.Task{ID: t.ID, Title: t.Title, State: strings.ReplaceAll(string(t.State), "_", " "), Owner: t.Owner, Color: color, Progress: t.Progress, Detail: detail, Note: note, Confirmation: confirmation, CanConfirm: canConfirm, Milestones: milestones, Brief: briefFor(s, t.ID)})
-	}
-	return out, nil
-}
-func sortedTaskIDs(s *State) []string {
-	ids := make([]string, 0, len(s.Tasks))
-	for id := range s.Tasks {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool {
-		a, b := s.Tasks[ids[i]], s.Tasks[ids[j]]
-		if (a.State == TaskPhaseDone) != (b.State == TaskPhaseDone) {
-			return a.State != TaskPhaseDone
-		}
-		return ids[i] < ids[j]
-	})
-	return ids
-}
-
-func (st *Store) runPanel(owner, view string, popup bool) error {
-	if view != "members" && view != "tasks" && view != "header" {
-		return errors.New("panel must be members or tasks")
-	}
-	pane := os.Getenv("TMUX_PANE")
-	return teamui.Run(view, owner, st.panelSnapshot, func(a teamui.Action) (string, error) {
-		s, err := st.read()
-		if err != nil {
-			return "", err
-		}
-		if a.Kind == "close" {
-			if popup {
-				return "", nil
-			}
-			return "", st.setPanelView(view, true)
-		}
-		// The panel runs as master from argv C Squad builds itself, which is the
-		// identity the request is made under; the message records the user as
-		// its origin. It queues a question and touches no task state.
-		if a.Kind == "confirm" {
-			return st.confirmTask(a.Task)
-		}
-		if a.Kind == "brief" {
-			return briefRequest(st, "master", a.Task)
-		}
-		m, err := s.member(a.Member)
-		if err != nil {
-			return "", err
-		}
-		client, _ := tm(s, "show-options", "-pv", "-t", pane, "@csquad_client")
-		// A clicked panel records its originating client. Keyboard-only navigation
-		// is unambiguous when exactly one client is attached to this member session.
-		host, err := s.member(owner)
-		if err != nil {
-			return "", err
-		}
-		rows, err := tm(s, "list-clients", "-F", "#{client_name}\t#{session_name}")
-		if err != nil {
-			return "", err
-		}
-		candidates := []string{}
-		for _, line := range strings.Split(rows, "\n") {
-			name, session, ok := strings.Cut(line, "\t")
-			if ok && session == host.Session {
-				candidates = append(candidates, name)
-			}
-		}
-		if !slices.Contains(candidates, client) {
-			if len(candidates) != 1 {
-				return "", errors.New("click this panel to select a client")
-			}
-			client = candidates[0]
-		}
-		return "", st.switchMember(s, m, client)
-	})
-}
-
-func (st *Store) openUI(o options, toggle bool) error {
-	view := o["view"]
-	if view == "" {
-		view = "both"
-	}
-	if toggle && view == "tasks" {
-		s, err := st.read()
-		if err != nil {
-			return err
-		}
-		opened, err := st.compactPanelPopup(s, view, o["client"])
-		if err != nil || opened {
-			return err
-		}
-	}
-	if err := st.setPanelView(view, toggle); err != nil {
-		return err
-	}
-	// A Tasks toggle already checked compact mode before changing the layout.
-	// Do not check again after that asynchronous work: a terminal shrink in
-	// between would unexpectedly open a popup and intercept subsequent resize
-	// events intended for the normal panel layout.
-	if view == "hide" || toggle && view == "tasks" {
-		return nil
-	}
-	s, err := st.read()
-	if err != nil {
-		return err
-	}
-	_, err = st.compactPanelPopup(s, view, o["client"])
-	return err
-}
-
-// compactPanelPopup keeps member navigation visible when the task board cannot
-// fit alongside the engine. It never changes the saved wide-screen layout.
-func (st *Store) compactPanelPopup(s *State, view, client string) (bool, error) {
-	rows, err := tm(s, "list-clients", "-F", "#{client_name}\t#{session_name}\t#{client_width}")
-	if err != nil {
-		return false, err
-	}
-	for _, row := range strings.Split(rows, "\n") {
-		f := strings.Split(row, "\t")
-		if len(f) != 3 || client != "" && client != f[0] {
-			continue
-		}
-		for _, m := range navigationMembers(s) {
-			if m.Session != f[1] {
-				continue
-			}
-			width, _ := strconv.Atoi(f[2])
-			members, tasks := panelVisibility(panelBoth, width)
-			popupView := view
-			if popupView == "both" {
-				popupView = "tasks"
-			}
-			if popupView == "tasks" && tasks || popupView == "members" && members {
-				return false, nil
-			}
-			_, err = tm(s, "display-popup", "-c", f[0], "-E", "-w", "95%", "-h", "90%", st.panelCommand(s, m.ID, popupView)+" --popup")
-			return true, err
-		}
-	}
-	return false, nil
-}
-
-// displayDirectory abbreviates only the user's home, preserving the actual cwd.
-func displayDirectory(path string) string {
-	home, err := os.UserHomeDir()
-	if err == nil && home != "" {
-		if path == home {
-			return "~"
-		}
-		if strings.HasPrefix(path, home+"/") {
-			return "~" + strings.TrimPrefix(path, home)
-		}
-	}
-	return path
 }
 
 func applyPanelDimensions(s *State, target string, dimensions map[string][2]int) error {

@@ -109,7 +109,7 @@ func briefEnqueue(st *Store, id string) (string, error) {
 			}
 			// Master explicitly acknowledged the last one, so the key is spent. Release it
 			// before reusing it, or the scan above would keep finding the
-			// answered message forever and the user could never ask again.
+			// acknowledged message forever and the user could never ask again.
 			old.RequestKey = ""
 		}
 		msg := s.message(UserSender, "master", t.ID, briefText(s, t), "")

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -66,14 +67,6 @@ func list(s string) []string {
 	}
 	return out
 }
-func contains(xs []string, x string) bool {
-	for _, v := range xs {
-		if v == x {
-			return true
-		}
-	}
-	return false
-}
 
 // Execute runs a validated command with parsed flags and optional native engine argv.
 // The CLI adapter owns syntax, help, and completion; this layer enforces team policy.
@@ -106,7 +99,7 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 	if p[0] == "start" {
 		return start(o)
 	}
-	ledger := !contains(plumbingCommands, p[0])
+	ledger := !slices.Contains(plumbingCommands, p[0])
 	if ledger {
 		if e := agreement("team", cleanPath(o["team"]), cleanPath(os.Getenv("CSQUAD_STATE_DIR"))); e != nil {
 			return e
@@ -119,7 +112,7 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 		}
 	}
 	name := o["team-name"]
-	if o["name"] != "" && contains([]string{"resume", "attach", "board", "stop", "ui", "recover"}, p[0]) {
+	if o["name"] != "" && slices.Contains([]string{"resume", "attach", "board", "stop", "ui", "recover"}, p[0]) {
 		if name != "" {
 			return errors.New("specify only one team selector")
 		}

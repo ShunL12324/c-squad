@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -43,7 +44,7 @@ func TestCompletionReadsWithoutUpdatingTeam(t *testing.T) {
 	}
 	members, err := CompletionValues(st.Dir, "member")
 	must(t, err)
-	if contains(members, "b") {
+	if slices.Contains(members, "b") {
 		t.Fatal("completed removed member")
 	}
 	must(t, st.DB.QueryRow("SELECT data FROM state WHERE id=1").Scan(&after))

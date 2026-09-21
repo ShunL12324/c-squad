@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -148,7 +149,7 @@ func definitions() []definition {
 	defs = append(defs, definition{path: "navigate", hidden: true, flags: []string{"client", "direction", "index"}}, definition{path: "shutdown", hidden: true, flags: []string{"epoch", "expected-generation", "reason"}, required: []string{"epoch", "expected-generation"}}, definition{path: "run-engine", hidden: true, min: 1, max: -1})
 	defs = append(defs, definition{path: "member attach", args: " MEMBER", summary: "Attach to an existing member terminal", min: 1, max: 1, complete: "member"})
 	for i := range defs {
-		if contains([]string{"list", "board", "member list", "member inspect", "task list", "task inspect", "message inbox", "help list"}, defs[i].path) {
+		if slices.Contains([]string{"list", "board", "member list", "member inspect", "task list", "task inspect", "message inbox", "help list"}, defs[i].path) {
 			defs[i].flags = append(append([]string(nil), defs[i].flags...), "output")
 		}
 	}
@@ -170,5 +171,5 @@ func definitions() []definition {
 }
 
 func fileInput(name string) bool {
-	return contains([]string{"text", "summary", "instructions", "description"}, name)
+	return slices.Contains([]string{"text", "summary", "instructions", "description"}, name)
 }

@@ -78,7 +78,8 @@ func hookInput(st *Store, actor string, gen int, input io.Reader) error {
 			q := &Question{ID: s.next("Q"), Member: actor, Text: fmt.Sprint(h["tool_input"]), State: QuestionStateOpen}
 			s.Questions[q.ID] = q
 			m.State = MemberStateWaitingMaster
-			s.message(actor, "master", "", "Needs your decision: "+q.ID+" "+q.Text, "")
+			msg := s.message(actor, "master", "", "Needs your decision: "+q.ID+" "+q.Text, "")
+			msg.Report = &ReportReference{Kind: "decision", Question: q.ID}
 		}
 		return nil
 	})

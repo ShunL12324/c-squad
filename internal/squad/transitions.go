@@ -19,6 +19,9 @@ func (m *Member) resetRuntime() {
 }
 
 func (m *Message) resetDelivery() {
+	if m.State == DeliveryStateSuperseded {
+		return
+	}
 	m.State = DeliveryStatePending
 	m.Attempt = ""
 	m.Attempts = 0

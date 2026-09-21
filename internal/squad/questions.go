@@ -34,7 +34,9 @@ func helpCommand(st *Store, actor string, p []string, o options) error {
 			q := &Question{ID: s.next("Q"), Member: actor, Task: o["task"], Text: o["text"], State: QuestionStateOpen}
 			s.Questions[q.ID] = q
 			s.Members[actor].State = MemberStateWaitingMaster
-			message = s.message(actor, "master", q.Task, "Help request "+q.ID+": "+q.Text, "").ID
+			msg := s.message(actor, "master", q.Task, "Help request "+q.ID+": "+q.Text, "")
+			msg.Report = &ReportReference{Kind: "decision", Question: q.ID}
+			message = msg.ID
 			result = q
 		case "answer":
 			if actor != "master" {
@@ -52,6 +54,7 @@ func helpCommand(st *Store, actor string, p []string, o options) error {
 			}
 			q.Answer = o["text"]
 			q.State = QuestionStateAnswered
+			s.expireReports()
 			m := s.Members[q.Member]
 			if m != nil && m.State == MemberStateWaitingMaster {
 				m.State = MemberStateIdle

@@ -3,11 +3,28 @@ package squad
 import (
 	"errors"
 	"fmt"
+
+	"github.com/ShunL12324/c-squad/internal/filelock"
 )
 
 func messageCommand(st *Store, actor string, p []string, o options) error {
+	var release func()
+	defer func() {
+		if release != nil {
+			release()
+		}
+	}()
+	// Serialize acknowledgment with the final transport check.
+	if p[0] == "reply" || (len(p) > 1 && p[1] == "ack") {
+		unlock, err := filelock.Acquire(st.Dir, "member-"+actor, false)
+		if err != nil {
+			return err
+		}
+		release = unlock
+	}
 	var ids []string
 	e := st.update(func(s *State) error {
+		s.expireReports()
 		if p[0] == "reply" {
 			if len(p) < 2 {
 				return errors.New("message ID required")
@@ -47,7 +64,7 @@ func messageCommand(st *Store, actor string, p []string, o options) error {
 		case "inbox":
 			a := []*Message{}
 			for _, m := range s.Messages {
-				if m.To == actor && m.State != DeliveryStateAcknowledged {
+				if m.To == actor && m.State != DeliveryStateAcknowledged && m.State != DeliveryStateSuperseded {
 					a = append(a, m)
 				}
 			}
@@ -58,8 +75,8 @@ func messageCommand(st *Store, actor string, p []string, o options) error {
 			}
 			for _, m := range s.Messages {
 				if m.ID == p[2] {
-					if m.State == DeliveryStateAcknowledged {
-						return errors.New("message already acknowledged")
+					if m.State == DeliveryStateAcknowledged || m.State == DeliveryStateSuperseded {
+						return fmt.Errorf("message is %s and cannot be retried", m.State)
 					}
 					m.State = DeliveryStatePending
 					m.Attempt = ""
@@ -139,6 +156,10 @@ func messageCommand(st *Store, actor string, p []string, o options) error {
 		}
 		return errors.New("unknown message operation")
 	})
+	if release != nil {
+		release()
+		release = nil
+	}
 	if e != nil {
 		return e
 	}

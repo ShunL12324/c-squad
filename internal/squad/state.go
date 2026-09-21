@@ -131,19 +131,20 @@ const UserSender = "user"
 // Message is a durable outbox entry retained until the recipient acknowledges it.
 // Attempt and RecipientGeneration fence delivery retries across member restarts.
 type Message struct {
-	ID                  string        `json:"id"`
-	From                string        `json:"from"`
-	To                  string        `json:"to"`
-	Task                string        `json:"task,omitempty"`
-	Text                string        `json:"text"`
-	ReplyTo             string        `json:"reply_to,omitempty"`
-	State               DeliveryState `json:"state"`
-	Error               string        `json:"error,omitempty"`
-	Created             string        `json:"created"`
-	Attempt             string        `json:"attempt,omitempty"`
-	Attempts            int           `json:"attempts"`
-	RecipientGeneration int           `json:"recipient_generation,omitempty"`
-	RequestKey          string        `json:"request_key,omitempty"`
+	Report              *ReportReference `json:"report,omitempty"`
+	ID                  string           `json:"id"`
+	From                string           `json:"from"`
+	To                  string           `json:"to"`
+	Task                string           `json:"task,omitempty"`
+	Text                string           `json:"text"`
+	ReplyTo             string           `json:"reply_to,omitempty"`
+	State               DeliveryState    `json:"state"`
+	Error               string           `json:"error,omitempty"`
+	Created             string           `json:"created"`
+	Attempt             string           `json:"attempt,omitempty"`
+	Attempts            int              `json:"attempts"`
+	RecipientGeneration int              `json:"recipient_generation,omitempty"`
+	RequestKey          string           `json:"request_key,omitempty"`
 }
 
 // Question records a member request to master and its blocking answer state.

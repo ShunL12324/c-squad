@@ -48,3 +48,42 @@ first revision, with their current progress as the submitted summary. Legacy
 evidence matching the candidate is attached to that revision; evidence for other
 commits stays ineligible. Later revisions never inherit unbound evidence.
 External repository closures remain a separate workflow, not submissions.
+
+## Automatic task reports
+
+Routine progress, claims, ordinary milestones and individual passing evidence
+stay in the ledger/UI and do not wake master. Use `task progress` for identity
+checks, recovery confirmations and informational receipts; do not send a message
+just to say “noted”. Explicit `message send` remains immediate for actionable
+coordination, and `question request` remains immediate for blockers/decisions.
+
+Master receives task reports when a candidate is submitted, an approval gate is
+reached, evidence fails, or the current submission acquires passing review and
+test evidence with no unresolved failure. Non-code approval still does not
+require a review/test pair. Reporting does not change any approval rule.
+Reports include the task state, owner/participants, immutable submission ID,
+candidate SHA, submission conclusion, progress, blockers, open questions and
+evidence with member/category/result references. Read `task inspect TASK` for the
+current full record, `question list` for questions, and `board` for recent message
+history. The existing task-card Brief report action requests a human-readable
+explanation from master.
+
+A queued submission report is folded into a newer readiness/failure report.
+Repeated submission calls do not create duplicate reports. An answered question,
+approved gate, withdrawn candidate, corrected failure or obsolete readiness
+notice becomes `superseded` rather than being injected later. The original
+message remains in ledger history with its `report` reference (kind, submission,
+question, milestone, or one-based evidence index). It is excluded from inbox
+and cannot be retried or revived by restart. Reports refresh their task snapshot
+just before delivery; already delivered native-engine input cannot be retracted,
+so recipients must still consult current ledger state.
+
+Successful transport is not an agent ACK. A sent message is not automatically
+injected again: after five minutes without ACK it becomes `needs_attention`,
+visible through inbox/board. Inspect the recipient before explicitly running
+`message retry MESSAGE`. Failed transport still uses the durable outbox and
+automatic backoff. Recipient restart/resume can redeliver unacknowledged messages.
+Stable `message send --request-id` and `message reply` retain their idempotency.
+An ACK recorded before transport prevents delivery, including when a message
+was first consumed through inbox. Transport and ledger commits cannot be atomic
+across a native engine crash, so message IDs/ACK remain necessary for recovery.

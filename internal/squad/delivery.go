@@ -18,8 +18,20 @@ func (st *Store) deliver(id string) error {
 	var attempt string
 	var recipientGen int
 	if err := st.update(func(s *State) error {
+		s.expireReports()
 		for _, v := range s.Messages {
 			if v.ID == id {
+				if v.State == DeliveryStateAcknowledged || v.State == DeliveryStateSuperseded {
+					return nil
+				}
+				if v.State == DeliveryStateSent {
+					at, _ := time.Parse(time.RFC3339Nano, v.Attempt)
+					if time.Since(at) >= 5*time.Minute {
+						v.State = DeliveryStateNeedsAttention
+						v.Error = "Transport succeeded but no agent ACK; inspect inbox/recipient or explicitly message retry (no automatic reinjection)"
+					}
+					return nil
+				}
 				if !s.Active {
 					return ErrTeamStopped
 				}
@@ -44,16 +56,7 @@ func (st *Store) deliver(id string) error {
 					return nil
 				}
 				at, _ := time.Parse(time.RFC3339Nano, v.Attempt)
-				if v.State == DeliveryStateSent {
-					if time.Since(at) < 5*time.Minute {
-						return nil
-					}
-					if v.Attempts >= 3 {
-						v.State = DeliveryStateNeedsAttention
-						v.Error = "No agent ACK after 3 delivery attempts; inspect recipient or restart/requeue"
-						return nil
-					}
-				} else if v.State == DeliveryStatePending && v.Attempt != "" {
+				if v.State == DeliveryStatePending && v.Attempt != "" {
 					delay := time.Duration(1<<min(v.Attempts, 5)) * time.Second
 					if time.Since(at) < delay {
 						return nil
@@ -116,7 +119,7 @@ func (st *Store) deliver(id string) error {
 	if msg == nil {
 		return fmt.Errorf("unknown message: %w", ErrNotFound)
 	}
-	if msg.State == DeliveryStateAcknowledged {
+	if msg.State != DeliveryStateSending || msg.Attempt != attempt || !s.reportCurrent(msg) {
 		return nil
 	}
 	m, e := s.member(msg.To)
@@ -136,6 +139,8 @@ func (st *Store) deliver(id string) error {
 		})
 		return errors.Join(e, stateErr)
 	}
+	// Refresh aggregated facts immediately before transport.
+	msg.Text = s.reportText(msg)
 	text := messageBody(msg, recipientGen, true)
 	if m.Engine == config.Claude {
 		if m.Peer == "" {
@@ -162,12 +167,13 @@ func (st *Store) deliver(id string) error {
 	deliveryErr := e
 	err := st.update(func(s *State) error {
 		for _, v := range s.Messages {
-			if v.ID == id && v.State != DeliveryStateAcknowledged && v.Attempt == attempt && s.Members[v.To].Generation == recipientGen {
+			if v.ID == id && v.State == DeliveryStateSending && v.Attempt == attempt && s.Members[v.To].Generation == recipientGen {
 				if deliveryErr != nil {
 					v.State = DeliveryStatePending
 					v.Error = deliveryErr.Error()
 				} else {
 					v.State = DeliveryStateSent
+					v.Text = msg.Text
 					v.Error = ""
 				}
 			}

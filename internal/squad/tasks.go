@@ -26,7 +26,8 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 		return briefCommand(st, actor, p[1])
 	}
 	var result any
-	var notice string
+	var report *ReportReference
+	var wasReady bool
 	err := st.update(func(s *State) error {
 		if p[0] == "list" {
 			result = s.Tasks
@@ -204,7 +205,7 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 			t.Owner = actor
 			t.Participants = append(t.Participants, actor)
 			t.State = TaskPhaseInProgress
-			notice = "Claimed task " + t.ID
+			// Ownership is recorded on the task; no master interruption.
 		case "progress":
 			if o["text"] == "" {
 				return errors.New("--text required")
@@ -222,6 +223,7 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 					m.State = MilestoneStateReported
 					if m.Gate {
 						m.State = MilestoneStateAwaitingApproval
+						report = &ReportReference{Kind: "decision", Milestone: m.Name}
 					}
 					found = true
 				}
@@ -229,7 +231,7 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 			if !found {
 				return fmt.Errorf("unknown milestone: %w", ErrNotFound)
 			}
-			notice = "Milestone " + o["name"] + " reached for " + t.ID
+			// Ordinary milestones remain visible in the ledger and UI.
 		case "gate":
 			found := false
 			for i := range t.Milestones {
@@ -324,13 +326,14 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 			t.Progress = o["summary"]
 			t.State = TaskPhaseInReview
 			t.Approval = nil
-			notice = "Task submitted: " + t.ID + " " + t.Progress + " submission=" + t.Submission + " candidate=" + t.Candidate
+			report = &ReportReference{Kind: "delivery", Submission: t.Submission}
 		case "close-external":
 			if e = closeExternal(s, actor, t, o); e != nil {
 				return e
 			}
 			printNotice(describeExternalClosure(t.ExternalClosure))
 		case "evidence":
+			wasReady = evidenceReady(t)
 			if EvidenceKind(o["kind"]) != EvidenceReview && EvidenceKind(o["kind"]) != EvidenceTest {
 				return errors.New("--kind review|test required")
 			}
@@ -352,7 +355,11 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 			t.Evidence = append(t.Evidence, Evidence{Member: actor, Kind: EvidenceKind(o["kind"]), SHA: t.Candidate, Submission: t.Submission, Passed: o["passed"] == "true", Summary: o["summary"]})
 			t.Approval = nil
 			t.State = TaskPhaseInReview
-			notice = "Evidence recorded: " + t.ID + " " + o["kind"] + " passed=" + o["passed"]
+			if o["passed"] == "false" {
+				report = &ReportReference{Kind: "failure", Submission: t.Submission, Evidence: len(t.Evidence)}
+			} else if !wasReady && evidenceReady(t) {
+				report = &ReportReference{Kind: "ready", Submission: t.Submission}
+			}
 		case "approve":
 			if t.State != TaskPhaseInReview {
 				return errors.New("task not submitted for review")
@@ -384,9 +391,10 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 			return errors.New("unknown task operation")
 		}
 		t.Updated = now()
-		if notice != "" && actor != "master" {
-			s.message(actor, "master", t.ID, notice, "")
+		if report != nil && actor != "master" {
+			s.taskReport(actor, t, report)
 		}
+		s.expireReports()
 		s.event(actor, op, t.ID)
 		result = t
 		return nil

@@ -6,6 +6,7 @@ type DeliveryState string
 
 // Supported DeliveryState values.
 const (
+	DeliveryStateSuperseded     DeliveryState = "superseded"
 	DeliveryStateAcknowledged   DeliveryState = "acknowledged"
 	DeliveryStateNeedsAttention DeliveryState = "needs_attention"
 	DeliveryStatePending        DeliveryState = "pending"

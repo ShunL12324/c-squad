@@ -1,154 +1,111 @@
 package squad
 
 import (
-	"errors"
+	"encoding/json"
 	"fmt"
+	"net"
+	"time"
 
-	"github.com/ShunL12324/c-squad/internal/teamui"
+	"github.com/ShunL12324/c-squad/internal/config"
+	"github.com/ShunL12324/c-squad/internal/filelock"
+	"github.com/ShunL12324/c-squad/internal/prompts"
 )
 
-// briefKey identifies the one live brief-report request for a task. At most one
-// unacknowledged request carries it, so a second press reuses the message that
-// is already in flight instead of queueing another, and a retry stays a retry.
-func briefKey(id string) string { return UserSender + ":brief:" + id }
-
-// briefText is generated from the ledger, never typed by anyone. The closing
-// lines matter as much as the questions: an agent reading a status request must
-// not read it as licence to act on the task.
-func briefText(s *State, t *Task) string {
-	owner := t.Owner
-	if owner == "" {
-		owner = "unassigned"
-	}
-	return fmt.Sprintf(`[brief-report request from the user]
-Team %s, task %s %q (state: %s, owner: %s).
-The user is asking YOU (master) to summarise this task for them, in their language, in your own session:
-1) the goal; 2) what is done; 3) what remains; 4) current blockers;
-5) if finished: the result, and exactly how it was verified - evidence kinds and SHA, merge commit, or the explicit absence of them.
-Read the ledger first (task inspect %s); ask the members if you need to.
-This request changes no task state. Do NOT approve, reopen, merge, reassign, restart or re-run anything because of it.
-Answer the user directly; do not reply to this message through the CLI.`,
-		s.ID, t.ID, t.Title, t.State, owner, t.ID)
+// legacyBrief identifies historical outbox requests solely to prevent replay.
+// Their records remain intact for audit; new requests never enter the outbox.
+func legacyBrief(m *Message) bool {
+	return m.From == UserSender && m.To == "master" && m.RequestKey == UserSender+":brief:"+m.Task
 }
 
-// briefCommand is the CLI entry point. The panel calls briefRequest directly:
-// it owns a terminal that a JSON dump would corrupt.
 func briefCommand(st *Store, actor, id string) error {
-	note, e := briefRequest(st, actor, id)
-	if e != nil {
-		return e
+	note, err := briefRequest(st, actor, id)
+	if err != nil {
+		return err
 	}
 	return jsonOut(map[string]string{"task": id, "note": note})
 }
 
-// briefRequest asks master to summarise one task for the user, and reports what
-// became of the request. It is deliberately not part of the task operation
-// switch: it reads the task and writes only a message, so it must work for a
-// done or merging task that the switch rejects, and it must leave the task
-// itself untouched.
+// briefRequest sends one native user input, without mutating task or message state.
+// Lifecycle locks keep the checked master incarnation stable during transport.
 func briefRequest(st *Store, actor, id string) (string, error) {
 	if actor != "master" {
 		return "", fmt.Errorf("only master may request a brief report: %w", ErrMasterRequired)
 	}
-	s, e := st.read()
-	if e != nil {
-		return "", e
+	before, err := st.read()
+	if err != nil {
+		return "", err
+	}
+	prior := before.Members["master"]
+	if prior == nil {
+		return "", fmt.Errorf("no master session to ask")
+	}
+	teamUnlock, err := filelock.Acquire(st.Dir, "team-lifecycle", false)
+	if err != nil {
+		return "", err
+	}
+	defer teamUnlock()
+	unlock, err := filelock.Acquire(st.Dir, "member-master", false)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+	s, err := st.read()
+	if err != nil {
+		return "", err
 	}
 	if !s.Active {
 		return "", ErrTeamStopped
 	}
-	if _, e = s.task(id); e != nil {
-		return "", e
+	m := s.Members["master"]
+	if m == nil || m.Generation != prior.Generation {
+		return "", ErrStaleGeneration
 	}
-	// Check availability before queueing, so an absent master is reported to the
-	// user instead of leaving a request nothing will ever collect.
+	if st.Generation > 0 {
+		caller := s.Members[st.Actor]
+		if caller == nil || caller.Generation != st.Generation {
+			return "", ErrStaleGeneration
+		}
+	}
+	if _, err = s.task(id); err != nil {
+		return "", err
+	}
+	switch m.State {
+	case MemberStateStopped, MemberStateStopping, MemberStateRemoved, MemberStateCrashed, MemberStateNeedsAttention:
+		return "", fmt.Errorf("no master session to ask: master is %s", m.State)
+	}
+	if m.EngineID == "" {
+		return "", fmt.Errorf("master native session is not ready; enter a first message and try again")
+	}
 	if masterGone(s) {
-		return "", errors.New("no master session to ask; recover the team first with csquad recover")
+		return "", fmt.Errorf("no master session to ask; recover the team first")
 	}
-	msgID, e := briefEnqueue(st, id)
-	if e != nil {
-		return "", e
+	text, err := prompts.Brief(id)
+	if err != nil {
+		return "", err
 	}
-	// The durable outbox keeps the request whatever happens here, so a transport
-	// failure is reported to the user rather than raised: the runtime retries it,
-	// and pressing again reuses this same message.
-	deliveryErr := st.deliver(msgID)
-	s, e = st.read()
-	if e != nil {
-		return "", e
-	}
-	for _, msg := range s.Messages {
-		if msg.ID != msgID {
-			continue
+	switch m.Engine {
+	case config.Codex:
+		// Never bootstrap through send-keys: the attached user's composer is private.
+		_, err = s.engineHelper(m, "queue", "--thread", m.EngineID, "--message", text)
+	case config.Claude:
+		if m.Peer == "" {
+			return "", fmt.Errorf("master native inbox is not ready")
 		}
-		return briefNote(msg, deliveryErr), nil
-	}
-	return "", fmt.Errorf("brief request %s: %w", msgID, ErrNotFound)
-}
-
-// briefEnqueue records the request and returns the message carrying it. The key
-// admits one live request per task, so a second press finds the message already
-// in flight and retries that one rather than queueing a duplicate. The task is
-// read and never written: asking about work is not an operation on it.
-func briefEnqueue(st *Store, id string) (string, error) {
-	var msgID string
-	e := st.update(func(s *State) error {
-		t, e := s.task(id)
-		if e != nil {
-			return e
-		}
-		key := briefKey(id)
-		for _, old := range s.Messages {
-			if old.RequestKey != key {
-				continue
+		var conn net.Conn
+		conn, err = net.DialTimeout("unix", m.Peer, 2*time.Second)
+		if err == nil {
+			defer func() { _ = conn.Close() }()
+			err = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+			if err == nil {
+				// Native user frame: no peer sender, cross-session envelope or team metadata.
+				err = json.NewEncoder(conn).Encode(map[string]any{"type": "user", "session_id": m.EngineID, "priority": "next", "message": map[string]string{"role": "user", "content": text}})
 			}
-			if old.State != DeliveryStateAcknowledged {
-				old.resetDelivery()
-				msgID = old.ID
-				return nil
-			}
-			// Master explicitly acknowledged the last one, so the key is spent. Release it
-			// before reusing it, or the scan above would keep finding the
-			// acknowledged message forever and the user could never ask again.
-			old.RequestKey = ""
 		}
-		msg := s.message(UserSender, "master", t.ID, briefText(s, t), "")
-		msg.RequestKey = key
-		msgID = msg.ID
-		s.event(UserSender, "brief_requested", t.ID)
-		return nil
-	})
-	return msgID, e
-}
-
-// briefNote is the one line the panel shows the user about their request. It
-// never claims more than the outbox actually did.
-func briefNote(msg *Message, deliveryErr error) string {
-	reason := msg.Error
-	if deliveryErr != nil {
-		reason = deliveryErr.Error()
-	}
-	switch {
-	case msg.State == DeliveryStateSent && reason == "":
-		return "Asked master · " + msg.ID
-	case msg.State == DeliveryStateNeedsAttention:
-		return "Delivery needs inspection · " + msg.ID
-	case reason != "":
-		return "Queued · " + msg.ID + " · " + reason
 	default:
-		return "Queued for master · " + msg.ID
+		return "", fmt.Errorf("unsupported master engine %q", m.Engine)
 	}
-}
-
-// briefFor projects the live request for a task so a respawned panel still shows
-// what the user asked for. A manually acknowledged request is hidden, not proof
-// that master answered or completed the task.
-func briefFor(s *State, id string) teamui.Brief {
-	key := briefKey(id)
-	for _, msg := range s.Messages {
-		if msg.RequestKey == key && msg.State != DeliveryStateAcknowledged {
-			return teamui.Brief{MessageID: msg.ID, State: string(msg.State), Error: msg.Error}
-		}
+	if err != nil {
+		return "", fmt.Errorf("brief transport failed; try again: %w", err)
 	}
-	return teamui.Brief{}
+	return "Sent to master's native input", nil
 }

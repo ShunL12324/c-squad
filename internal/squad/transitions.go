@@ -32,6 +32,9 @@ func (m *Message) resetDelivery() {
 // recoverDelivery resets failed or interrupted transport, never successful
 // delivery merely because the recipient did not send an optional ACK.
 func (m *Message) recoverDelivery() {
+	if legacyBrief(m) {
+		return
+	}
 	m.migrateLegacyACKWarning()
 	switch m.State {
 	case DeliveryStateSent, DeliveryStateAcknowledged, DeliveryStateSuperseded:

@@ -2,14 +2,7 @@ package teamui
 
 import "time"
 
-// Brief is the state of the user's outstanding brief-report request for a task,
-// projected from the ledger. Reading it from there rather than from this process
-// is what lets a panel respawn - tmux rebuilds these panes on every layout pass -
-// without losing what the user already asked for.
-type Brief struct{ MessageID, State, Error string }
-
-// Brief request phases held only in this process, covering the window between a
-// press and the ledger catching up.
+// Brief feedback is local to this panel and is not a durable delivery receipt.
 const (
 	briefSending = "sending"
 	briefDone    = "done"
@@ -36,34 +29,17 @@ func (m model) press(id string) bool {
 	return true
 }
 
-// briefLine describes the request under the card buttons. This process knows the
-// most recent press; the ledger knows what survived it, and wins once it does.
+// briefLine reports only this panel's latest native send attempt.
 func (m model) briefLine(task Task, width int) string {
 	if f, ok := m.briefs[task.ID]; ok {
 		switch f.phase {
 		case briefSending:
 			return textStyle(line("· Sending…", width), muted, false)
 		case briefFailed:
-			return textStyle(line("⚠ Not sent: "+f.text, width), "222", false)
+			return textStyle(line("⚠ Send failed: "+f.text, width), "222", false)
 		case briefDone:
-			if task.Brief.State == "" {
-				return textStyle(line("✓ "+f.text, width), accent, false)
-			}
+			return textStyle(line("✓ "+f.text, width), accent, false)
 		}
 	}
-	// A card is about 34 columns wide, so lead with the part that carries the
-	// information and let the footer carry the key hints.
-	switch task.Brief.State {
-	case "":
-		return ""
-	case "sent":
-		return textStyle(line("✓ Asked master · "+task.Brief.MessageID, width), accent, false)
-	case "needs_attention":
-		return textStyle(line("⚠ "+task.Brief.Error+" · press r", width), "222", false)
-	default:
-		if task.Brief.Error != "" {
-			return textStyle(line("⚠ "+task.Brief.Error, width), "222", false)
-		}
-		return textStyle(line("· Queued · "+task.Brief.MessageID, width), muted, false)
-	}
+	return ""
 }

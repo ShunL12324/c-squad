@@ -26,13 +26,23 @@ release history; earlier releases remain available on
   launcher first.
 - Clarify layout, confirmation, and acknowledgment comments; remove redundant
   conditions and helpers; separate task operations and panel UI responsibilities.
+- Brief sends Master a short English native user prompt asking for task progress,
+  remaining work, and blockers, with a direct reply in the user's language.
+  It no longer creates team messages, ACK/reply chains, or outbox retries.
+  Each deliberate click is a new question; older Brief records remain audit-only.
 
-### Pending integration
+### Fixed
 
-- Brief is being changed to send Master a short English native user prompt
-  asking for task progress, remaining work, and blockers, with a reply in the
-  user's language. This must be verified after integration before release:
-  Brief should no longer create a team message, ACK/reply chain, or outbox retry.
+- npm installations now show a one-time interactive completion setup hint. Run
+  `csquad completion install --shell zsh`, then execute its printed loading line
+  in the current Zsh and add the same line at the end of `~/.zshrc`, after any
+  completion framework. Direct registration handles missing `fpath` entries and
+  old compinit caches without deleting caches or editing startup files for users.
+- npm automation, completion protocol calls and agent panes remain quiet. The
+  setup hint stays suppressed across upgrades and Node-prefix switches; installed
+  completion files remain in user-owned storage after npm uninstall. Installation
+  alone does not activate completion in an already-open shell.
+
 
 ## [v0.7.1](https://github.com/ShunL12324/c-squad/releases/tag/v0.7.1) — 2026-09-21
 

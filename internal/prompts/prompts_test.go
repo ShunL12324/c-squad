@@ -148,3 +148,21 @@ func TestOptionalACKAndContextualFollowUpInBothEntryPoints(t *testing.T) {
 		}
 	}
 }
+
+func TestBriefUserPrompt(t *testing.T) {
+	text, err := Brief("T42")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "Please briefly summarize task T42: current progress, remaining work, and blockers. Reply directly to the user in their language."
+	if text != want {
+		t.Fatalf("unexpected user prompt: %q", text)
+	}
+	if _, err = Brief(""); err == nil {
+		t.Fatal("empty task accepted")
+	}
+	literal, err := Brief("{{.Team}}")
+	if err != nil || !strings.Contains(literal, "{{.Team}}") {
+		t.Fatal("task ID treated as template", literal, err)
+	}
+}

@@ -73,7 +73,7 @@ func TestCompletionInstallIsIdempotent(t *testing.T) {
 func TestCompletionInstallQuotesPastedPaths(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "dir with spaces")
 	for _, test := range []struct{ shell, want string }{
-		{"zsh", "\n\tfpath=('" + directory + "' $fpath)\n"},
+		{"zsh", "; source '" + filepath.Join(directory, "_csquad") + "'\n"},
 		{"bash", "\n\tsource '" + filepath.Join(directory, "csquad") + "'"},
 		{"powershell", "\n\t. '" + filepath.Join(directory, "csquad.ps1") + "'"},
 	} {
@@ -102,9 +102,9 @@ func TestCompletionInstallTouchesNoShellConfiguration(t *testing.T) {
 	if err != nil || string(content) != "# untouched\n" {
 		t.Fatalf("shell configuration was modified: %q %v", content, err)
 	}
-	// The user has to add the fpath entry, so the command must print it.
-	if !strings.Contains(out, "fpath=('"+filepath.Join(home, "data", "zsh", "site-functions")+"' $fpath)") {
-		t.Fatalf("missing fpath instruction: %s", out)
+	// The user must load the installed file; print a quoted, directly usable line.
+	if !strings.Contains(out, "source '"+filepath.Join(home, "data", "zsh", "site-functions", "_csquad")+"'") {
+		t.Fatalf("missing loading instruction: %s", out)
 	}
 }
 

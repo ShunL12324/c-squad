@@ -52,7 +52,7 @@ func TestCardButtonsRenderAndHitTestTogether(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var got Action
-			m := briefModel(tt.width, func(a Action) (string, error) { got = a; return "Asked master · M1", nil })
+			m := briefModel(tt.width, func(a Action) (string, error) { got = a; return "Sent to master's native input", nil })
 			rows, buttons := taskCardButtons(max(1, tt.width-6))
 			if len(rows) != tt.rows || len(buttons) != 2 {
 				t.Fatalf("width %d: %d row(s), %d button(s), want %d and 2", tt.width, len(rows), len(buttons), tt.rows)
@@ -82,7 +82,7 @@ func TestCardButtonsRenderAndHitTestTogether(t *testing.T) {
 // MouseDown, SecondClick, DoubleClick and TripleClick to the panel.
 func TestRepeatedPressesRaiseOneRequest(t *testing.T) {
 	var requests int
-	m := briefModel(40, func(a Action) (string, error) { requests++; return "Asked master · M1", nil })
+	m := briefModel(40, func(a Action) (string, error) { requests++; return "Sent to master's native input", nil })
 	var cmds []tea.Cmd
 	for i := 0; i < 4; i++ {
 		next, cmd := clickButton(t, m, "brief")
@@ -102,7 +102,7 @@ func TestRepeatedPressesRaiseOneRequest(t *testing.T) {
 // A deliberate retry, after the first attempt has settled, is allowed.
 func TestRetryAfterFailureIsAllowed(t *testing.T) {
 	var requests int
-	m := briefModel(40, func(a Action) (string, error) { requests++; return "Asked master · M1", nil })
+	m := briefModel(40, func(a Action) (string, error) { requests++; return "Sent to master's native input", nil })
 	next, cmd := clickButton(t, m, "brief")
 	m = next.(model)
 	cmd()
@@ -121,23 +121,21 @@ func TestRetryAfterFailureIsAllowed(t *testing.T) {
 	_ = next
 }
 
-// The ledger, not this process, is what a respawned panel reads.
-func TestCardShowsProjectedRequest(t *testing.T) {
+func TestBriefFeedbackIsLocalAndNewClicksAreNewRequests(t *testing.T) {
 	m := briefModel(40, nil)
-	m.data.Tasks[0].Brief = Brief{MessageID: "M4", State: "sent"}
-	card, _ := m.taskCard(0)
-	if text := ansi.Strip(strings.Join(card, "\n")); !strings.Contains(text, "M4") {
-		t.Fatalf("card does not show the outstanding request: %q", text)
+	if got := m.briefLine(m.data.Tasks[0], 80); got != "" {
+		t.Fatal(got)
 	}
-	m.data.Tasks[0].Brief = Brief{MessageID: "M4", State: "needs_attention", Error: "no ACK"}
-	card, _ = m.taskCard(0)
-	if text := ansi.Strip(strings.Join(card, "\n")); !strings.Contains(text, "no ACK") {
-		t.Fatalf("card does not show the stalled request: %q", text)
+	m.briefs["T1"] = briefFeedback{phase: briefDone, text: "Sent to master's native input", at: time.Now().Add(-time.Second)}
+	if got := m.briefLine(m.data.Tasks[0], 80); !strings.Contains(got, "Sent to master") {
+		t.Fatal(got)
 	}
-	m.data.Tasks[0].Brief = Brief{}
-	card, _ = m.taskCard(0)
-	if text := ansi.Strip(strings.Join(card, "\n")); strings.Contains(text, "Brief asked") {
-		t.Fatalf("card shows a request nobody made: %q", text)
+	if !m.press("T1") {
+		t.Fatal("new click after success was suppressed")
+	}
+	fresh := briefModel(40, nil)
+	if got := fresh.briefLine(fresh.data.Tasks[0], 80); got != "" {
+		t.Fatal("respawn claimed old request", got)
 	}
 }
 

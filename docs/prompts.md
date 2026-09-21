@@ -60,3 +60,6 @@ remain required where applicable. Master checks for substantive progress before
 an actually needed follow-up; it does not use a fixed timeout or demand receipts
 for every update. This policy changes the prompt revision so existing sessions
 receive it through the next eligible hook running the new executable.
+
+The `brief` template renders a short native user question via `prompts.Brief`;
+it is separate from startup/runtime agent policy and has no team-message envelope.

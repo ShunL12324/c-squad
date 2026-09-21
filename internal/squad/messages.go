@@ -76,6 +76,9 @@ func messageCommand(st *Store, actor string, p []string, o options) error {
 			}
 			for _, m := range s.Messages {
 				if m.ID == p[2] {
+					if legacyBrief(m) {
+						return fmt.Errorf("historical Brief request cannot be retried; use task brief")
+					}
 					if m.State == DeliveryStateAcknowledged || m.State == DeliveryStateSuperseded {
 						return fmt.Errorf("message is %s and cannot be retried", m.State)
 					}

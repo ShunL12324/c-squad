@@ -8,6 +8,7 @@ workspace shows each member's terminal and a shared task board.
 
 ```sh
 npm install -g csquad
+csquad completion install --shell zsh  # macOS: follow the printed loading step
 csquad doctor
 csquad new -s my-team --engine claude
 ```
@@ -38,30 +39,27 @@ permission prompts; this is configurable.
 
 ## Shell completion
 
-This package runs no install scripts and never edits your shell configuration,
-so npm cannot enable completion for you. One command does it.
+npm links the executable but does not register completions in your shell. The
+first interactive npm invocation prints a one-time setup hint; automated calls,
+completion requests and agent panes stay quiet. No install script or startup
+file is changed.
 
-Load it into the **current shell** only:
-
-```sh
-source <(csquad completion zsh)     # bash: source <(csquad completion bash)
-csquad completion fish | source     # fish
-```
-
-Install it **persistently**:
+For **macOS + Zsh**, run:
 
 ```sh
-csquad completion install           # writes a script and prints any line to add
-csquad completion status            # what is installed, and how to verify it
+csquad completion install --shell zsh
 ```
 
-Fish needs nothing else, and neither does bash once the bash-completion v2
-package is installed: it reads the target directory and supplies helpers the
-generated script calls. For zsh, add the
-printed `fpath=(...)` line to `~/.zshrc` above the command that runs
-`compinit` — with Oh My Zsh, above `source $ZSH/oh-my-zsh.sh` — then open a new
-terminal. If completion still does not appear, the cached index is stale: run
-`rm -f ~/.zcompdump*` and open another terminal.
+Run the exact loading line it prints in your **current Zsh**, and add that same
+line at the **end of `~/.zshrc`**, after Oh My Zsh or other completion setup. It
+initializes `compinit` only when needed and sources the installed script directly,
+so an old `.zcompdump` or a missing `fpath` entry does not prevent registration.
+The command only writes the script: it cannot change an already-open parent shell.
+Open a new terminal to verify persistent setup.
+
+For other shells, select `--shell bash` or `--shell fish` and follow its printed
+instructions. Bash requires bash-completion v2. `csquad completion status` checks
+installed files; it does not prove a running shell has loaded them.
 
 In that new shell, `csquad sta` + **Tab** expands to `csquad start`; in zsh,
 `print -r -- ${_comps[csquad]:-missing}` prints `_csquad` once completion is
@@ -78,7 +76,9 @@ npm install -g csquad@latest
 npm uninstall -g csquad
 ```
 
-Stop teams before upgrading. Uninstalling preserves user configuration and
+Stop teams before upgrading. Uninstalling preserves user-installed completion files, the one-time hint marker
+(`$XDG_STATE_HOME/csquad/npm-completion-notice-v1`, defaulting under `~/.local/state`),
+user configuration and
 project recovery data. Use one installation channel to avoid conflicting
 copies of `csquad` on PATH.
 

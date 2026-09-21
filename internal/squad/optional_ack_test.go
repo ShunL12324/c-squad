@@ -83,21 +83,3 @@ func TestInboxRetainsSentWithoutClaimingReadOrCompletion(t *testing.T) {
 		t.Fatal("inbox silently acknowledged delivery")
 	}
 }
-
-func TestBriefExplicitlyRequeuesSuccessfullySentRequest(t *testing.T) {
-	st := briefStore(t, TaskPhaseDone)
-	id, err := briefEnqueue(st, "T1")
-	must(t, err)
-	must(t, st.update(func(s *State) error {
-		s.Messages[0].State = DeliveryStateSent
-		s.Messages[0].Attempts = 1
-		return nil
-	}))
-	retry, err := briefEnqueue(st, "T1")
-	must(t, err)
-	s, err := st.read()
-	must(t, err)
-	if retry != id || len(s.Messages) != 1 || s.Messages[0].State != DeliveryStatePending {
-		t.Fatal("human Brief report re-request was suppressed")
-	}
-}

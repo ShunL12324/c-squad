@@ -140,7 +140,7 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 			if count >= cfg.MaxMembers {
 				return ErrMemberLimit
 			}
-			s.Members[id] = &Member{Color: tmux.Color(o["color"]), Instructions: t.Prompt, Env: memberEnv(cfg, t, overrides), ID: id, Engine: t.Engine, Model: t.Model, Role: role, Session: "csq-" + s.ID + "-" + id, Cwd: cwd, State: MemberStateStarting, Generation: 1}
+			s.Members[id] = &Member{EnvOverrides: explicitMemberEnv(overrides), Color: tmux.Color(o["color"]), Instructions: t.Prompt, Env: memberEnv(cfg, t, overrides), ID: id, Engine: t.Engine, Model: t.Model, Role: role, Session: "csq-" + s.ID + "-" + id, Cwd: cwd, State: MemberStateStarting, Generation: 1}
 			if o["task"] != "" {
 				t := s.Tasks[o["task"]]
 				t.Participants = append(t.Participants, id)

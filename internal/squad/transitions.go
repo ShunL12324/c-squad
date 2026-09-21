@@ -36,14 +36,30 @@ func (m *Member) applyResumeEnvironment(oldDefaults, currentDefaults, explicit m
 	before := m.Env[selector]
 	changes := map[string]string{}
 	for key, value := range currentDefaults {
-		if old, ok := oldDefaults[key]; !ok || m.Env[key] == old {
+		if m.EnvOverrides != nil {
+			if _, explicit := (*m.EnvOverrides)[key]; explicit {
+				continue
+			}
+		}
+		old, inherited := oldDefaults[key]
+		existing, present := m.Env[key]
+		if inherited && existing == old || !inherited && !present {
 			changes[key] = value
 		}
 	}
 	for key, old := range oldDefaults {
+		if m.EnvOverrides != nil {
+			if _, explicit := (*m.EnvOverrides)[key]; explicit {
+				continue
+			}
+		}
 		if _, exists := currentDefaults[key]; !exists && m.Env[key] == old {
 			delete(m.Env, key)
 		}
+	}
+	if m.EnvOverrides != nil {
+		m.EnvOverrides = explicitMemberEnv(agentenv.Merge(*m.EnvOverrides, explicit))
+		changes = agentenv.Merge(changes, *m.EnvOverrides)
 	}
 	m.Env = agentenv.Merge(m.Env, changes, explicit)
 	if before != m.Env[selector] {
@@ -62,7 +78,7 @@ func refreshResumeDefaults(s *State, current config.Config, overrides map[string
 			// Legacy snapshots mixed config and CLI values. Preserve unknown overrides,
 			// but current explicit config entries take priority over that old snapshot.
 			startup = agentenv.Merge(s.Config.StartupEnv)
-			for key := range current.StartupEnv {
+			for key := range agentenv.Merge(current.Env, current.StartupEnv) {
 				delete(startup, key)
 			}
 		}

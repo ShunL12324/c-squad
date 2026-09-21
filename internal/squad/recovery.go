@@ -243,6 +243,9 @@ func resumeTeam(st *Store, o options) error {
 	if err != nil {
 		return err
 	}
+	if s.StartupOverrides == nil && s.Config != nil && len(s.Config.StartupEnv) > 0 {
+		fmt.Fprintln(os.Stderr, "Legacy startup environment has no override provenance; current configuration entries take precedence. Use resume --env KEY=VALUE for an explicit override.")
+	}
 	if err := validateResumeDirectories(s); err != nil {
 		return err
 	}

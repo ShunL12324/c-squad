@@ -459,7 +459,7 @@ removing a configuration default can take effect without confusing it with
 `start --env`. Explicit startup and member overrides retain precedence;
 `resume --env KEY=VALUE` overrides the saved value for every resumed member.
 For older saved teams, startup values have no provenance: unchanged historical
-values are retained, while entries in the current `[startup_env]` table replace
+values are retained, while entries in either current `[env]` or `[startup_env]` table replace
 the old defaults. Use `resume --env CODEX_HOME=/new/account` to resolve an
 ambiguous old override. Account changes start a fresh native conversation while
 preserving the team ledger and handoff. No environment values are printed by

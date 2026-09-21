@@ -21,6 +21,7 @@ import (
 // Member records an agent identity, its launch configuration, and observed runtime state.
 // Generation fences writes from previous incarnations of the same member.
 type Member struct {
+	EnvOverrides *map[string]string `json:"env_overrides,omitempty"`
 	Color        tmux.Color         `json:"color,omitempty"`
 	Instructions string             `json:"instructions,omitempty"`
 	Env          map[string]string  `json:"env,omitempty"`

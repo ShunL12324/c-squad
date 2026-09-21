@@ -95,3 +95,28 @@ func TestResumeRetainsExplicitStartupOverride(t *testing.T) {
 		t.Fatal("resume override ignored")
 	}
 }
+
+func TestResumePreservesMemberOverridesEvenWhenEqualToOldDefault(t *testing.T) {
+	for _, value := range []string{"/old", "/member"} {
+		m := Member{Engine: config.Codex, Env: map[string]string{"CODEX_HOME": value, "CUSTOM": "member"}, EnvOverrides: explicitMemberEnv(map[string]string{"CODEX_HOME": value, "CUSTOM": "member"})}
+		m.applyResumeEnvironment(map[string]string{"CODEX_HOME": "/old"}, map[string]string{"CODEX_HOME": "/new", "CUSTOM": "new-default"}, nil)
+		if m.Env["CODEX_HOME"] != value || m.Env["CUSTOM"] != "member" {
+			t.Fatalf("member override lost: %+v", m.Env)
+		}
+		m.applyResumeEnvironment(nil, nil, map[string]string{"CODEX_HOME": "/resume"})
+		m.applyResumeEnvironment(nil, map[string]string{"CODEX_HOME": "/later"}, nil)
+		if m.Env["CODEX_HOME"] != "/resume" {
+			t.Fatal("resume override was not retained")
+		}
+	}
+}
+
+func TestLegacyStartupMovedToEnvUsesCurrentAccount(t *testing.T) {
+	s := &State{Config: &config.Config{StartupEnv: map[string]string{"CODEX_HOME": "/old"}}}
+	m := Member{Engine: config.Codex, EngineID: "old-session", Env: map[string]string{"CODEX_HOME": "/old"}}
+	old, current := refreshResumeDefaults(s, config.Config{Env: map[string]string{"CODEX_HOME": "/new"}}, nil)
+	m.applyResumeEnvironment(old, current, nil)
+	if m.Env["CODEX_HOME"] != "/new" || m.EngineID != "" {
+		t.Fatalf("old startup masked current config: %+v", m)
+	}
+}

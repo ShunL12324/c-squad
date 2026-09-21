@@ -55,6 +55,7 @@ Each running agent uses its own engine account's quota.
 
 ```sh
 npm install -g csquad
+csquad completion install --shell zsh   # macOS: run/save the printed loading line
 ```
 
 Install [system dependencies](docs/install.md#npm) separately, or use Homebrew/APT

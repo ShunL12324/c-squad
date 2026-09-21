@@ -12,6 +12,7 @@ import tarfile
 import tempfile
 
 from packaging_test_support import command, log
+from npm_completion_test import check as check_npm_completion
 
 
 def run(*args, **kwargs):
@@ -31,8 +32,7 @@ def check_bash_instruction(printed):
 
 
 def check_completion(root, binary):
-    """npm ships completion scripts but wires nothing up, so the documented
-    'csquad completion install' path is what has to keep working."""
+    """Verify the printed installation/loading path without editing host startup files."""
     home = root / "home with spaces"
     (home / "config").mkdir(parents=True)
     rc = home / ".zshrc"
@@ -44,10 +44,10 @@ def check_completion(root, binary):
     first = run(str(binary), "completion", "install", env=user)
     assert first.startswith(f"Installed zsh completion: {script}\n"), first
     # The paths here contain spaces on purpose: the printed line is pasted into
-    # ~/.zshrc, where an unquoted space would become two fpath entries.
-    instruction = next(line.strip() for line in first.splitlines() if line.strip().startswith("fpath=("))
-    quoted = "'" + str(script.parent).replace("'", "'\\''") + "'"
-    assert instruction == f"fpath=({quoted} $fpath)", instruction
+    # ~/.zshrc, where an unquoted source path would split into separate words.
+    instruction = next(line.strip() for line in first.splitlines() if line.strip().startswith("(( $+functions[compdef]"))
+    quoted = "'" + str(script).replace("'", "'\\''") + "'"
+    assert instruction.endswith(f"; source {quoted}"), instruction
     again = run(str(binary), "completion", "install", env=user)
     assert again.startswith(f"Unchanged zsh completion: {script}\n"), again
     assert rc.read_text() == "# untouched\n", "installation edited a shell configuration"
@@ -69,7 +69,7 @@ def check_completion(root, binary):
     # composes is what makes a quoting defect in that instruction fail here.
     print(run(sys.executable, str(Path(__file__).resolve().parent / "test-shell-completion.py"),
               "--path", str(binary.parent), "--fpath", str(script.parent),
-              "--eval", instruction), end="")
+              "--eval", instruction, env=user), end="")
 
 
 def test(package):
@@ -79,6 +79,9 @@ def test(package):
         names = set(archive.getnames())
         assert not metadata.get("scripts"), "installation must not require lifecycle scripts"
         assert not metadata.get("dependencies"), "launcher must not require dependencies"
+        for name in ("bin/completion-notice.sh", "completions/_csquad",
+                     "completions/csquad.bash", "completions/csquad.fish"):
+            assert "package/" + name in names, f"missing npm asset: {name}"
         for target in ("darwin-amd64", "darwin-arm64", "linux-amd64", "linux-arm64"):
             member = archive.getmember(f"package/native/{target}/csquad")
             assert member.mode & 0o111, f"non-executable binary: {target}"
@@ -86,6 +89,17 @@ def test(package):
     version = metadata["version"]
     with tempfile.TemporaryDirectory(prefix="csquad npm test ") as directory:
         root = Path(directory)
+        # npm and shell tests must not read/write the host npm config, cache or rc.
+        isolated = root / "npm home"
+        isolated.mkdir()
+        for key in ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "ZDOTDIR"):
+            os.environ[key] = str(isolated / key.lower())
+            Path(os.environ[key]).mkdir()
+        for key in ("NPM_CONFIG_USERCONFIG", "NPM_CONFIG_GLOBALCONFIG"):
+            os.environ[key] = str(isolated / key)
+            Path(os.environ[key]).touch()
+        os.environ["npm_config_cache"] = str(isolated / "cache")
+        os.environ["npm_config_update_notifier"] = "false"
         prefix = root / "prefix with spaces"
         run("npm", "install", "--global", "--prefix", str(prefix), "--ignore-scripts",
             "--no-audit", "--no-fund", str(package))
@@ -102,6 +116,7 @@ def test(package):
         run("npm", "exec", "--offline", "--yes", "--package", str(package), "--",
             "csquad", "version", cwd=root)
         check_completion(root, binary)
+        check_npm_completion(root, binary, package)
         # Substitute only the packaged binary to check transparent argument,
         # cwd, environment and exit-status forwarding without starting agents.
         native = prefix / "lib/node_modules/csquad/native"

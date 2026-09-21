@@ -26,5 +26,13 @@ if [ ! -x "$binary" ]; then
     echo 'csquad: packaged binary is missing; reinstall with npm install -g csquad.' >&2
     exit 1
 fi
+# Completion is a shell setting, not something npm's bin link activates.
+# Keep automation, completion protocol calls and agent panes completely quiet.
+if [ -t 0 ] && [ -t 2 ] && [ -z "${CSQUAD_STATE_DIR:-}" ]; then
+    case "${1:-}" in
+        completion|__complete|__completeNoDesc) ;;
+        *) . "$base/completion-notice.sh" ;;
+    esac
+fi
 # Replace the launcher so the native CLI owns the terminal and receives signals.
 exec "$binary" "$@"

@@ -27,6 +27,18 @@ release history; earlier releases remain available on
 - Clarify layout, confirmation, and acknowledgment comments; remove redundant
   conditions and helpers; separate task operations and panel UI responsibilities.
 
+### Fixed
+
+- npm installations now show a one-time interactive completion setup hint. Run
+  `csquad completion install --shell zsh`, then execute its printed loading line
+  in the current Zsh and add the same line at the end of `~/.zshrc`, after any
+  completion framework. Direct registration handles missing `fpath` entries and
+  old compinit caches without deleting caches or editing startup files for users.
+- npm automation, completion protocol calls and agent panes remain quiet. The
+  setup hint stays suppressed across upgrades and Node-prefix switches; installed
+  completion files remain in user-owned storage after npm uninstall. Installation
+  alone does not activate completion in an already-open shell.
+
 ### Pending integration
 
 - Brief is being changed to send Master a short English native user prompt

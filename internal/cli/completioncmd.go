@@ -69,8 +69,9 @@ func completionShells() []shellCompletion {
 			},
 			directory: func() (string, error) { return dataDirectory("zsh", "site-functions") },
 			loading: func(path string) string {
-				return "Add this line to ~/.zshrc above the command that runs compinit (with Oh My\nZsh, above 'source $ZSH/oh-my-zsh.sh'), then start a new shell:\n\n\tfpath=(" +
-					quoteShell(filepath.Dir(path)) + " $fpath)\n\nIf completion still does not appear, the cached index is stale: run\n'rm -f ~/.zcompdump*' and start another shell."
+				return "Run this line in the CURRENT zsh, then add the same line at the END of\n~/.zshrc (after Oh My Zsh or other completion setup) for future shells:\n\n\t" +
+					"(( $+functions[compdef] )) || { autoload -Uz compinit; compinit; }; source " + quoteShell(path) +
+					"\n\nThis initializes completion if needed and registers csquad directly, even with\nan older compinit cache. No fpath edit or cache deletion is required.\nInstalling the file alone cannot update an already-open shell."
 			},
 			check: "print -r -- ${_comps[csquad]:-missing}",
 			long: "Generate the zsh completion script for csquad.\n\nLoad it into the CURRENT shell only:\n\n\tsource <(csquad completion zsh)\n\n" +

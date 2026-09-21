@@ -218,17 +218,14 @@ use `--help` or `csquad usage` for command documentation.
 
 ### npm, npx, and manual installs
 
-These channels ship the completion scripts but cannot enable them: the npm
-package runs no lifecycle scripts, and no channel edits your shell
-configuration. Enable completion yourself, with or without Homebrew.
+npm includes completion scripts, but its executable link does not register them
+with the parent shell. The npm launcher prints a setup hint once on an interactive,
+unbound invocation; automation and completion requests remain silent. It runs no
+install hook and never edits your startup files.
 
-**Current shell only.** Nothing is written to disk, and the effect ends with the
-shell:
-
-```sh
-source <(csquad completion zsh)     # bash: source <(csquad completion bash)
-csquad completion fish | source     # fish
-```
+For macOS + Zsh, run `csquad completion install --shell zsh`, then run the printed
+loading line in the current terminal. Add that same line at the end of `~/.zshrc`
+(after Oh My Zsh or another completion framework) to make it persistent.
 
 **Persistently.** `csquad completion install` writes the script for one shell
 into a directory you own, defaulting to your login shell and to
@@ -244,26 +241,17 @@ csquad completion status            # installed files, and the check for each sh
 | Shell | Default target | Remaining step |
 | --- | --- | --- |
 | Bash | `~/.local/share/bash-completion/completions/csquad` | none, but bash-completion v2 must be installed: it reads that directory and provides helpers the script calls |
-| Zsh | `~/.local/share/zsh/site-functions/_csquad` | add the printed `fpath=(...)` line to `~/.zshrc` |
+| Zsh | `~/.local/share/zsh/site-functions/_csquad` | run the printed loading line now and add it at the end of `~/.zshrc` |
 | Fish | `~/.config/fish/completions/csquad.fish` | none |
 | PowerShell | `~/.local/share/csquad/csquad.ps1` | source it from `$PROFILE` |
 
-Paste the line the command prints rather than retyping it: it quotes the
-directory, which matters when the path contains a space, where an unquoted entry
-would silently become two `fpath` elements.
+Paste the line the command prints rather than retyping it: paths are quoted for
+spaces and special characters. For Zsh it initializes `compinit` if necessary and
+sources the script directly. This also registers completion when an older cached
+index has no csquad entry; no `fpath` edit or `.zcompdump` deletion is needed.
 
-**Zsh ordering matters.** The `fpath` entry must come *before* the command that
-runs `compinit`; with Oh My Zsh, put it above `source $ZSH/oh-my-zsh.sh`, which
-calls `compinit` itself:
-
-```sh
-fpath=(~/.local/share/zsh/site-functions $fpath)
-source $ZSH/oh-my-zsh.sh            # or: autoload -Uz compinit && compinit
-```
-
-**Then restart the shell.** Completion is read at startup, so the current shell
-will not pick it up. If a new terminal still does not complete, Zsh is using a
-cached index: `rm -f ~/.zcompdump*` and open another terminal.
+Installing a file cannot modify an already-open parent shell. Run the loading
+line there for immediate use, or start another shell after saving it in `.zshrc`.
 
 **Verify** in that new terminal with `csquad sta` + **Tab**, or query the shell
 directly — `print -r -- ${_comps[csquad]:-missing}` in Zsh (prints `_csquad`),
@@ -277,7 +265,10 @@ so switching Node versions with `nvm use`, upgrading Node, or running
 `npm install -g csquad@latest` leaves it working. Re-run
 `csquad completion install` only to pick up completions for newly added
 commands; `csquad completion status` reports `differs` when the file no longer
-matches the installed binary.
+matches the installed binary. Each Node prefix still needs its own executable on
+PATH. Uninstalling the npm package retains user-owned completion files and the
+hint marker at `${XDG_STATE_HOME:-~/.local/state}/csquad/npm-completion-notice-v1`;
+remove your loading line yourself if you stop using C Squad.
 
 ## Compatibility and limitations
 

@@ -36,8 +36,9 @@ def main():
     parser.add_argument("--fpath", type=Path,
                         help="Directory prepended to fpath, for a completion script the shell does not autoload")
     parser.add_argument("--eval", dest="evaluate",
-                        help="Zsh line run verbatim before compinit; use it to execute the exact"
+                        help="Zsh loading line run verbatim after compinit; use it to execute the exact"
                              " instruction csquad printed instead of a line this script composes")
+    parser.add_argument("--compdump", type=Path, help="Use an existing isolated compinit cache")
     args = parser.parse_args()
     if args.evaluate and not args.fpath:
         parser.error("--eval needs --fpath, the directory the completion must come from")
@@ -69,27 +70,29 @@ def main():
                         return
             raise AssertionError(f"Missing {expected!r} in terminal output: {output!r}")
 
-        # These stand in for the fpath line the user adds to ~/.zshrc; the test
+        # These stand in for the loading line the user adds to ~/.zshrc; the test
         # must never edit a real shell configuration. --eval runs the printed
         # instruction unmodified, so a quoting defect in it fails the test.
         prologue = b""
-        if args.evaluate:
-            prologue = args.evaluate.encode() + b"; "
-        elif args.fpath:
+        if args.fpath and not args.evaluate:
             prologue = f"fpath=({quote(args.fpath.resolve())} $fpath); ".encode()
         try:
-            # Load the shell's normal completion system, without sourcing or
-            # generating any C Squad completion script explicitly.
+            # Initialize completion as a shell framework would, then execute the
+            # exact printed loading instruction when supplied.
             # -u accepts group-writable temporary directories: without it compinit
             # stops for an interactive prompt and the run times out instead of
             # reporting what actually went wrong.
-            os.write(terminal, prologue + b"unsetopt ZLE; autoload -Uz compinit; compinit -D -u; "
-                     b"PROMPT=''; setopt ZLE; print CSQ_READY\n")
+            loading = args.evaluate.encode() + b"; " if args.evaluate else b""
+            init = ("compinit -u -d " + quote(args.compdump) if args.compdump else "compinit -D -u").encode()
+            os.write(terminal, prologue + b"unsetopt ZLE; autoload -Uz compinit; " + init + b"; "
+                     + loading + b"PROMPT=''; setopt ZLE; print CSQ_READY\n")
             wait_for(b"\r\nCSQ_READY\r\n")
             os.write(terminal, b"function csq_buffer() { print -r -- \"CSQ_BUFFER=$BUFFER\"; "
                      b"BUFFER=''; zle redisplay; }; zle -N csq_buffer; "
                      b"bindkey '^X' csq_buffer; print CSQ_BOUND\n")
             wait_for(b"\r\nCSQ_BOUND\r\n")
+            os.write(terminal, b"csqua\t\x18")
+            wait_for(b"CSQ_BUFFER=csquad ")
             os.write(terminal, b"csquad sta\t\x18")
             wait_for(b"CSQ_BUFFER=csquad start ")
             os.write(terminal, b"csquad ne\t\x18")
@@ -120,7 +123,7 @@ def main():
         loaded = origin.read_text().strip()
         if args.fpath:
             check_origin(loaded, args.fpath)
-        print(f"PASS: Zsh loaded {loaded} and completes start, new and new --engine")
+        print(f"PASS: Zsh loaded {loaded} and completes csquad, start, new and new --engine")
 
 
 if __name__ == "__main__":

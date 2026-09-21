@@ -1,6 +1,6 @@
 # Using C Squad
 
-List saved teams with `csquad list`. Run `csquad start research` to create a new
+List saved teams with `csquad list`. Run `csquad new -s research` to create a new
 team. An existing name is always an error, whether the team is running, stopped,
 or interrupted; rejection does not clean up or resume that team. Bare `csquad`
 also creates a new team, and `--name NAME` remains supported.
@@ -10,6 +10,10 @@ Use `csquad resume research` to continue a stopped or interrupted team,
 `csquad stop research` stops processes while keeping recoverable work.
 `csquad recover research` restarts only master in an active team from an outside
 terminal; it does not replace whole-team `resume`.
+
+The legacy `start NAME`, `start --name NAME`, and bare `csquad` remain
+supported. See the [CLI design](cli-design.md) for the command mapping and
+intentional differences from tmux.
 
 Start a team in your project with `csquad start --engine claude` or
 `csquad start --engine codex`. This opens the Master session. Tell it what you
@@ -35,8 +39,8 @@ or inspect the underlying state with `csquad board`.
 Outside a team session, use `csquad --team-name research COMMAND` or
 `csquad --state-dir /path/to/team COMMAND`. The existing `--team DIR` still means
 a state directory. Supply only one selector: positional team name, `--name`,
-`--team-name`, `--state-dir`, or `--team`. `start` accepts only a new positional
-name or `--name`; it never selects existing state. With no selector, existing-team
+`--team-name`, `--state-dir`, or `--team`. `new` and `start` accept only a new positional
+name or `-s` / `--name`; neither selects existing state. With no selector, existing-team
 operations use the bound session, then the current project's last team, then the
 legacy global last team. Names match exactly. Team state is normally in
 `.csquad/teams/<name>/`. Member sessions cannot select another team or override

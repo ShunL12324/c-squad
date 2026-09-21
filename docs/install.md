@@ -9,8 +9,12 @@ You do not need Go or a compiler.
 ```sh
 npm install -g csquad
 csquad doctor
-csquad start my-team --engine claude
+csquad new -s my-team --engine claude
 ```
+
+Create a named team with `csquad new -s NAME`; `csquad start --name NAME`
+remains compatible. Use `list` to find teams, `attach NAME` to enter a running
+team, `resume NAME` to restore a stopped team, and `stop NAME` to stop it.
 
 Or run `npx csquad`. Install npm inside WSL 2 when using Windows.
 The package contains native binaries for macOS and Linux on x64 and arm64;

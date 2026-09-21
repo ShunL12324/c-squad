@@ -41,6 +41,12 @@ func addFlags(cmd *cobra.Command, names []string) {
 		switch name {
 		case "detach", "fresh", "full", "code", "all", "strict", "popup", "dry-run", "discard-ignored":
 			cmd.Flags().Bool(name, false, description)
+		case "name":
+			if cmd.Name() == "new" || cmd.Name() == "start" || cmd.Name() == "csquad" {
+				cmd.Flags().StringP(name, "s", "", "Name for the new team")
+			} else {
+				cmd.Flags().String(name, "", description)
+			}
 		case "env":
 			cmd.Flags().StringArray(name, nil, description)
 		default:
@@ -83,9 +89,10 @@ func groupDescription(name string) string {
 func definitions() []definition {
 	defs := []definition{
 		{path: "team remove", args: " NAME", min: 1, max: 1, complete: "team", summary: "Remove a stopped saved team after safety checks", flags: []string{"dry-run", "discard-ignored"}},
+		{path: "new", args: " [NAME]", max: 1, summary: "Create a new team (tmux-style new -s NAME)", flags: startupFlags, example: "  csquad new -s research --engine codex\n  csquad new --detach"},
 		{path: "start", args: " [NAME]", max: 1, summary: "Create a new team; existing names require attach or resume", flags: startupFlags, example: "  csquad start my-team --engine claude\n  csquad start --detach --env CODEX_HOME=/path/to/codex-home"},
-		{path: "resume", args: " [TEAM]", max: 1, complete: "team", summary: "Recover a stopped team from its ledger", flags: []string{"name", "env", "fresh", "detach"}, example: "  csquad resume my-team\n  csquad resume --fresh --detach"},
-		{path: "attach", args: " [TEAM_OR_MEMBER]", summary: "Enter a team, or select a member with --name TEAM", max: 1, complete: "team-or-member", flags: []string{"name"}, example: "  csquad attach research\n  csquad attach --name research reviewer"},
+		{path: "resume", args: " [TEAM]", max: 1, complete: "team", summary: "Resume a stopped/interrupted team and its conversations from the ledger", flags: []string{"name", "env", "fresh", "detach"}, example: "  csquad resume my-team\n  csquad resume --fresh --detach"},
+		{path: "attach", args: " [TEAM_OR_MEMBER]", summary: "Enter a running team without restarting; select a member with --name TEAM", max: 1, complete: "team-or-member", flags: []string{"name"}, example: "  csquad attach research\n  csquad attach --name research reviewer"},
 		{path: "ui", summary: "Show team members and task panels", flags: []string{"view", "client", "name"}, example: "  csquad ui\n  csquad ui --view tasks\n  csquad ui --view hide"},
 		{path: "ui-layout", hidden: true},
 		{path: "ui-toggle", hidden: true, flags: []string{"view", "client"}},
@@ -98,7 +105,7 @@ func definitions() []definition {
 		{path: "stop", args: " [TEAM]", max: 1, complete: "team", summary: "Stop team processes and retain recoverable work", flags: []string{"name"}},
 		{path: "sync", summary: "Start the active runtime if needed and retry pending delivery"},
 		{path: "reconcile", summary: "Reconcile durable Git merge intents"},
-		{path: "recover", args: " [TEAM]", max: 1, complete: "team", summary: "Restart master from an outside terminal", flags: []string{"name", "fresh", "prompt"}},
+		{path: "recover", args: " [TEAM]", max: 1, complete: "team", summary: "Restart only master in an active team, from an outside terminal", flags: []string{"name", "fresh", "prompt"}},
 		{path: "member add", args: " NAME", summary: "Recruit a member with a task-specific identity", min: 1, max: 1, flags: []string{"role", "instructions", "engine", "model", "env", "task", "template", "prompt", "color", "cwd"}, example: "  csquad member add reviewer --engine claude --role reviewer --instructions 'Review the candidate commit'"},
 		{path: "member list", summary: "List team members"},
 		{path: "task create", args: " TITLE...", summary: "Publish a task with acceptance criteria", min: 1, max: -1, flags: []string{"acceptance", "description", "code", "milestones", "gates", "deps", "dispatch", "request-id", "setup"}, required: []string{"acceptance"}, example: "  csquad task create 'Fix login' --code --acceptance 'Regression test passes' --request-id fix-login"},

@@ -9,8 +9,12 @@ workspace shows each member's terminal and a shared task board.
 ```sh
 npm install -g csquad
 csquad doctor
-csquad start --name my-team --engine claude
+csquad new -s my-team --engine claude
 ```
+
+Create a named team with `csquad new -s NAME`; `csquad start --name NAME`
+remains compatible. Use `list` to find teams, `attach NAME` to enter a running
+team, `resume NAME` to restore a stopped team, and `stop NAME` to stop it.
 
 Use `--engine codex` for a Codex Master. You can also run `npx csquad`.
 

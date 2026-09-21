@@ -8,7 +8,13 @@ concurrency:
   group: release
   cancel-in-progress: false
 jobs:
+  prepublish-npm:
+    uses: ./.github/workflows/prepublish-npm.yml
+    with:
+      sha: ${{ github.sha }}
+      version: ${{ github.ref_name }}
   release:
+    needs: prepublish-npm
     runs-on: ubuntu-latest
     permissions:
       contents: write

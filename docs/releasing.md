@@ -1,7 +1,8 @@
 # Releasing
 
-Only stable version tags trigger CI. Ordinary pushes and pull requests do not
-start a build.
+Stable version tags trigger publication CI. Ordinary pushes and pull requests do
+not start a build. The read-only Prepublish npm workflow can also be triggered
+manually to validate an exact candidate before tagging.
 
 The repository builds archives, a source tarball, and Debian packages with a pinned
 GoReleaser version. Homebrew installs precompiled release archives; APT uses signed static
@@ -46,6 +47,39 @@ repository; its commit identifier is synthetic and is not a release commit.
 an Ubuntu container. It requires Docker, GnuPG, apt-utils, and existing snapshot
 packages; all keys and package state used by this test are disposable.
 
+## Native macOS gate before publication
+
+The `Prepublish npm` workflow has read-only repository permissions and publishes
+nothing. It checks out the supplied full commit SHA, verifies HEAD, and uses
+GoReleaser snapshot mode to build the four real native binaries. A temporary
+configuration sets only the snapshot package version to the intended stable
+version so the normal npm packer can consume it; snapshot mode and disabled
+publication remain in force. It runs `scripts/test-npm.py` on `macos-14`,
+including the real Zsh PTY completion regression. Zsh must exist; this gate must
+not silently skip shell validation.
+
+After all changes are integrated and pushed, run it before tagging:
+
+```sh
+gh workflow run prepublish-npm.yml --ref main \
+  -f sha=APPROVED_FULL_COMMIT_SHA -f version=0.8.0
+gh run list --workflow prepublish-npm.yml --event workflow_dispatch
+gh run view RUN_ID --log
+```
+
+The workflow must first be present on the remote default branch for manual
+dispatch. Record the run URL, its workflow head SHA, the checked-out source SHA
+from the job summary, version, and native macOS result. For manual dispatch the
+run's head SHA identifies the selected workflow ref; the validated input SHA and
+checkout check identify the candidate. Any source change requires a new run.
+Do not infer macOS success from a Linux fixture or from cross-compilation alone.
+
+The stable-tag Release workflow also calls this same validation and makes its
+release job depend on success. A failure therefore blocks creation/publication
+of GitHub release assets and all downstream npm, Homebrew, and APT jobs. Existing
+post-build channel checks remain in place. This gate builds disposable packages;
+the release job still builds and verifies the final distribution assets.
+
 ## Publish
 
 Ordinary pushes and pull requests run no workflows. Before every release:
@@ -57,7 +91,8 @@ Ordinary pushes and pull requests run no workflows. Before every release:
    dates aligned with GitHub's actual `published_at` timestamps.
 2. Fetch the remote default branch and preserve any automated Formula commits.
    Review unexpected remote changes before integrating them; do not force-push.
-3. Run `make check` on the final integrated source. Confirm the approved exact
+3. Run `make check` and the native macOS gate above on the final integrated
+   source. Confirm the approved exact
    commit is on the remote default branch and that the version is unused in
    Git tags, GitHub Releases, and npm. Tag that explicit commit, not an
    intermediate or moving branch tip.

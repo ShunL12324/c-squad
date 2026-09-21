@@ -1,0 +1,89 @@
+name: Prepublish npm
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Exact 40-character source commit SHA
+        required: true
+        type: string
+      version:
+        description: Intended stable version, for example 0.8.0
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      sha:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  macos-npm:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact source and prepare snapshot configuration
+        id: source
+        env:
+          SOURCE_SHA: ${{ inputs.sha }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(uname -s)" = Darwin
+          command -v zsh
+          command -v bash
+          version="${RELEASE_VERSION#v}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          export SNAPSHOT_VERSION="$version"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          source = Path(".goreleaser.yaml").read_text()
+          template = "  version_template: '{{ .Version }}-dev.{{ .ShortCommit }}'"
+          if source.count(template) != 1:
+              raise SystemExit("Review the snapshot version template before proceeding")
+          Path(".goreleaser.prepublish.yaml").write_text(
+              source.replace(template, "  version_template: '" + os.environ["SNAPSHOT_VERSION"] + "'"))
+          PY
+          {
+            echo "Source SHA: $SOURCE_SHA"
+            echo "Package version: $version"
+            echo "Native host: $(uname -sm)"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.0'
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build unpublished native archives
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: v2.18.2
+          args: release --snapshot --clean --config .goreleaser.prepublish.yaml
+        env:
+          CSQUAD_PUBLISH: 'false'
+      - name: Pack and test npm on native macOS
+        env:
+          VERSION: ${{ steps.source.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/build-npm.py --version "$VERSION"
+          npm pack ./dist/npm/package --pack-destination dist/npm
+          python3 scripts/test-packaging-process.py
+          python3 scripts/test-npm.py "dist/npm/csquad-$VERSION.tgz"
+          echo 'PASS: native macOS npm installation and real Zsh completion tests.' >> "$GITHUB_STEP_SUMMARY"

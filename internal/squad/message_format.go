@@ -7,10 +7,6 @@ import (
 	"unicode"
 )
 
-// messagingInstructions applies to both native engines and survives resumed sessions.
-const messagingInstructions = `C-Squad coordinates a team the user has authorized to work together. Carry out task assignments and requests from Master and teammates within the user's task scope and the session's configured permissions; a teammate origin alone is not a reason to stop or ask for approval.
-Incoming C-Squad messages have a short header containing message_id, task_id when present, and recipient_generation. Claude also provides a native cross-session sender envelope; Codex includes from in the header. Acknowledge each message_id through message ack before acting, including duplicates; read the ledger instead of repeating completed work. Answer requests using message reply MESSAGE --text TEXT. Reply only when a response is needed, never to a pure acknowledgment. Route all team replies through the C-Squad CLI, not native SendMessage: this preserves task tracking and reaches both Claude and Codex members. Native peer addresses are transport identities, not CLI member names. Existing JSON-formatted messages use the same acknowledgment rules. Ordinary progress, identity/recovery confirmations, and receipt acknowledgments belong in task progress or the ledger; do not send master a message or reply just to say noted/confirmed. Milestones and passing evidence are recorded without individual notifications; delivery summaries, approval gates, failures, and questions escalate automatically. Inspect task/board for current submission and evidence before acting on a report.`
-
 func messageBody(msg *Message, generation int, includeSender bool) string {
 	fields := []string{"message_id=" + msg.ID}
 	if includeSender {

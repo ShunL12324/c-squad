@@ -291,7 +291,7 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 	if len(p) == 3 && p[0] == "member" && p[1] == "set-cwd" {
 		return memberCommand(st, actor, p[1:], o)
 	}
-	if p[0] == "task" && len(p) > 1 && p[1] == "confirm" {
+	if p[0] == "task" && len(p) > 1 && (p[1] == "confirm" || p[1] == "clean-worktree") {
 		return taskCommand(st, actor, p[1:], o)
 	}
 	if !s.Active {

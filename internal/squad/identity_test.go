@@ -218,7 +218,8 @@ func TestInjectedPrefixDropsIdentityFlags(t *testing.T) {
 	}))
 	s, e := st.read()
 	must(t, e)
-	text := prompt(s, s.Members["a"], config.Template{})
+	text, promptErr := prompt(s, s.Members["a"], config.Template{})
+	must(t, promptErr)
 	// The old prefix bound concrete values; the instruction naming the flags as
 	// forbidden must survive, so assert on the values rather than the flag names.
 	for _, unwanted := range []string{"--team " + shellQuote(st.Dir), "--member " + shellQuote("a"), "--generation 1", s.Executable} {

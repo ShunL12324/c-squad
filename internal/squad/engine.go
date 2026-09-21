@@ -48,8 +48,12 @@ func (st *Store) launch(id string, resume bool, initial string) (launchErr error
 	if e != nil {
 		return e
 	}
+	renderedPrompt, e := prompt(s, m, t)
+	if e != nil {
+		return e
+	}
 	pf := filepath.Join(dir, "prompt.txt")
-	if e = os.WriteFile(pf, []byte(prompt(s, m, t)), 0600); e != nil {
+	if e = os.WriteFile(pf, []byte(renderedPrompt), 0600); e != nil {
 		return e
 	}
 	hookcmd := shellQuote(s.Executable) + " --team " + shellQuote(st.Dir) + " --member " + shellQuote(id) + " --generation " + strconv.Itoa(m.Generation) + " hook"
@@ -91,7 +95,7 @@ func (st *Store) launch(id string, resume bool, initial string) (launchErr error
 				return e
 			}
 		}
-		b, _ := json.Marshal(existing.Instructions + "\n\n" + prompt(s, m, t))
+		b, _ := json.Marshal(existing.Instructions + "\n\n" + renderedPrompt)
 		args = []string{"-c", "developer_instructions=" + string(b), "--no-alt-screen", "-c", "check_for_update_on_startup=false"}
 		if cfg.Bypass {
 			args = append(args, "-c", codexTrustOverride(m.Cwd))

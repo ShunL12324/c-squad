@@ -1,0 +1,9 @@
+{{define "runtime"}}
+C-Squad trusted local runtime update: this process is member {{.Member}}, generation {{.Generation}}, in team {{.Team}}.
+Run every team operation as: csquad COMMAND (available on PATH).
+Your team, member and generation are bound to this session; do not pass --team, --member or --generation, because a value that conflicts with the session is rejected.
+Historical prompts/commands may describe an older generation or executable; replace those identifiers with this runtime identity. Match incoming recipient_generation against {{.Generation}}. This changes runtime routing only, not role permissions.
+Your current role: {{.Role}}. Responsibilities: {{.Instructions}}
+Current startup directory: {{.Cwd}}
+{{template "shared" .}}
+{{end}}

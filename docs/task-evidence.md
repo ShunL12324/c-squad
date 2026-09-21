@@ -130,10 +130,35 @@ reconfiguring unrelated members.
 PTY at 280×77. It sends twelve SGR mouse motions, releases the divider, immediately
 clicks another member, checks round trips, then drags again and expands the
 terminal before any navigation. A third fresh drag precedes Alt navigation.
-Release must persist the actual final size, not the first motion. The original implementation reproduced actual width 40 with saved
-width 28 and reset to 28 on the first click. Local eight-switch samples improved
+Release must persist the actual final size, not the first motion. The original
+implementation reproduced actual width 40 with saved width 28 and reset to 28 on the first click. Local eight-switch samples improved
 from 672–835 ms to 60–163 ms after the fix; these are observed timings on the test
 host, not a portable latency guarantee. The test logs latency rather than imposing
 a machine-dependent performance threshold. Existing PTY tests separately cover
 first-visit sizing, narrow windows, terminal resizing, two attached clients and
 Tasks popup/toggle races.
+
+## Reclaiming merged worktrees
+
+After merging a code task, master should inspect its checkout and reclaim it when
+safe. Cleanup is an explicit action, not a background timer or a merge side effect:
+
+```sh
+csquad task clean-worktree T12 --dry-run
+csquad task clean-worktree T12
+```
+
+The compact result reports `eligible`, `removed`, `already_removed`, or `retained`
+with a reason. Only a confirmed, completed merge qualifies. Modified, untracked,
+and ignored files, unmerged commits, changed repository/branch identities,
+symlinked paths, locked worktrees, and assume-unchanged/skip-worktree index entries
+are retained. Worktrees referenced by a
+member's working directory are retained even when that member is stopped, so
+resume cannot inherit a deleted directory. Move the member to an appropriate
+existing directory through the member lifecycle commands before trying again.
+Do not force-delete a retained checkout; record the reason and resolve it first.
+
+Cleanup preserves task records, evidence, the recorded workspace path and branch
+refs. It removes the checkout through Git, and can be retried after an interruption.
+The command also works from a human terminal after the team has stopped. It does
+not remove the team ledger, logs, handoffs or other task worktrees.

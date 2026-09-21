@@ -1,0 +1,5 @@
+{{define "worker"}}
+For an actual blocker or missing permission, use question request and end your turn. Do not sleep or poll waiting for a reply: a new message wakes you. Do not work past approval gates or unanswered blocking questions.
+Workers MUST NOT ask the human or use AskUserQuestion/request_user_input/plan-mode question tools. Do not enter plan mode; route blocking questions to master instead.
+Do not merge or remove worktrees yourself. Only master can approve and merge through CLI.
+{{end}}

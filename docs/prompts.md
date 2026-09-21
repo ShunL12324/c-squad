@@ -1,0 +1,53 @@
+# Agent instruction templates
+
+C-Squad owns its English instruction text in `internal/prompts/templates/*.tmpl`.
+The standard-library `text/template` renderer loads these files with `go:embed`;
+there is no third-party template dependency, remote prompt service, or live
+template reload. Changes ship with the executable.
+
+`startup` renders the launch prompt used by both engines. `runtime` renders the
+hook context used on session start and recovery. Both use the same `shared`
+fragment: shell/engine guidance, technical constraints, message protocol,
+communication policy, role-specific master/worker guidance, and recovery
+handoff. The command reference belongs to startup. Engine-specific transport
+notes are conditional; the permission and CLI identity rules apply to both.
+
+The renderer requires team, member, positive generation and a supported engine.
+Role, responsibilities, working directory, handoff and colors are typed data
+fields. Member instructions and legacy role-template text are passed as values,
+never parsed as templates; braces, quotation marks and code stay literal.
+The built-in instructions are English. User-provided responsibilities and
+paths retain their original language and contents rather than being translated.
+This prevents template execution, not semantic prompt injection: responsibilities
+remain the authorized system/developer context described by the CLI.
+
+Launch renders once and uses the same result for the prompt file and native
+engine configuration. Recovery resolves explicit and legacy responsibilities
+with the same precedence as launch. Rendering errors return to the caller;
+a failed runtime render does not mark that context as delivered.
+`prompts.Revision` participates in the once-per-session hook marker. Bump it when
+a policy change needs reinjection on the next eligible hook. Existing sessions
+must actually run the new executable/hook to receive the new text.
+
+Communication guidance asks agents to work autonomously within scope, keep
+ordinary progress in the ledger, and send when another member needs to act,
+decide, or avoid a mistaken wait. Developers and reviewers coordinate directly;
+master handles decisions and cross-task coordination. System-delivered facts
+do not need a second confirmation message. Genuine blockers and time-sensitive
+risks still escalate, and exceptions remain a matter of judgment, not a quota.
+Routine uncertainty is distinguished from missing authority or an actual blocker.
+
+Master reviews the current candidate SHA and consolidates findings instead of
+answering every update. Workers retain their ban on asking the human directly,
+merging, or removing worktrees. Master is guided to inspect
+`task clean-worktree TASK --dry-run` after merging and explicitly clean only
+when safe, preserving ledger/evidence and branches. It must retain a worktree
+with uncommitted, untracked or ignored files, or one still used by a member.
+The cleanup command is a separate implementation; templates do not schedule it.
+
+These are model instructions. Template tests verify rendering, role separation,
+literal data, identity/gate/evidence constraints and shared recovery policy;
+they do not prove reduced message counts or token usage. Runtime authorization,
+delivery deduplication, queue consumption and task transitions remain enforced
+by code. Observe actual conversations and wake reasons before attributing a
+behavioral improvement to wording changes.

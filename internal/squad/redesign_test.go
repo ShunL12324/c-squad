@@ -142,7 +142,8 @@ func TestPromptUsesCanonicalCLIAndSubmissionIdentity(t *testing.T) {
 	st := testStore(t)
 	s, err := st.read()
 	must(t, err)
-	text := prompt(s, s.Members["a"], config.Template{})
+	text, promptErr := prompt(s, s.Members["a"], config.Template{})
+	must(t, promptErr)
 	for _, want := range []string{"csquad COMMAND", "message reply MESSAGE", "question request", "question answer", "--submission ID", "Non-code evidence requires --submission", "Acknowledge each message_id through message ack"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("prompt missing %q", want)

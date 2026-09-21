@@ -3,11 +3,7 @@ package squad
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
 	"slices"
-	"strings"
-
-	"github.com/ShunL12324/c-squad/internal/preflight"
 )
 
 func taskCommand(st *Store, actor string, p []string, o options) error {
@@ -45,92 +41,17 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 	}
 	var result any
 	var report *ReportReference
-	var wasReady bool
 	err := st.update(func(s *State) error {
 		if p[0] == "list" {
 			result = s.Tasks
 			return nil
 		}
 		if p[0] == "create" {
-			if actor != "master" {
-				return fmt.Errorf("only master creates tasks: %w", ErrMasterRequired)
+			task, err := st.createTask(s, actor, p, o)
+			if err != nil {
+				return err
 			}
-			if len(p) < 2 || o["acceptance"] == "" {
-				return errors.New("title and --acceptance required")
-			}
-			if st.Generation > 0 && o["request-id"] == "" {
-				return errors.New("agents must provide a stable --request-id when creating a task")
-			}
-			if o["request-id"] != "" {
-				for _, existing := range s.Tasks {
-					if existing.RequestKey == actor+":"+o["request-id"] {
-						if existing.Title != strings.Join(p[1:], " ") || existing.Acceptance != o["acceptance"] || existing.Description != o["description"] || (existing.Workspace != "") != (o["code"] == "true") {
-							return errors.New("request-id already used for different task content")
-						}
-						result = existing
-						return nil
-					}
-				}
-			}
-			dispatch := DispatchMode(o["dispatch"])
-			if dispatch == "" {
-				dispatch = DispatchModeAssigned
-			}
-			if dispatch != DispatchModeAssigned && dispatch != DispatchModeOpen {
-				return errors.New("--dispatch assigned|open required")
-			}
-			t := &Task{Dispatch: dispatch, Setup: o["setup"], ID: s.next("T"), Title: strings.Join(p[1:], " "), Description: o["description"], Acceptance: o["acceptance"], State: TaskPhaseReady, Updated: now(), Participants: []string{}, Dependencies: list(o["deps"]), Milestones: []Milestone{}, Evidence: []Evidence{}}
-			if o["request-id"] != "" {
-				t.RequestKey = actor + ":" + o["request-id"]
-			}
-			for _, d := range t.Dependencies {
-				if s.Tasks[d] == nil {
-					return fmt.Errorf("unknown dependency %s", d)
-				}
-			}
-			names := list(o["milestones"])
-			for _, gate := range list(o["gates"]) {
-				if !slices.Contains(names, gate) {
-					return fmt.Errorf("gate %s is not a milestone", gate)
-				}
-			}
-			seen := map[string]bool{}
-			for _, name := range names {
-				if seen[name] {
-					return errors.New("duplicate milestone")
-				}
-				seen[name] = true
-				t.Milestones = append(t.Milestones, Milestone{name, slices.Contains(list(o["gates"]), name), MilestoneStatePending})
-			}
-			if o["code"] == "true" {
-				if err := preflight.Git(); err != nil {
-					return err
-				}
-				branch, e := git(s.Root, "symbolic-ref", "--short", "HEAD")
-				if e != nil {
-					return errors.New("code tasks require a Git branch with a commit")
-				}
-				base, e := git(s.Root, "rev-parse", "HEAD")
-				if e != nil {
-					return e
-				}
-				t.Base = base
-				t.Target = branch
-				t.Branch = "csquad/" + s.ID + "/" + t.ID
-				t.Workspace = filepath.Join(st.Dir, "worktrees", t.ID)
-				// Persist the workspace intent before invoking Git.
-				t.State = TaskPhasePreparing
-				printNotice([]string{codeTaskBinding(s, t)})
-				noticeCrossRepoTeam(s, actor, t)
-			}
-			s.Tasks[t.ID] = t
-			s.event(actor, "task_created", t.ID+" "+t.Title)
-			for id, m := range s.Members {
-				if t.State == TaskPhaseReady && t.Dispatch == DispatchModeOpen && id != "master" && m.State != MemberStateRemoved {
-					s.message(actor, id, t.ID, "Task available: "+t.ID+" "+t.Title+". Read board and claim if suitable.", "")
-				}
-			}
-			result = t
+			result = task
 			return nil
 		}
 		if len(p) < 2 {
@@ -281,102 +202,19 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 				s.message(actor, id, t.ID, "Candidate withdrawn; stop review/testing. Owner may edit and resubmit.", "")
 			}
 		case "submit":
-			if t.State != TaskPhaseInProgress && t.State != TaskPhaseInReview {
-				return errors.New("task must be in progress or review to submit")
+			report, e = submitTask(s, actor, t, o)
+			if e != nil {
+				return e
 			}
-			if t.Owner != actor && actor != "master" {
-				return errors.New("only task owner submits candidate")
-			}
-			for _, m := range t.Milestones {
-				if m.Gate && m.State != MilestoneStateApproved {
-					return fmt.Errorf("gate %s not approved", m.Name)
-				}
-			}
-			if o["summary"] == "" {
-				return errors.New("--summary required")
-			}
-			if t.Submission != "" && t.SubmissionSummary != o["summary"] {
-				return errors.New("submission frozen; master must task reopen before changing it")
-			}
-			if t.Workspace == "" && o["sha"] != "" {
-				return errors.New("non-code submissions do not accept --sha")
-			}
-			if t.Workspace != "" {
-				sha := o["sha"]
-				if sha == "" {
-					sha = "HEAD"
-				}
-				candidate, e := git(t.Workspace, "rev-parse", "--verify", sha+"^{commit}")
-				if e != nil {
-					// Name both repositories: a bare "Needed a single revision" hides
-					// that the SHA was resolved against the task worktree, not the
-					// member's own working directory.
-					return fmt.Errorf("candidate %q does not resolve in the task worktree %s; %s. If the commit lives in another repository, master can close this task with task close-external --repo PATH --sha COMMIT --reason TEXT: %w",
-						sha, t.Workspace, codeTaskBinding(s, t), e)
-				}
-				head, e := git(t.Workspace, "rev-parse", "HEAD")
-				if e != nil {
-					return e
-				}
-				if candidate != head {
-					return errors.New("candidate must be current task HEAD")
-				}
-				dirty, e := git(t.Workspace, "status", "--porcelain")
-				if e != nil {
-					return e
-				}
-				if dirty != "" {
-					return errors.New("commit all task changes before submit")
-				}
-				if t.State == TaskPhaseInReview && t.Candidate != candidate {
-					return errors.New("candidate frozen; master must task reopen before changing it")
-				}
-				t.Candidate = candidate
-			}
-			if t.Submission == "" {
-				t.SubmissionRevision++
-				t.Submission = submissionID(t)
-				t.SubmissionSummary = o["summary"]
-			}
-			if t.CandidateAuthor == "" {
-				t.CandidateAuthor = t.Owner
-			}
-			t.Progress = o["summary"]
-			t.State = TaskPhaseInReview
-			t.Approval = nil
-			report = &ReportReference{Kind: "delivery", Submission: t.Submission}
 		case "close-external":
 			if e = closeExternal(s, actor, t, o); e != nil {
 				return e
 			}
 			printNotice(describeExternalClosure(t.ExternalClosure))
 		case "evidence":
-			wasReady = evidenceReady(t)
-			if EvidenceKind(o["kind"]) != EvidenceReview && EvidenceKind(o["kind"]) != EvidenceTest {
-				return errors.New("--kind review|test required")
-			}
-			if t.State != TaskPhaseInReview && t.State != TaskPhaseAwaitingMerge {
-				return errors.New("submit candidate before evidence")
-			}
-			if e = validateEvidenceSelector(t, o); e != nil {
+			report, e = recordTaskEvidence(actor, t, o)
+			if e != nil {
 				return e
-			}
-			if o["summary"] == "" {
-				return errors.New("--summary required")
-			}
-			if o["passed"] != "true" && o["passed"] != "false" {
-				return errors.New("--passed true|false required")
-			}
-			if EvidenceKind(o["kind"]) == EvidenceReview && (actor == t.Owner || actor == t.CandidateAuthor) {
-				return errors.New("author cannot review own candidate")
-			}
-			t.Evidence = append(t.Evidence, Evidence{Member: actor, Kind: EvidenceKind(o["kind"]), SHA: t.Candidate, Submission: t.Submission, Passed: o["passed"] == "true", Summary: o["summary"]})
-			t.Approval = nil
-			t.State = TaskPhaseInReview
-			if o["passed"] == "false" {
-				report = &ReportReference{Kind: "failure", Submission: t.Submission, Evidence: len(t.Evidence)}
-			} else if !wasReady && evidenceReady(t) {
-				report = &ReportReference{Kind: "ready", Submission: t.Submission}
 			}
 		case "approve":
 			if t.State != TaskPhaseInReview {

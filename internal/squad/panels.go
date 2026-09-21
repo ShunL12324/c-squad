@@ -282,9 +282,9 @@ func teamWindowSize(s *State) (string, string) {
 }
 
 // fitSession lays the destination out at the switching client's size before the
-// client ever sees it. Member sessions are created detached at a fixed size, so
-// tmux would otherwise reflow every pane proportionally on the switch and the
-// asynchronous layout hook would only repair it a moment later.
+// client ever sees it. Destination geometry can differ after viewport changes
+// or fallback sizing; fitting before the switch avoids visible reflow while
+// waiting for the asynchronous layout hook.
 // It reports whether it pinned the window, which the caller has to undo.
 func (st *Store) fitSession(s *State, m *Member, client string) (bool, error) {
 	unlock, err := filelock.Acquire(st.Dir, "panels", false)
@@ -494,9 +494,9 @@ func (st *Store) runPanel(owner, view string, popup bool) error {
 			}
 			return "", st.setPanelView(view, true)
 		}
-		// The panel runs as master from argv C Squad builds itself, which is the
-		// identity the request is made under; the message records the user as
-		// its origin. It queues a question and touches no task state.
+		// Confirmation records user acceptance without changing the technical phase,
+		// evidence, or approval. Brief instead queues a report request to master
+		// with the user as its origin, leaving the task unchanged.
 		if a.Kind == "confirm" {
 			return st.confirmTask(a.Task)
 		}

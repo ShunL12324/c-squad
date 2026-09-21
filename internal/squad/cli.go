@@ -345,15 +345,15 @@ func start(o options) error {
 	if o["engine"] != "" {
 		selected = config.Engine(o["engine"])
 	}
-	if e = preflight.Check(selected); e != nil {
-		return e
-	}
 	cfg.Env = agentenv.Merge(agentenv.SnapshotSelectors(), cfg.Env)
 	startupEnv, e := agentenv.Parse(o["env"])
 	if e != nil {
 		return e
 	}
 	cfg.StartupEnv = agentenv.Merge(cfg.StartupEnv, startupEnv)
+	if e = preflight.CheckConfig(cfg, selected); e != nil {
+		return e
+	}
 	if e = excludeProjectState(root); e != nil {
 		return e
 	}

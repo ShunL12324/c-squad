@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	engineconfig "github.com/ShunL12324/c-squad/internal/config"
 	"github.com/ShunL12324/c-squad/internal/process"
 )
 
@@ -23,17 +24,22 @@ type codexSessionConfig struct {
 }
 
 func codexConfig(cwd string, trusted bool, environments ...map[string]string) (config codexSessionConfig, err error) {
+	var env map[string]string
+	if len(environments) > 0 {
+		env = environments[0]
+	}
+	return codexConfigWithCommand(cwd, trusted, env, engineconfig.Config{}.Command(engineconfig.Codex))
+}
+
+func codexConfigWithCommand(cwd string, trusted bool, env map[string]string, command engineconfig.Command) (config codexSessionConfig, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	args := []string{"app-server"}
 	if trusted {
 		args = append(args, "-c", codexTrustOverride(cwd))
 	}
-	var env map[string]string
-	if len(environments) > 0 {
-		env = environments[0]
-	}
-	c := process.Command(ctx, cwd, env, "codex", args...)
+	name, argv, env := command.Invocation(env, args...)
+	c := process.Command(ctx, cwd, env, name, argv...)
 	diagnostics := &codexDiagnostics{}
 	c.Stderr = diagnostics
 	in, e := c.StdinPipe()

@@ -1,0 +1,210 @@
+package squad
+
+import (
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"reflect"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/ShunL12324/c-squad/internal/agentenv"
+	"github.com/ShunL12324/c-squad/internal/config"
+)
+
+type commandCapture struct {
+	Executable string   `json:"executable"`
+	Args       []string `json:"args"`
+	Cwd        string   `json:"cwd"`
+	Member     string   `json:"member"`
+	Generation string   `json:"generation"`
+	Account    string   `json:"account"`
+	CodexHome  string   `json:"codex_home"`
+	ClaudeHome string   `json:"claude_home"`
+	Token      string   `json:"token"`
+	ModelEnv   string   `json:"model_env"`
+	Path       string   `json:"path"`
+}
+
+func TestCustomCommandsAcrossLifecycle(t *testing.T) {
+	for _, tool := range []string{"tmux", "python3", "bash", "zsh"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skip(tool + " unavailable")
+		}
+	}
+	temp := t.TempDir()
+	binary := filepath.Join(temp, "csquad")
+	out, err := exec.Command("go", "build", "-o", binary, "../../cmd/csquad").CombinedOutput()
+	if err != nil {
+		t.Fatalf("build: %v %s", err, out)
+	}
+	// Neither native name is on PATH: every launch and probe must use the override.
+	bin := filepath.Join(temp, "bin")
+	must(t, os.Mkdir(bin, 0700))
+	for _, tool := range []string{"tmux", "git", "ps", "sh", "bash", "zsh", "sleep"} {
+		path, err := exec.LookPath(tool)
+		must(t, err)
+		must(t, os.Symlink(path, filepath.Join(bin, tool)))
+	}
+	python, err := exec.LookPath("python3")
+	must(t, err)
+	body, err := os.ReadFile("testdata/custom_engine.py")
+	must(t, err)
+	for _, mode := range []string{"", "bash", "zsh"} {
+		for _, masterEngine := range []config.Engine{config.Claude, config.Codex} {
+			t.Run(string(masterEngine)+"/"+mode, func(t *testing.T) {
+				root := t.TempDir()
+				capture := filepath.Join(root, "capture")
+				must(t, os.Mkdir(capture, 0700))
+				cfg := config.Defaults()
+				cfg.MasterEngine, cfg.MasterModel = masterEngine, "test-model"
+				workerEngine := config.Claude
+				if masterEngine == config.Claude {
+					workerEngine = config.Codex
+				}
+				cfg.Engine = workerEngine
+				cfg.Env = map[string]string{"ENGINE_CAPTURE": capture, "CUSTOM_ACCOUNT": "team account", "CODEX_HOME": filepath.Join(root, "codex account"), "CLAUDE_CONFIG_DIR": filepath.Join(root, "claude account")}
+				cfg.Env["ANTHROPIC_AUTH_TOKEN"], cfg.Env["TEST_MODEL"] = "config fake token", "config model"
+				cfg.EngineCommands = map[config.Engine]config.Command{}
+				prefix := []string{"profile with spaces", "", "$(touch should-not-exist)"}
+				for _, engine := range []config.Engine{config.Claude, config.Codex} {
+					path := filepath.Join(root, "custom client "+string(engine))
+					must(t, os.WriteFile(path, append([]byte("#!"+python+"\n"), body...), 0700))
+					cfg.EngineCommands[engine] = config.Command{Executable: path, Args: prefix}
+				}
+				if mode != "" {
+					home := filepath.Join(root, "isolated home")
+					must(t, os.Mkdir(home, 0700))
+					cfg.Env["HOME"], cfg.Env["ZDOTDIR"] = home, home
+					var rc strings.Builder
+					rc.WriteString("export CUSTOM_ACCOUNT=wrong CODEX_HOME=/wrong ANTHROPIC_AUTH_TOKEN=wrong TEST_MODEL=wrong CSQUAD_MEMBER_ID=wrong CSQUAD_GENERATION=0\n")
+					for engine, command := range cfg.EngineCommands {
+						name := "my-" + string(engine) + "-client"
+						expansion := "ANTHROPIC_AUTH_TOKEN=" + shellQuote("alias fake token") + " " + shellQuote(command.Executable) + " " + shellQuote(prefix[0])
+						rc.WriteString("alias " + name + "=" + shellQuote(expansion) + "\n")
+						command.Executable, command.Shell, command.Args = name, mode, prefix[1:]
+						cfg.EngineCommands[engine] = command
+					}
+					for _, name := range []string{".bashrc", ".zshrc"} {
+						must(t, os.WriteFile(filepath.Join(home, name), []byte(rc.String()), 0600))
+					}
+				}
+				configPath := filepath.Join(root, "config.toml")
+				writeConfig := func() {
+					t.Helper()
+					body, err := config.Document(cfg)
+					must(t, err)
+					must(t, os.WriteFile(configPath, body, 0600))
+				}
+				writeConfig()
+				env := agentenv.Environ(map[string]string{"PATH": bin, "SHELL": "/bin/sh", "CSQUAD_CONFIG": configPath, "CSQUAD_HOME": filepath.Join(root, "state"), "CSQUAD_STATE_DIR": "", "CSQUAD_MEMBER_ID": "", "CSQUAD_GENERATION": "", "TMUX": "", "TMUX_PANE": ""})
+				cli := func(args ...string) []byte {
+					t.Helper()
+					cmd := exec.Command(binary, args...)
+					cmd.Dir, cmd.Env = root, env
+					out, err := cmd.CombinedOutput()
+					if err != nil {
+						t.Fatalf("%v: %v %s", args, err, out)
+					}
+					return out
+				}
+				cli("doctor", "--strict", "--engine", string(masterEngine))
+				cli("start", "custom", "--detach")
+				st, err := openStore(filepath.Join(root, "state", "teams", "custom"))
+				must(t, err)
+				defer st.DB.Close()
+				defer stop(st)
+				cli("member", "add", "worker", "--env", "CUSTOM_ACCOUNT=worker account", "--model", "worker-model")
+				waitLaunch := func(id string, generation int, engine config.Engine, wantPrefix []string, resumed bool) {
+					t.Helper()
+					until := time.Now().Add(15 * time.Second)
+					for time.Now().Before(until) {
+						files, err := filepath.Glob(filepath.Join(capture, "*.json"))
+						must(t, err)
+						for _, file := range files {
+							data, err := os.ReadFile(file)
+							must(t, err)
+							var record commandCapture
+							if json.Unmarshal(data, &record) != nil || record.Member != id || record.Generation != strconv.Itoa(generation) {
+								continue
+							}
+							if len(record.Args) < 4 || record.Args[3] == "app-server" || record.Args[3] == "agents" || record.Args[3] == "queue" {
+								continue
+							}
+							if !reflect.DeepEqual(record.Args[:3], wantPrefix) || !strings.HasSuffix(record.Executable, string(engine)) || record.Cwd != root {
+								t.Fatalf("argv/cwd changed: %+v", record)
+							}
+							wantAccount := "team account"
+							if id == "worker" {
+								wantAccount = "worker account"
+							}
+							wantToken := "config fake token"
+							if mode != "" {
+								wantToken = "alias fake token"
+							}
+							if record.Token != wantToken || record.ModelEnv != "config model" || !strings.Contains(record.Path, "/runtime/"+id+"/"+strconv.Itoa(generation)+"/bin") {
+								t.Fatalf("alias/rc override precedence changed: %+v", record)
+							}
+							if record.Account != wantAccount || record.CodexHome != cfg.Env["CODEX_HOME"] || record.ClaudeHome != cfg.Env["CLAUDE_CONFIG_DIR"] {
+								t.Fatalf("environment changed: %+v", record)
+							}
+							if !contains(record.Args, "--model") || engine == config.Claude && !contains(record.Args, "--dangerously-skip-permissions") || engine == config.Codex && !contains(record.Args, "--dangerously-bypass-approvals-and-sandbox") {
+								t.Fatalf("generated flags lost: %+v", record)
+							}
+							if resumed && !contains(record.Args, "session-"+id) {
+								t.Fatalf("resume identity lost: %+v", record)
+							}
+							return
+						}
+						time.Sleep(50 * time.Millisecond)
+					}
+					t.Fatalf("no launch captured for %s generation %d", id, generation)
+				}
+				waitLaunch("master", 1, masterEngine, prefix, false)
+				waitLaunch("worker", 1, workerEngine, prefix, false)
+				must(t, st.update(func(s *State) error {
+					for id, m := range s.Members {
+						m.EngineID, m.State = "session-"+id, MemberStateIdle
+					}
+					return nil
+				}))
+				// Exercise the same configured helpers used by transport and observation.
+				s, err := st.read()
+				must(t, err)
+				for _, m := range s.Members {
+					args := []string{"agents", "--json"}
+					if m.Engine == config.Codex {
+						args = []string{"queue", "--thread", m.EngineID, "--message", "literal message"}
+					}
+					_, err := s.engineHelper(m, args...)
+					must(t, err)
+				}
+				newPrefix := []string{prefix[0], "", "literal ; value"}
+				for engine, command := range cfg.EngineCommands {
+					command.Args = newPrefix
+					if mode != "" {
+						command.Args = newPrefix[1:]
+					}
+					cfg.EngineCommands[engine] = command
+				}
+				writeConfig()
+				cli("member", "restart", "worker")
+				waitLaunch("worker", 2, workerEngine, prefix, true)
+				cli("recover")
+				waitLaunch("master", 2, masterEngine, prefix, true)
+				cli("stop")
+				cli("resume", "custom", "--detach")
+				state, err := st.read()
+				must(t, err)
+				waitLaunch("master", state.Members["master"].Generation, masterEngine, newPrefix, true)
+				waitLaunch("worker", state.Members["worker"].Generation, workerEngine, newPrefix, true)
+				if _, err := os.Stat(filepath.Join(root, "should-not-exist")); !os.IsNotExist(err) {
+					t.Fatal("prefix argument was interpreted by a shell")
+				}
+			})
+		}
+	}
+}

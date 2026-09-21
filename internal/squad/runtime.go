@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/ShunL12324/c-squad/internal/agentenv"
@@ -60,6 +61,28 @@ func runEngine(st *Store, actor string, gen int, args []string) error {
 	if e != nil {
 		return e
 	}
+	cfg, cfgErr := s.effectiveConfig()
+	if cfgErr != nil {
+		return cfgErr
+	}
+	if err := cfg.ValidateCommands(); err != nil {
+		return err
+	}
+	command := cfg.Command(m.Engine)
+	if command.Shell != "" {
+		if args[0] != command.Executable {
+			return fmt.Errorf("engine alias does not match the configured command")
+		}
+		// Expand aliases inside the runner: putting shell source and protected
+		// environment copies in tmux argv can exceed its command-size limit.
+		// launch has already prepended the fixed arguments.
+		command.Executable, command.Args = args[0], nil
+		memberEnv["CSQUAD_STATE_DIR"] = st.Dir
+		memberEnv["CSQUAD_MEMBER_ID"] = actor
+		memberEnv["CSQUAD_GENERATION"] = strconv.Itoa(gen)
+		name, argv, prepared := command.Invocation(memberEnv, args[1:]...)
+		args, memberEnv = append([]string{name}, argv...), prepared
+	}
 	c := exec.Command(args[0], args[1:]...)
 	c.Dir = m.Cwd
 	c.Env = agentenv.Environ(memberEnv)
@@ -98,8 +121,7 @@ func runEngine(st *Store, actor string, gen int, args []string) error {
 		}
 		startupDone := make(chan struct{})
 		startupFinished := make(chan struct{})
-		cfg, cfgErr := s.effectiveConfig()
-		if cfgErr == nil && cfg.Bypass && m.Engine == config.Claude {
+		if cfg.Bypass && m.Engine == config.Claude {
 			go func() { defer close(startupFinished); st.monitorClaudeStartup(actor, gen, startupDone) }()
 		} else {
 			close(startupFinished)

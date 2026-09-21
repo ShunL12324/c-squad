@@ -249,9 +249,18 @@ func resumeTeam(st *Store, o options) error {
 	if err := validateResumeDirectories(s); err != nil {
 		return err
 	}
+	preview := *s
+	if s.Config != nil {
+		saved := *s.Config
+		preview.Config = &saved
+	}
+	oldDefaults, newDefaults := refreshResumeDefaults(&preview, currentConfig, overrides)
 	for _, member := range s.Members {
 		if member.State != MemberStateRemoved {
-			if err := preflight.Check(member.Engine); err != nil {
+			resumed := *member
+			resumed.Env = agentenv.Merge(member.Env)
+			resumed.applyResumeEnvironment(oldDefaults, newDefaults, overrides)
+			if err := preflight.CheckConfig(currentConfig, member.Engine, resumed.Env); err != nil {
 				return err
 			}
 		}

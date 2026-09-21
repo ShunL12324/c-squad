@@ -125,5 +125,8 @@ func refreshResumeDefaults(s *State, current config.Config, overrides map[string
 		s.Config = &current
 	}
 	s.Config.Env, s.Config.StartupEnv = env, startupEnv
+	// A full resume adopts edited command paths, just like account environment
+	// defaults. Individual member restarts continue using the saved snapshot.
+	s.Config.EngineCommands = current.EngineCommands
 	return old, agentenv.Merge(env, startupEnv)
 }

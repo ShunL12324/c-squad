@@ -10,7 +10,6 @@ import (
 
 	"github.com/ShunL12324/c-squad/internal/config"
 	"github.com/ShunL12324/c-squad/internal/filelock"
-	"github.com/ShunL12324/c-squad/internal/process"
 )
 
 func (st *Store) deliver(id string) error {
@@ -156,7 +155,7 @@ func (st *Store) deliver(id string) error {
 		if m.EngineID == "" {
 			e = st.startCodexInput(s, m, text)
 		} else {
-			_, e = process.RunEnv(m.Cwd, m.Env, "codex", "queue", "--thread", m.EngineID, "--message", text)
+			_, e = s.engineHelper(m, "queue", "--thread", m.EngineID, "--message", text)
 		}
 	}
 	deliveryErr := e

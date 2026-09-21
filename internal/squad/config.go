@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/ShunL12324/c-squad/internal/config"
+	"github.com/ShunL12324/c-squad/internal/process"
 )
 
 func printConfig(c config.Config) error {
@@ -35,4 +36,15 @@ func (s *State) effectiveConfig() (config.Config, error) {
 		return *s.Config, nil
 	}
 	return config.Load(s.Root)
+}
+
+// engineHelper uses the team's command snapshot for native helper subcommands.
+func (s *State) engineHelper(m *Member, args ...string) (string, error) {
+	cfg, err := s.effectiveConfig()
+	if err != nil {
+		return "", err
+	}
+	command := cfg.Command(m.Engine)
+	name, argv, env := command.Invocation(m.Env, args...)
+	return process.RunEnv(m.Cwd, env, name, argv...)
 }

@@ -9,6 +9,17 @@ const documentHeader = `# C-Squad configuration (TOML)
 # Teams save a startup snapshot; editing this file does not change an already running team.
 # Role templates and account profiles are optional. Claude Code / Codex manage native MCP and authentication.
 # In TOML, keys after [env] belong to that table. Place other top-level settings before [env].
+# Optional engine commands (uncomment at the end of this file):
+# [engine_commands.claude]
+# executable = "/absolute/path/to/claude-wrapper"
+# args = ["--profile", "work"]
+# [engine_commands.codex]
+# executable = "codex-alt"
+# args = []
+# To use a persistent alias from ~/.zshrc, select shell = "zsh" and its name as executable.
+# shell = "bash" loads ~/.bashrc. Leave shell unset for direct executable/argv mode.
+# Fixed args precede every generated argument, including probes and helper subcommands.
+# No shell parsing or expansion. Wrappers must preserve the selected engine's CLI/protocol.
 
 `
 

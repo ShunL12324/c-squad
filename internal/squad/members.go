@@ -106,11 +106,11 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 		if o["model"] != "" {
 			t.Model = o["model"]
 		}
-		if e = preflight.Check(t.Engine); e != nil {
-			return e
-		}
 		overrides, e := agentenv.Parse(o["env"])
 		if e != nil {
+			return e
+		}
+		if e = preflight.CheckConfig(cfg, t.Engine, memberEnv(cfg, t, overrides)); e != nil {
 			return e
 		}
 		cwd := s.Root

@@ -37,8 +37,17 @@ func (st *Store) launch(id string, resume bool, initial string) (launchErr error
 	if m.Instructions != "" || cfg.Engine != "" {
 		t.Prompt = m.Instructions
 	}
-	if _, e = exec.LookPath(string(m.Engine)); e != nil {
+	command := cfg.Command(m.Engine)
+	name := command.Executable
+	if command.Shell != "" {
+		name = command.Shell
+	}
+	executable, e := exec.LookPath(name)
+	if e != nil {
 		return e
+	}
+	if command.Shell != "" {
+		executable = command.Executable
 	}
 	dir := filepath.Join(st.Dir, "runtime", id)
 	if e = os.MkdirAll(dir, 0700); e != nil {
@@ -85,7 +94,7 @@ func (st *Store) launch(id string, resume bool, initial string) (launchErr error
 		}
 	case config.Codex:
 		// TOML basic strings share the JSON encoding used here for our generated text.
-		existing, err := codexConfig(m.Cwd, cfg.Bypass, m.Env)
+		existing, err := codexConfigWithCommand(m.Cwd, cfg.Bypass, m.Env, command)
 		if err != nil {
 			return err
 		}
@@ -138,8 +147,8 @@ func (st *Store) launch(id string, resume bool, initial string) (launchErr error
 		args = append(args, initial)
 	}
 	launch := []string{s.Executable, "--team", st.Dir, "--member", id, "--generation", strconv.Itoa(m.Generation), "run-engine", "--"}
-	launch = append(launch, string(m.Engine))
-	launch = append(launch, args...)
+	launch = append(launch, executable)
+	launch = append(launch, command.Arguments(args...)...)
 	// tmux accepts argv when more than one shell-command argument is supplied.
 	width, height := teamWindowSize(s)
 	ta := []string{"new-session", "-d", "-s", m.Session, "-c", m.Cwd, "-x", width, "-y", height, "-P", "-F", "#{pane_id}"}

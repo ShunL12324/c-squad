@@ -25,18 +25,19 @@ type Template struct {
 // Config holds engine defaults, team limits, and environment overrides.
 // A startup snapshot is stored with the team so later config edits do not change it.
 type Config struct {
-	Engine       Engine              `json:"engine" toml:"engine" comment:"Default worker engine: codex (default) or claude. Override with member add --engine."`
-	Model        string              `json:"model,omitempty" toml:"model" comment:"Default worker model. Empty by default to use native engine configuration. Use a model supported by the selected engine; override with member add --model."`
-	MasterEngine Engine              `json:"master_engine" toml:"master_engine" comment:"Default Master engine: claude (default) or codex. Override with start --engine."`
-	MasterModel  string              `json:"master_model,omitempty" toml:"master_model" comment:"Default Master model: opus (Claude). When changing master_engine, also change this model or set it to an empty string to use the native default."`
-	Env          map[string]string   `json:"env,omitempty" toml:"env" comment:"Environment overrides for Master and all members. Empty by default; values must be strings.\nPrecedence, lowest to highest: inherited environment -> env -> start --env -> member add --env.\nUse absolute paths. Paths do not expand ~, $HOME, or command substitutions. CODEX_HOME selects the Codex configuration directory.\nCLAUDE_CONFIG_DIR selects the Claude configuration directory. An empty value unsets the variable.\nCSQUAD_*, TMUX, and TMUX_PANE are managed by C Squad and cannot be overridden.\nExample entry in the [env] table below: CODEX_HOME = \"/home/yourname/.codex-alt\"."`
-	StartupEnv   map[string]string   `json:"startup_env,omitempty" toml:"startup_env,omitempty" comment:"Compatibility field for saved startup environment overrides; takes precedence over env. Normally set these through start --env KEY=VALUE rather than editing this field."`
-	Version      int                 `json:"version" toml:"version" comment:"Configuration schema version. Only 1 is supported. This is not the application version; do not change it."`
-	Bypass       bool                `json:"bypass_permissions" toml:"bypass_permissions" comment:"Bypass native permission approvals: true (default) or false.\nWhen true, uses Claude --dangerously-skip-permissions or Codex --yolo.\nAlso confirms Claude's native workspace-trust dialog for the selected working directory; Claude saves its normal project trust record. When false, native approvals remain enabled and members may wait for human approval.\nThis does not authenticate accounts, supply quota, or override organization policy."`
-	MaxMembers   int                 `json:"max_members" toml:"max_members" comment:"Maximum team size, including Master. Default: 8; must be an integer of at least 1.\nRemoved members do not count. This does not limit conversation turns or task count."`
-	Templates    map[string]Template `json:"templates,omitempty" toml:"templates,omitempty" comment:"Legacy role template compatibility field; new configurations do not need it. Define member responsibilities with member add --role and --instructions."`
-	PreviousKey  string              `json:"previous_member_key" toml:"previous_member_key" comment:"Key that switches to the previous member, in tmux key syntax. Default: M-Up (Alt/Option+Up).\nThe team binds it, so the agent CLI in the engine pane no longer receives it: tmux treats Alt and Meta as one M- namespace.\nSet it to an empty string to leave the key to the agent and navigate with Ctrl-b 0-9 or the sidebar instead."`
-	NextKey      string              `json:"next_member_key" toml:"next_member_key" comment:"Key that switches to the next member, in tmux key syntax. Default: M-Down (Alt/Option+Down).\nSet it to an empty string to leave the key to the agent."`
+	EngineCommands map[Engine]Command  `json:"engine_commands,omitempty" toml:"engine_commands,omitempty" comment:"Optional per-engine executable and literal prefix arguments. Applies to both Master and workers, including probes and messaging helpers."`
+	Engine         Engine              `json:"engine" toml:"engine" comment:"Default worker engine: codex (default) or claude. Override with member add --engine."`
+	Model          string              `json:"model,omitempty" toml:"model" comment:"Default worker model. Empty by default to use native engine configuration. Use a model supported by the selected engine; override with member add --model."`
+	MasterEngine   Engine              `json:"master_engine" toml:"master_engine" comment:"Default Master engine: claude (default) or codex. Override with start --engine."`
+	MasterModel    string              `json:"master_model,omitempty" toml:"master_model" comment:"Default Master model: opus (Claude). When changing master_engine, also change this model or set it to an empty string to use the native default."`
+	Env            map[string]string   `json:"env,omitempty" toml:"env" comment:"Environment overrides for Master and all members. Empty by default; values must be strings.\nPrecedence, lowest to highest: inherited environment -> env -> start --env -> member add --env.\nUse absolute paths. Paths do not expand ~, $HOME, or command substitutions. CODEX_HOME selects the Codex configuration directory.\nCLAUDE_CONFIG_DIR selects the Claude configuration directory. An empty value unsets the variable.\nCSQUAD_*, TMUX, and TMUX_PANE are managed by C Squad and cannot be overridden.\nExample entry in the [env] table below: CODEX_HOME = \"/home/yourname/.codex-alt\"."`
+	StartupEnv     map[string]string   `json:"startup_env,omitempty" toml:"startup_env,omitempty" comment:"Compatibility field for saved startup environment overrides; takes precedence over env. Normally set these through start --env KEY=VALUE rather than editing this field."`
+	Version        int                 `json:"version" toml:"version" comment:"Configuration schema version. Only 1 is supported. This is not the application version; do not change it."`
+	Bypass         bool                `json:"bypass_permissions" toml:"bypass_permissions" comment:"Bypass native permission approvals: true (default) or false.\nWhen true, uses Claude --dangerously-skip-permissions or Codex --yolo.\nAlso confirms Claude's native workspace-trust dialog for the selected working directory; Claude saves its normal project trust record. When false, native approvals remain enabled and members may wait for human approval.\nThis does not authenticate accounts, supply quota, or override organization policy."`
+	MaxMembers     int                 `json:"max_members" toml:"max_members" comment:"Maximum team size, including Master. Default: 8; must be an integer of at least 1.\nRemoved members do not count. This does not limit conversation turns or task count."`
+	Templates      map[string]Template `json:"templates,omitempty" toml:"templates,omitempty" comment:"Legacy role template compatibility field; new configurations do not need it. Define member responsibilities with member add --role and --instructions."`
+	PreviousKey    string              `json:"previous_member_key" toml:"previous_member_key" comment:"Key that switches to the previous member, in tmux key syntax. Default: M-Up (Alt/Option+Up).\nThe team binds it, so the agent CLI in the engine pane no longer receives it: tmux treats Alt and Meta as one M- namespace.\nSet it to an empty string to leave the key to the agent and navigate with Ctrl-b 0-9 or the sidebar instead."`
+	NextKey        string              `json:"next_member_key" toml:"next_member_key" comment:"Key that switches to the next member, in tmux key syntax. Default: M-Down (Alt/Option+Down).\nSet it to an empty string to leave the key to the agent."`
 }
 
 // Defaults returns the built-in settings before user and project overlays.
@@ -233,6 +234,9 @@ func Load(root string) (Config, error) {
 		}
 	}
 	if err = validateKey("previous_member_key", c.PreviousKey); err != nil {
+		return c, err
+	}
+	if err = c.ValidateCommands(); err != nil {
 		return c, err
 	}
 	if err = validateKey("next_member_key", c.NextKey); err != nil {

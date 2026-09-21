@@ -50,7 +50,11 @@ func lifecycle(st *Store, actor, op, id, initial, directory string) error {
 		return e
 	}
 	if op != "remove" {
-		if err := preflight.Check(m.Engine); err != nil {
+		cfg, err := s.effectiveConfig()
+		if err != nil {
+			return err
+		}
+		if err := preflight.CheckConfig(cfg, m.Engine, m.Env); err != nil {
 			return err
 		}
 	}

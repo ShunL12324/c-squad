@@ -77,6 +77,95 @@ csquad start --engine codex
 The Master recruits members through `csquad member add`, supplying their name,
 engine, and role description. You can describe the team you want in plain language.
 
+### Custom engine executables
+
+For renamed clients or wrapper scripts, configure each engine independently in
+the user configuration or the project's `.csquad.toml`:
+
+```toml
+[engine_commands.claude]
+executable = "cfuse"
+args = ["--cc"]
+
+[engine_commands.codex]
+executable = "codex-alt"
+args = ["--profile", "work"]
+```
+
+`executable` is a command name on the PATH used to start C-Squad, or an absolute
+path (spaces are supported). An omitted or empty executable uses `claude` or
+`codex`. Omitted arguments default to an empty array. Project overlays merge
+fields; set `args = []` to clear inherited arguments and `executable = ""` to
+restore the native name. Relative paths containing directories are rejected.
+No shell parses these values: `~`, `$HOME`, substitutions, and quoting are not
+expanded. Supply each argument as a separate array item, including values with
+spaces; do not put a whole shell command in `executable`.
+
+Every invocation is `executable` + configured `args` + C-Squad's generated
+arguments. This includes `doctor` probes, Codex `app-server` configuration lookup
+and `queue` messaging, and Claude `agents` observation, as well as interactive
+launches. Both Master and workers use their selected engine's command. Generated
+identity, hooks, model, permission and resume arguments remain unchanged. Avoid
+conflicting options in the prefix; duplicate-option behavior belongs to the
+underlying client.
+
+The example invokes `cfuse --cc` followed by C-Squad's normal Claude arguments.
+A wrapper must consume its own prefix options and forward all
+remaining arguments to a compatible Claude Code client. Custom commands do not
+make an arbitrary client compatible: the wrapper must support the selected
+engine's CLI, hooks and communication protocol, including helper subcommands.
+Use environment overrides below for account configuration; do not place secrets
+in fixed arguments, which can appear in process listings and configuration output.
+
+New teams snapshot these settings. `member restart` and `recover` keep that
+snapshot. After stopping the team, `resume` reloads command settings from the
+current user/project configuration before starting any member; removing the
+settings restores the native commands. Changing the command alone preserves
+conversation IDs. Use `resume --fresh` when the replacement cannot read the old
+client's sessions. `doctor --strict --engine codex` checks the configured command's
+availability; it does not certify protocol compatibility or authenticate accounts.
+
+For a persistent shell alias, explicitly select the shell instead:
+
+```sh
+# Define in ~/.zshrc (or ~/.bashrc when selecting bash).
+alias mycc='ANTHROPIC_BASE_URL=https://example.invalid cfuse --cc'
+```
+
+```toml
+[engine_commands.claude]
+shell = "zsh" # or "bash"
+executable = "mycc"
+args = []
+```
+
+This starts an interactive Zsh or Bash to load its normal rc file (including
+Zsh's `ZDOTDIR`) and expands that specific alias, including leading environment
+assignments. The alias name is not hardcoded. It must start with a letter or
+underscore and otherwise contain letters, digits, `_`, `.`, `+`, or `-`.
+Use a simple alias to an executable with optional environment assignments and fixed arguments; shell functions,
+pipelines, chained commands, and arbitrary shell command templates are not
+supported. A wrapper script can implement more complex preparation.
+An alias defined only in an existing terminal cannot be inherited by a new
+process; put it in the selected shell's rc file. C-Squad does not edit that file,
+search other shells, or fall back to a native command if the alias is missing.
+`args` and generated arguments use shell positional parameters, so their spaces,
+quotes and metacharacters remain literal. Shell rc files and the alias definition
+are user-controlled shell code; keep stdout quiet because native helper protocols
+may parse it. Every probe/helper loads the same shell configuration. Existing
+environment overrides (for example `HOME` or `ZDOTDIR`) also apply to those calls.
+After rc loading, C-Squad restores its explicit configuration/member environment
+and launch identity; environment values are not embedded in shell source or argv.
+Alias-local assignments then take precedence. Thus a global account variable in
+`.zshrc` cannot replace an explicit `--env` value, but an account-specific alias
+can intentionally override it. Job control is disabled in this shell; C-Squad
+tracks and stops the shell and client process tree together. The shell returns
+the client's exit status (including the shell's usual status for a signal).
+Unlike the saved alias name and argument configuration, rc file contents are not
+snapshotted: editing the alias affects the next invocation, including helpers.
+
+### Environment overrides
+
 Environment overrides work without account profiles:
 
 ```sh

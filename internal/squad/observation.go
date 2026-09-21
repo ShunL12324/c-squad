@@ -20,7 +20,7 @@ func (st *Store) refresh() error {
 	}
 	for _, member := range s.Members {
 		if member.Engine == config.Claude {
-			if out, err := process.RunEnv(member.Cwd, member.Env, "claude", "agents", "--json"); err == nil {
+			if out, err := s.engineHelper(member, "agents", "--json"); err == nil {
 				var entries []struct {
 					SessionID string `json:"sessionId"`
 					Status    string `json:"status"`

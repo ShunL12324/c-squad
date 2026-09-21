@@ -51,3 +51,12 @@ they do not prove reduced message counts or token usage. Runtime authorization,
 delivery deduplication, queue consumption and task transitions remain enforced
 by code. Observe actual conversations and wake reasons before attributing a
 behavioral improvement to wording changes.
+
+
+Routine ACKs are optional in both startup and recovery context. This explicitly
+replaces the earlier instruction to acknowledge every message. Message IDs,
+generation checks, current task/candidate inspection and substantive CLI replies
+remain required where applicable. Master checks for substantive progress before
+an actually needed follow-up; it does not use a fixed timeout or demand receipts
+for every update. This policy changes the prompt revision so existing sessions
+receive it through the next eligible hook running the new executable.

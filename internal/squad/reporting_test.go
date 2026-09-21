@@ -169,10 +169,10 @@ func TestReportingTransportNoReinjectionAndAckBeforeDelivery(t *testing.T) {
 	must(t, messageCommand(st, "a", []string{"message", "send", "master"}, opts))
 	s, err := st.read()
 	must(t, err)
-	if len(s.Messages) != 1 || s.Messages[0].Attempts != 1 || s.Messages[0].State != DeliveryStateNeedsAttention {
+	if len(s.Messages) != 1 || s.Messages[0].Attempts != 1 || s.Messages[0].State != DeliveryStateSent {
 		t.Fatalf("successful transport retried or lost observability: %+v", s.Messages)
 	}
-	// Manual retry is still an explicit escape hatch, even after needs_attention.
+	// Manual retry remains available even after successful delivery.
 	must(t, messageCommand(st, "master", []string{"message", "retry", s.Messages[0].ID}, options{}))
 	select {
 	case <-received:

@@ -1,7 +1,7 @@
 package squad
 
 // DeliveryState tracks transport attempts independently of recipient acknowledgment.
-// A sent message can be retried until the recipient confirms it.
+// Successful transport is not a read receipt or proof of task completion.
 type DeliveryState string
 
 // Supported DeliveryState values.

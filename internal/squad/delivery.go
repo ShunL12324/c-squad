@@ -25,11 +25,6 @@ func (st *Store) deliver(id string) error {
 					return nil
 				}
 				if v.State == DeliveryStateSent {
-					at, _ := time.Parse(time.RFC3339Nano, v.Attempt)
-					if time.Since(at) >= 5*time.Minute {
-						v.State = DeliveryStateNeedsAttention
-						v.Error = "Transport succeeded but no agent ACK; inspect inbox/recipient or explicitly message retry (no automatic reinjection)"
-					}
 					return nil
 				}
 				if !s.Active {
@@ -192,7 +187,8 @@ func (st *Store) syncMessages() error {
 	}
 	var failed []string
 	for _, m := range s.Messages {
-		if m.State == DeliveryStatePending || m.State == DeliveryStateSending || m.State == DeliveryStateSent {
+		// Sent records remain visible without ACK; only unfinished transport needs work.
+		if m.State == DeliveryStatePending || m.State == DeliveryStateSending {
 			if e = st.deliver(m.ID); e != nil {
 				failed = append(failed, m.ID+": "+e.Error())
 			}

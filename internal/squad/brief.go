@@ -107,7 +107,7 @@ func briefEnqueue(st *Store, id string) (string, error) {
 				msgID = old.ID
 				return nil
 			}
-			// Master answered the last one, so the key is spent. Release it
+			// Master explicitly acknowledged the last one, so the key is spent. Release it
 			// before reusing it, or the scan above would keep finding the
 			// answered message forever and the user could never ask again.
 			old.RequestKey = ""
@@ -132,7 +132,7 @@ func briefNote(msg *Message, deliveryErr error) string {
 	case msg.State == DeliveryStateSent && reason == "":
 		return "Asked master · " + msg.ID
 	case msg.State == DeliveryStateNeedsAttention:
-		return "Master has not picked it up · " + msg.ID
+		return "Delivery needs inspection · " + msg.ID
 	case reason != "":
 		return "Queued · " + msg.ID + " · " + reason
 	default:
@@ -141,7 +141,8 @@ func briefNote(msg *Message, deliveryErr error) string {
 }
 
 // briefFor projects the live request for a task so a respawned panel still shows
-// what the user asked for. An acknowledged request is finished and shows nothing.
+// what the user asked for. A manually acknowledged request is hidden, not proof
+// that master answered or completed the task.
 func briefFor(s *State, id string) teamui.Brief {
 	key := briefKey(id)
 	for _, msg := range s.Messages {

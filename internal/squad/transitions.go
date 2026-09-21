@@ -29,6 +29,34 @@ func (m *Message) resetDelivery() {
 	m.RecipientGeneration = 0
 }
 
+// recoverDelivery resets failed or interrupted transport, never successful
+// delivery merely because the recipient did not send an optional ACK.
+func (m *Message) recoverDelivery() {
+	m.migrateLegacyACKWarning()
+	switch m.State {
+	case DeliveryStateSent, DeliveryStateAcknowledged, DeliveryStateSuperseded:
+		return
+	default:
+		m.resetDelivery()
+	}
+}
+
+// These exact diagnostics were emitted only after successful transport in older
+// versions. Preserve their audit text without presenting them as delivery errors.
+// Unknown needs_attention causes remain untouched.
+func (m *Message) migrateLegacyACKWarning() {
+	if m.State != DeliveryStateNeedsAttention || m.Attempts < 1 {
+		return
+	}
+	switch m.Error {
+	case "Transport succeeded but no agent ACK; inspect inbox/recipient or explicitly message retry (no automatic reinjection)",
+		"No agent ACK after 3 delivery attempts; inspect recipient or restart/requeue":
+		m.DeliveryNote = "Legacy optional-ACK warning cleared: " + m.Error
+		m.State = DeliveryStateSent
+		m.Error = ""
+	}
+}
+
 // applyResumeEnvironment updates inherited defaults while retaining per-member
 // overrides. Native conversation IDs belong to the selected configuration home.
 func (m *Member) applyResumeEnvironment(oldDefaults, currentDefaults, explicit map[string]string) {

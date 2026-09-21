@@ -74,7 +74,7 @@ func TestStartupAndRecoverySharePolicyAndRoleBoundaries(t *testing.T) {
 					"Developers and reviewers", "not message quotas", "Surface real blockers",
 					"Source edits stop after submit", "Do not work past approval gates",
 					"Reopen invalidates prior submission evidence", "Only the task owner writes",
-					"bound to this session", "Acknowledge each message_id through message ack",
+					"bound to this session", "Routine messages do not require message ack",
 					"without copying secrets", d.Handoff,
 				} {
 					if !strings.Contains(text, want) {
@@ -114,6 +114,36 @@ func TestEmbeddedInstructionTemplatesAreEnglish(t *testing.T) {
 		for _, r := range string(text) {
 			if unicode.Is(unicode.Han, r) {
 				t.Fatalf("%s contains non-English policy text", entry.Name())
+			}
+		}
+	}
+}
+
+func TestOptionalACKAndContextualFollowUpInBothEntryPoints(t *testing.T) {
+	for _, member := range []string{"master", "worker"} {
+		for _, entry := range []string{"startup", "runtime"} {
+			d := validData()
+			d.Member = member
+			text, err := Render(entry, d)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, bad := range []string{"Acknowledge each message_id", "Acknowledge incoming messages", "acknowledge it and read"} {
+				if strings.Contains(text, bad) {
+					t.Fatalf("%s retained mandatory ACK: %s", entry, bad)
+				}
+			}
+			for _, want := range []string{"Routine messages do not require message ack", "replaces earlier instructions to acknowledge every message", "candidate SHA", "message reply MESSAGE", "does not prove that a message was read", "Ordinary milestone completion belongs in the ledger", "Intermediate test failures", "gate must be released"} {
+				if !strings.Contains(text, want) {
+					t.Fatalf("%s omitted %q", entry, want)
+				}
+			}
+			if member == "master" {
+				for _, want := range []string{"First inspect the member", "no substantive progress", "ask once", "no fixed response deadline", "latest updater/update time", "activity clues, not proof of completion"} {
+					if !strings.Contains(text, want) {
+						t.Fatalf("missing follow-up judgment: %s", want)
+					}
+				}
 			}
 		}
 	}

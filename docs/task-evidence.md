@@ -84,15 +84,36 @@ and cannot be retried or revived by restart. Reports refresh their task snapshot
 just before delivery; already delivered native-engine input cannot be retracted,
 so recipients must still consult current ledger state.
 
-Successful transport is not an agent ACK. A sent message is not automatically
-injected again: after five minutes without ACK it becomes `needs_attention`,
-visible through inbox/board. Inspect the recipient before explicitly running
-`message retry MESSAGE`. Failed transport still uses the durable outbox and
-automatic backoff. Recipient restart/resume can redeliver unacknowledged messages.
-Stable `message send --request-id` and `message reply` retain their idempotency.
-An ACK recorded before transport prevents delivery, including when a message
-was first consumed through inbox. Transport and ledger commits cannot be atomic
-across a native engine crash, so message IDs/ACK remain necessary for recovery.
+Routine messages do not require a model ACK. Successful transport stays `sent`
+without a timeout alarm, and restart/resume does not requeue it just because no
+ACK was recorded. `sent` means only that transport accepted the message; it does
+not mean read, answered, or completed. Task progress, submissions and evidence
+remain the source of truth for work. Master follows up only when a response or
+action is needed and substantive progress is absent: inspect member/task state
+first, then ask once if necessary. There is no fixed response deadline.
+
+`message inbox` lists message records that have not been manually acknowledged
+or superseded, including successfully sent messages. It is not an unread queue
+or a list of unfinished tasks, and reading it does not mutate receipt status.
+Manual `message ack` is still available to hide a record; a substantive
+`message reply` acknowledges the original message as before. Neither operation
+proves task completion. Do not send a reply merely to acknowledge a receipt.
+
+Failed transport still uses the durable outbox and automatic backoff. Interrupted
+`sending` attempts can be retried during recovery because their outcome is unknown.
+Explicit `message retry MESSAGE` and a fresh human Brief report request can
+requeue a sent message intentionally. Stable `message send --request-id` and
+`message reply` retain their idempotency. An optional ACK recorded before
+transport prevents delivery. A native engine crash between transport acceptance
+and the ledger commit can still cause a duplicate; check message ID, generation
+and current candidate before acting, without requiring a routine ACK.
+
+Older `needs_attention` entries with either exact built-in missing-ACK diagnostic
+are normalized to `sent` (with prior attempt metadata preserved). The old warning
+is retained in `delivery_note`; it is not a read receipt. Other error causes are
+not inferred to be success. Normalization is visible on read and persisted by
+the next ledger update. Existing native-engine queued input cannot be withdrawn
+by this migration.
 
 ## User confirmation
 
@@ -162,3 +183,5 @@ Cleanup preserves task records, evidence, the recorded workspace path and branch
 refs. It removes the checkout through Git, and can be retried after an interruption.
 The command also works from a human terminal after the team has stopped. It does
 not remove the team ledger, logs, handoffs or other task worktrees.
+
+Notification policy boundary: ordinary milestones and task progress do not emit automatic master reports. A failed evidence record on an already submitted candidate still emits a structured failure report; the runtime does not infer whether a failure can be fixed autonomously. Keep intermediate test runs/fixes in task progress, and use submission evidence for delivery review. English prompts guide contextual escalation; they do not implement semantic classification or automatic follow-up.

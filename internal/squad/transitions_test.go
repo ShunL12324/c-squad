@@ -23,7 +23,7 @@ func TestRestartPreservesConversationAndFencesOldDelivery(t *testing.T) {
 		msg.Attempts, msg.RecipientGeneration = 3, m.Generation
 		m.Generation++
 		m.resetRuntime()
-		msg.resetDelivery()
+		msg.recoverDelivery()
 		return nil
 	}))
 	s, err := st.read()

@@ -194,7 +194,9 @@ matches the installed binary.
 - **Native engine compatibility matters.** Prior manual checks used tmux 3.4,
   Claude Code 2.1.276, and Codex 0.154.0. Engine updates may require adapter changes.
 - **Messages can be retried.** Delivery is not exactly-once; a transport acceptance
-  is different from an agent acknowledgement. Persistent failures appear on the board.
+  is not proof of reading or completion. Routine ACKs are optional; successful
+  sends are not retried automatically on restart/resume, while failed or interrupted
+  transport can retry. Persistent failures appear on the board.
 - **Local state stays local.** `.csquad/` holds recovery data and should not be
   committed. Use local disk for the SQLite ledger. A per-team runtime handles
   delivery and cleanup; no system service is installed.

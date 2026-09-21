@@ -123,7 +123,7 @@ func definitions() []definition {
 		{path: "task close-external", args: " TASK", summary: "Close a code task on a commit in another repository", min: 1, max: 1, complete: "task", flags: []string{"repo", "sha", "reason", "summary"}, required: []string{"repo", "sha", "reason"}, example: "  csquad task close-external T7 --repo /path/to/other-repo --sha 9f3c1ab --reason 'Work was pushed from the member repository; the task worktree was never used'"},
 		{path: "message send", args: " MEMBER", summary: "Send a message to one member", min: 1, max: 1, complete: "member", flags: []string{"text", "task", "request-id"}, required: []string{"text"}},
 		{path: "message broadcast", summary: "Broadcast to task participants or the team", flags: []string{"text", "task", "all", "request-id"}, required: []string{"text"}, example: "  csquad message broadcast --task T1 --text 'Report blockers'\n  csquad message broadcast --all --text 'Review the updated plan'"},
-		{path: "message inbox", summary: "List unacknowledged messages for the calling member"},
+		{path: "message inbox", summary: "List message records not manually acknowledged or superseded (not an unread queue)"},
 		{path: "reply", args: " MESSAGE", summary: "Reply to a received message", min: 1, max: 1, complete: "message", flags: []string{"text"}, required: []string{"text"}},
 		{path: "help request", summary: "Ask master for a decision", flags: []string{"text", "task"}, required: []string{"text"}},
 		{path: "help list", summary: "List escalated questions"},

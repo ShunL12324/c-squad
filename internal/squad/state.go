@@ -130,9 +130,10 @@ type Approval struct {
 // of such a message cannot be forged by recruiting a member of the same name.
 const UserSender = "user"
 
-// Message is a durable outbox entry retained until the recipient acknowledges it.
+// Message retains transport history independently of optional recipient acknowledgment.
 // Attempt and RecipientGeneration fence delivery retries across member restarts.
 type Message struct {
+	DeliveryNote        string           `json:"delivery_note,omitempty"`
 	Report              *ReportReference `json:"report,omitempty"`
 	ID                  string           `json:"id"`
 	From                string           `json:"from"`
@@ -309,6 +310,9 @@ func (st *Store) read() (*State, error) {
 
 // Blockers describe independent reasons to wait. They never replace a task phase.
 func normalizeState(s *State) {
+	for _, m := range s.Messages {
+		m.migrateLegacyACKWarning()
+	}
 	for _, t := range s.Tasks {
 		if t.Dispatch == "" {
 			t.Dispatch = DispatchModeAssigned

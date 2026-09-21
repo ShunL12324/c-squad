@@ -315,7 +315,7 @@ func resumeTeam(st *Store, o options) error {
 		for _, msg := range cur.Messages {
 			if msg.State != DeliveryStateAcknowledged {
 				if m := cur.Members[msg.To]; m != nil && m.State != MemberStateRemoved {
-					msg.resetDelivery()
+					msg.recoverDelivery()
 				}
 			}
 		}

@@ -2,6 +2,7 @@ package squad
 
 import (
 	"encoding/json"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -147,6 +148,48 @@ func TestCrashCleanupAndProjectResume(t *testing.T) {
 	cli("task", "assign", taskID, "--owner", "alice")
 	must(t, os.WriteFile(filepath.Join(workspace, "uncommitted.txt"), []byte("keep me"), 0600))
 	wait(func(s *State) bool { return s.Members["master"].EnginePID > 0 && s.Members["alice"].EnginePID > 0 })
+	// A real successful transport is durable independently of an optional ACK.
+	inbox, e := net.Listen("unix", filepath.Join(temp, "delivered.sock"))
+	must(t, e)
+	defer inbox.Close()
+	accepted := make(chan error, 1)
+	go func() {
+		conn, err := inbox.Accept()
+		if err != nil {
+			accepted <- err
+			return
+		}
+		defer conn.Close()
+		var frame map[string]any
+		accepted <- json.NewDecoder(conn).Decode(&frame)
+	}()
+	var deliveredID string
+	must(t, st.update(func(s *State) error {
+		s.Members["master"].Peer = inbox.Addr().String()
+		s.Members["master"].EngineID = "delivered-session"
+		deliveredID = s.message("alice", "master", "", "transport accepted; no ACK required", "").ID
+		return nil
+	}))
+	must(t, st.deliver(deliveredID))
+	select {
+	case err := <-accepted:
+		must(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("message did not reach native peer")
+	}
+	assertNotRequeued := func() {
+		t.Helper()
+		for _, msg := range read().Messages {
+			if msg.ID == deliveredID {
+				if msg.State != DeliveryStateSent || msg.Attempts != 1 || msg.Error != "" {
+					t.Fatalf("successful unacknowledged message requeued: %+v", msg)
+				}
+				return
+			}
+		}
+		t.Fatal("delivered message disappeared")
+	}
+	assertNotRequeued()
 	// Controlled restart emits old pane exit hooks; it must not stop the team.
 	old := read()
 	cli("member", "restart", "master")
@@ -157,6 +200,7 @@ func TestCrashCleanupAndProjectResume(t *testing.T) {
 	if !read().Active {
 		t.Fatal("controlled restart stopped the team")
 	}
+	assertNotRequeued()
 	// Capture descendant identities, then kill the wrapper rather than the engine.
 	must(t, st.refresh())
 	before := read()
@@ -200,6 +244,7 @@ func TestCrashCleanupAndProjectResume(t *testing.T) {
 	after := wait(func(s *State) bool {
 		return s.Active && s.Phase == TeamPhaseRunning && s.Members["alice"].EnginePID > 0
 	})
+	assertNotRequeued()
 	if after.Epoch <= before.Epoch || after.Tasks[taskID].Workspace != workspace || after.Tasks[taskID].Owner != "alice" || after.Members["alice"].Instructions != "preserve my work" {
 		t.Fatal("recovery lost state")
 	}

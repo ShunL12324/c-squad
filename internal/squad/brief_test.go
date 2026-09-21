@@ -192,7 +192,7 @@ func TestBriefDeliveredToTheCurrentMasterGeneration(t *testing.T) {
 		m.EngineID = "master-7"
 		m.Peer = sock
 		for _, msg := range s.Messages {
-			msg.resetDelivery()
+			msg.recoverDelivery()
 		}
 		return nil
 	}))

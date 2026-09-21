@@ -1,6 +1,7 @@
 package squad
 
 import (
+	"bufio"
 	"context"
 	"io"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ShunL12324/c-squad/internal/config"
+	"github.com/ShunL12324/c-squad/internal/filelock"
 	"github.com/ShunL12324/c-squad/internal/process"
 )
 
@@ -249,5 +251,80 @@ func TestNewSessionsUseTheAttachedClientGeometry(t *testing.T) {
 	width, height := teamWindowSize(s)
 	if width != "180" || height != "38" {
 		t.Fatalf("new sessions ignored the attached client: %sx%s", width, height)
+	}
+}
+
+// Hold the layout lock to deterministically put the terminal resize between
+// the initial compact-mode decision and completion of the Tasks toggle.
+func TestTasksToggleDoesNotOpenPopupAfterConcurrentResize(t *testing.T) {
+	st, socket := reproTeam(t, "180", "40")
+	must(t, st.setPanelView("members", false))
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	hold := exec.CommandContext(ctx, "python3", "testdata/panel_layout.py", "controlled", socket, "layout-master")
+	stdout, err := hold.StdoutPipe()
+	must(t, err)
+	stdin, err := hold.StdinPipe()
+	must(t, err)
+	must(t, hold.Start())
+	defer func() { _ = hold.Process.Kill(); _, _ = hold.Process.Wait() }()
+	reader := bufio.NewReader(stdout)
+	_, err = reader.ReadString('\n')
+	must(t, err)
+	s, err := st.read()
+	must(t, err)
+	client, err := tm(s, "list-clients", "-F", "#{client_name}")
+	must(t, err)
+	unlock, err := filelock.Acquire(st.Dir, "panels", false)
+	must(t, err)
+	defer unlock()
+	done := make(chan error, 1)
+	go func() { done <- st.openUI(options{"view": "tasks", "client": client}, true) }()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		current, err := st.read()
+		must(t, err)
+		if current.PanelView == panelBoth {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("toggle did not reach the layout lock")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	_, err = io.WriteString(stdin, "100\n")
+	must(t, err)
+	_, err = reader.ReadString('\n')
+	must(t, err)
+	unlock()
+	select {
+	case err := <-done:
+		must(t, err)
+	case <-time.After(3 * time.Second):
+		_, _ = tm(s, "display-popup", "-C", "-c", client)
+		t.Fatal("wide-screen Tasks toggle opened a popup after the resize")
+	}
+	// A new, explicit click on the now-narrow client must still open a popup.
+	type popupResult struct {
+		opened bool
+		err    error
+	}
+	popup := make(chan popupResult, 1)
+	go func() { opened, err := st.compactPanelPopup(s, "tasks", client); popup <- popupResult{opened, err} }()
+	select {
+	case result := <-popup:
+		t.Fatalf("narrow popup returned before dismissal: %+v", result)
+	case <-time.After(500 * time.Millisecond):
+	}
+	_, err = tm(s, "display-popup", "-C", "-c", client)
+	must(t, err)
+	select {
+	case result := <-popup:
+		// display-popup -C terminates the child, so tmux may return its signal status.
+		if !result.opened {
+			t.Fatal("explicit narrow popup was not opened")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("popup did not close")
 	}
 }

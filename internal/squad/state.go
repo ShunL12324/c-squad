@@ -86,6 +86,8 @@ type Task struct {
 	MergeCommit        string       `json:"merge_commit,omitempty"`
 	// ExternalClosure is set only by task close-external and never alongside MergeCommit.
 	ExternalClosure *ExternalClosure `json:"external_closure,omitempty"`
+
+	UserConfirmation *UserConfirmation `json:"user_confirmation,omitempty"`
 }
 
 // ExternalClosure records a master decision to close a code task on a commit that

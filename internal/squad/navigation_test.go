@@ -84,6 +84,9 @@ func TestNavigationIsScopedAndRefreshesRoster(t *testing.T) {
 	root, prefix := navigationTables(st)
 	keys, e := tm(s, "list-keys", "-T", root)
 	must(t, e)
+	if strings.Contains(keys, "DoubleClick1Status") || !strings.Contains(keys, "SecondClick1Status") {
+		t.Fatal("status clicks would be dropped or toggled twice:", keys)
+	}
 	if strings.Contains(keys, "obsolete-navigation") || !strings.Contains(keys, prefix) {
 		t.Fatal("missing navigation bindings")
 	}

@@ -41,6 +41,9 @@ func (m model) footer() []string {
 			hint = textStyle("↑↓", foreground, false) + textStyle(" Scroll  ", muted, false) + textStyle("PgUp/Dn", foreground, false) + textStyle(" Page  ", muted, false) + textStyle("b", foreground, false) + textStyle(" Brief", muted, false)
 		}
 	}
+	if m.kind == "tasks" && m.count() > 0 && m.tasks()[m.selected].CanConfirm {
+		hint += textStyle("  c Confirm", foreground, false)
+	}
 	if m.err != nil {
 		hint = textStyle(line(m.err.Error(), m.width-2), "222", false)
 	}

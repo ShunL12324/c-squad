@@ -38,6 +38,7 @@ func TestPlumbingKeepsFlagAuthorityInsideMemberSession(t *testing.T) {
 		want string
 	}{
 		{"navigate", []string{"navigate"}, options{"client": ""}, "--client required"},
+		{"ui-remember-layout", []string{"ui-remember-layout"}, options{"owner": "missing"}, "member \"missing\""},
 		{"ui-panel", []string{"ui-panel"}, options{"owner": "a", "view": "bogus"}, "panel must be members or tasks"},
 		{"shutdown", []string{"shutdown"}, options{"epoch": "99", "expected-generation": "99"}, ""},
 	} {

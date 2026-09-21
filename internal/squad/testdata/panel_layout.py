@@ -97,6 +97,17 @@ def attach(width, height):
 
 
 try:
+    if mode == "controlled":
+        fd = attach(180, 40)
+        print("attached", flush=True)
+        for command in sys.stdin:
+            width = int(command.strip())
+            fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, width, 0, 0))
+            os.kill(clients[0][1].pid, signal.SIGWINCH)
+            drain(.3)
+            print("resized", flush=True)
+        sys.exit(0)
+
     if mode == "hold":
         attach(180, 40)
         print("attached", flush=True)
@@ -106,6 +117,11 @@ try:
     newbie = sys.argv[4]
     fd = attach(180, 40)
     client = list(sessions())[0]
+    initial_panes = dict(row.split("|") for row in tm("list-panes", "-t", master,
+                         "-F", "#{@csquad_panel}|#{pane_id}").splitlines())
+    for role, axis, size in (("members", "-x", "32"), ("tasks", "-x", "43"), ("header", "-y", "4")):
+        tm("resize-pane", "-t", initial_panes[role], axis, size)
+    initial_custom = layout(master)
     before = layout(newbie)
     print("new member layout before the click:", before)
 
@@ -113,7 +129,45 @@ try:
     for state in seen:
         print("  observed:", state)
     assert len(seen) == 1, f"outer layout reflowed on the first click: {seen}"
-    assert "header:180x3" in seen[0] and "members:28x" in seen[0], f"wrong geometry: {seen[0]}"
+    assert seen == [initial_custom], f"first visit lost custom geometry: {initial_custom} -> {seen}"
+
+    # Manually adjusted chrome must follow existing and first-visited sessions,
+    # including round trips. These are separate tmux windows, not shared panes.
+    panes = dict(row.split("|") for row in tm("list-panes", "-t", newbie,
+                 "-F", "#{@csquad_panel}|#{pane_id}").splitlines())
+    tm("resize-pane", "-t", panes["members"], "-x", "35")
+    tm("resize-pane", "-t", panes["tasks"], "-x", "47")
+    tm("resize-pane", "-t", panes["header"], "-y", "5")
+    # Resize immediately after dragging, before any member switch has had an
+    # opportunity to sample the dimensions. Expansion needs no pane shrink.
+    for width in (200, 180):
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, width, 0, 0))
+        os.kill(clients[0][1].pid, signal.SIGWINCH)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            drain(.05)
+            geometry = layout(newbie)
+            if f"header:{width}x5" in geometry and "members:35x" in geometry and "tasks:47x" in geometry:
+                break
+        else:
+            raise AssertionError(f"resize lost freshly dragged dimensions: {geometry}")
+    custom = layout(newbie)
+    for target in (master, master.rsplit("-", 1)[0] + "-a", newbie, master, newbie):
+        moved = click_and_watch(fd, client, target, seconds=2)
+        assert moved == [custom], f"manual dimensions lost switching to {target}: {custom} -> {moved}"
+
+    tm("resize-pane", "-t", panes["members"], "-x", "36")
+    keyboard_custom = layout(newbie)
+    for keys, target in ((b"\x020", master), (b"\x022", newbie),
+                         (b"\x1b[1;3A", master.rsplit("-", 1)[0] + "-a"), (b"\x1b[1;3B", newbie)):
+        os.write(fd, keys)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and sessions().get(client) != target:
+            drain(.02)
+        assert sessions().get(client) == target, f"keyboard switch failed: {sessions()}"
+        assert layout(target) == keyboard_custom, f"keyboard switch lost dimensions: {layout(target)}"
+        drain(.2)
+    tm("resize-pane", "-t", panes["members"], "-x", "35")
 
     # fitSession pins the window with resize-window; automatic sizing has to be
     # handed back or later client resizes would stop reaching this session.
@@ -142,6 +196,7 @@ try:
     narrow = click_and_watch(fd, client, newbie)
     for state in narrow:
         print("  narrow observed:", state)
+    assert "members:36x" in narrow[0] and "header:100x5" in narrow[0], f"narrow switch reset custom dimensions: {narrow}"
     assert len(narrow) == 1, f"outer layout reflowed on a narrow client: {narrow}"
 
     print("PASS: no layout jump on the first click, automatic resizing preserved")

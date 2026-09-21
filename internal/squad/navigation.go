@@ -147,7 +147,12 @@ func (st *Store) configureNavigation() error {
 		action := "run-shell -b " + strconv.Quote(panelCmd+" ui-toggle --view "+view+" --client '#{client_name}'")
 		statusClick = "if-shell -F " + shellQuote("#{==:#{mouse_status_range},"+view+"}") + " " + strconv.Quote(action) + " " + strconv.Quote(statusClick)
 	}
-	for _, key := range []string{"MouseDown1Status", "SecondClick1Status", "DoubleClick1Status", "TripleClick1Status"} {
+	// SecondClick already performs the second press. tmux emits DoubleClick
+	// later if no third press follows; toggling again would undo that click.
+	if _, err = tm(s, "unbind-key", "-T", root, "DoubleClick1Status"); err != nil {
+		return err
+	}
+	for _, key := range []string{"MouseDown1Status", "SecondClick1Status", "TripleClick1Status"} {
 		if _, err = tm(s, "bind-key", "-T", root, key, statusClick); err != nil {
 			return err
 		}
@@ -186,6 +191,12 @@ func (st *Store) configureNavigation() error {
 		}
 
 		if m.Pane != "" {
+			// Record explicit divider drags before a later terminal resize can
+			// reflow them. This hook only saves geometry; it never resizes panes.
+			if _, err = tm(s, "set-hook", "-t", target, "after-resize-pane[914]", "if-shell -F "+shellQuote("#{!=:#{@csquad_layout_active},1}")+" "+shellQuote("run-shell "+shellQuote(panelCmd+" ui-remember-layout --owner "+shellQuote(m.ID)))); err != nil {
+				return err
+			}
+
 			for _, hook := range []string{"client-attached", "client-session-changed", "client-resized"} {
 				if _, err = tm(s, "set-hook", "-t", target, hook+"[914]", "run-shell -b "+shellQuote(panelCmd+" ui-layout")); err != nil {
 					return err
@@ -247,8 +258,7 @@ func (st *Store) navigate(client, direction, index string) error {
 		if e != nil || n < 0 || n >= len(members) {
 			return fmt.Errorf("invalid member index")
 		}
-		_, err = tm(s, "switch-client", "-c", client, "-t", "="+members[n].Session)
-		return err
+		return st.switchMember(s, members[n], client)
 	}
 	delta := 1
 	if direction == "previous" {
@@ -257,8 +267,7 @@ func (st *Store) navigate(client, direction, index string) error {
 		return fmt.Errorf("invalid direction")
 	}
 	target := live[(at+delta+len(live))%len(live)]
-	_, err = tm(s, "switch-client", "-c", client, "-t", "="+target.Session)
-	return err
+	return st.switchMember(s, target, client)
 }
 func (st *Store) clearNavigation(s *State) {
 	root, prefix := navigationTables(st)

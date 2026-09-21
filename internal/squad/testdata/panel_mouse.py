@@ -122,6 +122,14 @@ try:
     while time.monotonic()<deadline and "tasks" not in tm("list-panes","-t",worker,"-F","#{@csquad_panel}"):
         drain(.05)
     assert "tasks" in tm("list-panes","-t",worker,"-F","#{@csquad_panel}"), "Tasks status button failed"
+    # Two physical status clicks should toggle twice. SecondClick fires on
+    # the second press; a delayed DoubleClick must not toggle a third time.
+    drain(.4)
+    os.write(fd,b"\x1b[<0;155;40M\x1b[<0;155;40m")
+    drain(.05)
+    os.write(fd,b"\x1b[<0;155;40M\x1b[<0;155;40m")
+    drain(1)
+    assert "tasks" in tm("list-panes","-t",worker,"-F","#{@csquad_panel}"), "DoubleClick toggled Tasks a third time"
     # Real terminal resize events must trigger layout repair, without a
     # manual ui-layout call. Returning to a large window must not grow Header.
     for width, height in [(110, 25), (220, 80), (100, 22), (180, 40)]:

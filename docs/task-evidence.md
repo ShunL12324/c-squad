@@ -93,3 +93,24 @@ Stable `message send --request-id` and `message reply` retain their idempotency.
 An ACK recorded before transport prevents delivery, including when a message
 was first consumed through inbox. Transport and ledger commits cannot be atomic
 across a native engine crash, so message IDs/ACK remain necessary for recovery.
+
+## User confirmation
+
+After technical delivery, task cards show **Awaiting user confirmation**.
+The user can request a **Brief report**, then click **Confirm completion** (or press
+`c` on the selected task). A human terminal can also run `csquad task confirm TASK`.
+This also works after the team has stopped, without restarting its runtime.
+Agent generations cannot invoke that command to impersonate user acceptance.
+
+Confirmation is optional: technically finished tasks remain in Done and release
+the owner's execution slot even before user acceptance. The separate
+`user_confirmation` record retains the user, timestamp, submission, candidate and
+technical phase. Repeated clicks are idempotent. Confirmation never creates test
+or review evidence, changes approval, merges code, or advances the technical phase.
+A task whose technical ledger is still unfinished must first be reconciled by
+master (for example, using the documented external closure workflow); confirmation
+is not a substitute for that evidence.
+
+Member navigation also keeps the current client's panel widths and header height
+when switching between existing or newly created members. Responsive visibility
+still hides panels when the terminal is too narrow or short.

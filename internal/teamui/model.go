@@ -25,6 +25,8 @@ type Member struct {
 // Note carries a terse qualifier for a done task that was not merged, so the card
 // never reads identically to a merged one.
 type Task struct {
+	CanConfirm                                             bool
+	Confirmation                                           string
 	ID, Title, State, Owner, Color, Progress, Detail, Note string
 	Milestones                                             []Milestone
 	Brief                                                  Brief
@@ -316,6 +318,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.kind == "tasks" {
 				return m, m.open()
 			}
+		case "c":
+			return m.confirm()
 		case "b", "r":
 			// One key for both: a retry is the same request, and the ledger
 			// reuses the message rather than queueing a second one.
@@ -410,6 +414,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							for _, button := range hit.buttons {
 								if v.Y != button.row+taskHeaderRows || v.X < button.start || v.X >= button.end {
 									continue
+								}
+								if button.action == "confirm" {
+									return m.confirm()
 								}
 								if button.action == "brief" {
 									return m.brief()
@@ -513,4 +520,12 @@ func (m model) View() string {
 		lines[i] = base.Render(s + strings.Repeat(" ", max(0, m.width-ansi.StringWidth(s))))
 	}
 	return strings.Join(lines[:min(len(lines), m.height)], "\n")
+}
+
+// Confirmation is deliberately separate from requesting a brief report.
+func (m model) confirm() (tea.Model, tea.Cmd) {
+	if m.kind != "tasks" || m.count() == 0 || !m.tasks()[m.selected].CanConfirm {
+		return m, nil
+	}
+	return m, m.action(Action{Kind: "confirm", Task: m.tasks()[m.selected].ID})
 }

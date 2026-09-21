@@ -32,7 +32,7 @@ var validID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,40}$`)
 // for a running team. Every other command is a ledger command: its argv comes
 // from an agent or a human, so the session environment wins over the flags.
 // Unlisted commands are ledger commands by default; a new command fails closed.
-var plumbingCommands = []string{"run-engine", "hook", "ui", "ui-panel", "ui-toggle", "ui-layout", "navigate", "navigation", "runtime", "shutdown", "sync", "reconcile"}
+var plumbingCommands = []string{"run-engine", "hook", "ui", "ui-panel", "ui-toggle", "ui-layout", "ui-remember-layout", "navigate", "navigation", "runtime", "shutdown", "sync", "reconcile"}
 
 // cleanPath normalises a directory for comparison and for the prefix injected
 // into agents. It keeps an empty value empty, which filepath.Clean would not,
@@ -214,6 +214,9 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 	if p[0] == "ui" || p[0] == "ui-toggle" {
 		return st.openUI(o, p[0] == "ui-toggle")
 	}
+	if p[0] == "ui-remember-layout" {
+		return st.rememberPanelLayout(o["owner"])
+	}
 	if p[0] == "ui-layout" {
 		return st.configurePanels()
 	}
@@ -284,6 +287,9 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 	}
 	if len(p) == 3 && p[0] == "member" && p[1] == "set-cwd" {
 		return memberCommand(st, actor, p[1:], o)
+	}
+	if p[0] == "task" && len(p) > 1 && p[1] == "confirm" {
+		return taskCommand(st, actor, p[1:], o)
 	}
 	if !s.Active {
 		return ErrTeamStopped

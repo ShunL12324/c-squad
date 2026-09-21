@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -151,10 +152,10 @@ func TestCustomCommandsAcrossLifecycle(t *testing.T) {
 							if record.Account != wantAccount || record.CodexHome != cfg.Env["CODEX_HOME"] || record.ClaudeHome != cfg.Env["CLAUDE_CONFIG_DIR"] {
 								t.Fatalf("environment changed: %+v", record)
 							}
-							if !contains(record.Args, "--model") || engine == config.Claude && !contains(record.Args, "--dangerously-skip-permissions") || engine == config.Codex && !contains(record.Args, "--dangerously-bypass-approvals-and-sandbox") {
+							if !slices.Contains(record.Args, "--model") || engine == config.Claude && !slices.Contains(record.Args, "--dangerously-skip-permissions") || engine == config.Codex && !slices.Contains(record.Args, "--dangerously-bypass-approvals-and-sandbox") {
 								t.Fatalf("generated flags lost: %+v", record)
 							}
-							if resumed && !contains(record.Args, "session-"+id) {
+							if resumed && !slices.Contains(record.Args, "session-"+id) {
 								t.Fatalf("resume identity lost: %+v", record)
 							}
 							return

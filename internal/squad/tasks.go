@@ -35,6 +35,13 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 		}
 		return queryOut(o, note)
 	}
+	if len(p) > 1 && p[0] == "clean-worktree" {
+		plan, err := cleanTaskWorkspace(st, actor, p[1], o["dry-run"] == "true")
+		if err != nil {
+			return err
+		}
+		return jsonOut(plan)
+	}
 	var result any
 	var report *ReportReference
 	var wasReady bool

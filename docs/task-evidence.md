@@ -114,3 +114,27 @@ is not a substitute for that evidence.
 Member navigation also keeps the current client's panel widths and header height
 when switching between existing or newly created members. Responsive visibility
 still hides panels when the terminal is too narrow or short.
+
+## Reclaiming merged worktrees
+
+After merging a code task, master should inspect its checkout and reclaim it when
+safe. Cleanup is an explicit action, not a background timer or a merge side effect:
+
+```sh
+csquad task clean-worktree T12 --dry-run
+csquad task clean-worktree T12
+```
+
+The compact result reports `eligible`, `removed`, `already_removed`, or `retained`
+with a reason. Only a confirmed, completed merge qualifies. Modified, untracked,
+and ignored files, unmerged commits, changed repository/branch identities,
+symlinked paths and locked worktrees are retained. Worktrees referenced by a
+member's working directory are retained even when that member is stopped, so
+resume cannot inherit a deleted directory. Move the member to an appropriate
+existing directory through the member lifecycle commands before trying again.
+Do not force-delete a retained checkout; record the reason and resolve it first.
+
+Cleanup preserves task records, evidence, the recorded workspace path and branch
+refs. It removes the checkout through Git, and can be retried after an interruption.
+The command also works from a human terminal after the team has stopped. It does
+not remove the team ledger, logs, handoffs or other task worktrees.

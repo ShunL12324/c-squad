@@ -156,6 +156,10 @@ may parse it. Every probe/helper loads the same shell configuration. Existing
 environment overrides (for example `HOME` or `ZDOTDIR`) also apply to those calls.
 After rc loading, C-Squad restores its explicit configuration/member environment
 and launch identity; environment values are not embedded in shell source or argv.
+Without an explicit `PATH` override, directories added by the rc file remain
+available. At engine launch, the generation's bound C-Squad launcher directory
+is placed first. An explicit configuration/member `PATH` overrides the rc PATH,
+also with that launcher first at engine launch.
 Alias-local assignments then take precedence. Thus a global account variable in
 `.zshrc` cannot replace an explicit `--env` value, but an account-specific alias
 can intentionally override it. Job control is disabled in this shell; C-Squad

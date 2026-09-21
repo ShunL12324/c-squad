@@ -45,6 +45,6 @@ func (s *State) engineHelper(m *Member, args ...string) (string, error) {
 		return "", err
 	}
 	command := cfg.Command(m.Engine)
-	name, argv, env := command.Invocation(m.Env, args...)
+	name, argv, env := command.Invocation(m.Env, "", args...)
 	return process.RunEnv(m.Cwd, env, name, argv...)
 }

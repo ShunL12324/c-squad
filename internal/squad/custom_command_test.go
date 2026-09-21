@@ -54,9 +54,11 @@ func TestCustomCommandsAcrossLifecycle(t *testing.T) {
 	must(t, err)
 	body, err := os.ReadFile("testdata/custom_engine.py")
 	must(t, err)
-	for _, mode := range []string{"", "bash", "zsh"} {
+	for _, mode := range []string{"", "bash", "zsh", "bash-explicit-path", "zsh-explicit-path"} {
 		for _, masterEngine := range []config.Engine{config.Claude, config.Codex} {
 			t.Run(string(masterEngine)+"/"+mode, func(t *testing.T) {
+				shell := strings.TrimSuffix(mode, "-explicit-path")
+				explicitPath := shell != mode
 				root := t.TempDir()
 				capture := filepath.Join(root, "capture")
 				must(t, os.Mkdir(capture, 0700))
@@ -81,12 +83,19 @@ func TestCustomCommandsAcrossLifecycle(t *testing.T) {
 					must(t, os.Mkdir(home, 0700))
 					cfg.Env["HOME"], cfg.Env["ZDOTDIR"] = home, home
 					var rc strings.Builder
+					if explicitPath {
+						cfg.Env["PATH"] = root + string(os.PathListSeparator) + bin
+						// A conflicting rc path must lose to the explicit override.
+						rc.WriteString("export PATH=/missing-client-directory\n")
+					} else {
+						rc.WriteString("export PATH=" + shellQuote(root) + ":$PATH\n")
+					}
 					rc.WriteString("export CUSTOM_ACCOUNT=wrong CODEX_HOME=/wrong ANTHROPIC_AUTH_TOKEN=wrong TEST_MODEL=wrong CSQUAD_MEMBER_ID=wrong CSQUAD_GENERATION=0\n")
 					for engine, command := range cfg.EngineCommands {
 						name := "my-" + string(engine) + "-client"
-						expansion := "ANTHROPIC_AUTH_TOKEN=" + shellQuote("alias fake token") + " " + shellQuote(command.Executable) + " " + shellQuote(prefix[0])
+						expansion := "ANTHROPIC_AUTH_TOKEN=" + shellQuote("alias fake token") + " " + shellQuote(filepath.Base(command.Executable)) + " " + shellQuote(prefix[0])
 						rc.WriteString("alias " + name + "=" + shellQuote(expansion) + "\n")
-						command.Executable, command.Shell, command.Args = name, mode, prefix[1:]
+						command.Executable, command.Shell, command.Args = name, shell, prefix[1:]
 						cfg.EngineCommands[engine] = command
 					}
 					for _, name := range []string{".bashrc", ".zshrc"} {
@@ -138,6 +147,12 @@ func TestCustomCommandsAcrossLifecycle(t *testing.T) {
 							if !reflect.DeepEqual(record.Args[:3], wantPrefix) || !strings.HasSuffix(record.Executable, string(engine)) || record.Cwd != root {
 								t.Fatalf("argv/cwd changed: %+v", record)
 							}
+							if mode != "" && !slices.Contains(filepath.SplitList(record.Path), root) {
+								t.Fatalf("shell client directory missing: %+v", record)
+							}
+							if explicitPath && strings.Contains(record.Path, "/missing-client-directory") {
+								t.Fatalf("rc replaced explicit PATH: %+v", record)
+							}
 							wantAccount := "team account"
 							if id == "worker" {
 								wantAccount = "worker account"
@@ -146,7 +161,7 @@ func TestCustomCommandsAcrossLifecycle(t *testing.T) {
 							if mode != "" {
 								wantToken = "alias fake token"
 							}
-							if record.Token != wantToken || record.ModelEnv != "config model" || !strings.Contains(record.Path, "/runtime/"+id+"/"+strconv.Itoa(generation)+"/bin") {
+							if record.Token != wantToken || record.ModelEnv != "config model" || !strings.HasPrefix(record.Path, filepath.Join(st.Dir, "runtime", id, strconv.Itoa(generation), "bin")+string(os.PathListSeparator)) {
 								t.Fatalf("alias/rc override precedence changed: %+v", record)
 							}
 							if record.Account != wantAccount || record.CodexHome != cfg.Env["CODEX_HOME"] || record.ClaudeHome != cfg.Env["CLAUDE_CONFIG_DIR"] {

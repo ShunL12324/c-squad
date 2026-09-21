@@ -32,7 +32,7 @@ func TestShellAliasArgumentsExitAndCancellation(t *testing.T) {
 			command := Command{Shell: shell, Executable: "customcc"}
 			env := map[string]string{"HOME": home, "ZDOTDIR": home, "CAPTURE": capture, "FAKE_TOKEN": "configured secret"}
 			want := []string{"--cc", "argument with spaces", "", `quotes ' " $(touch never) ; &`}
-			name, args, prepared := command.Invocation(env, want[1:]...)
+			name, args, prepared := command.Invocation(env, "", want[1:]...)
 			if strings.Contains(strings.Join(args, " "), "configured secret") {
 				t.Fatal("environment secret appeared in argv")
 			}
@@ -46,7 +46,7 @@ func TestShellAliasArgumentsExitAndCancellation(t *testing.T) {
 			if got := strings.Split(strings.TrimSuffix(string(data), "\x00"), "\x00"); !reflect.DeepEqual(got, want) {
 				t.Fatalf("argv changed: %q", got)
 			}
-			name, args, prepared = command.Invocation(env, "wait")
+			name, args, prepared = command.Invocation(env, "", "wait")
 			ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 			defer cancel()
 			started := time.Now()

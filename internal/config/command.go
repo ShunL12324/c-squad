@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-
 	"strings"
 
 	"github.com/ShunL12324/c-squad/internal/agentenv"
@@ -23,13 +22,18 @@ var aliasName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.+-]*$`)
 
 // Invocation prepares a direct command or an interactive-shell alias. Only the
 // validated name enters shell source; all arguments use positional parameters.
+// pathPrefix optionally puts the bound launcher before the rc-configured PATH.
 // Job control stays off so helper cancellation reaches the entire process group.
-func (c Command) Invocation(env map[string]string, args ...string) (string, []string, map[string]string) {
+func (c Command) Invocation(env map[string]string, pathPrefix string, args ...string) (string, []string, map[string]string) {
 	argv := c.Arguments(args...)
 	if c.Shell == "" {
 		return c.Executable, argv, env
 	}
 	script, protected := shellEnvironment(env)
+	if pathPrefix != "" {
+		protected["CSQUAD_COMMAND_PATH_PREFIX"] = pathPrefix
+		script += "export PATH=\"$CSQUAD_COMMAND_PATH_PREFIX${PATH:+:$PATH}\"\nunset CSQUAD_COMMAND_PATH_PREFIX\n"
+	}
 	script += "eval '" + c.Executable + " \"$@\"'"
 	return c.Shell, append([]string{"-ic", script, "csquad-engine"}, argv...), protected
 }

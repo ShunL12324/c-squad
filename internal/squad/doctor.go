@@ -36,10 +36,10 @@ func doctor(o options) error {
 			info["args"] = command.Args
 		}
 		run := func(args ...string) (string, error) {
-			executable, argv, prepared := command.Invocation(env, args...)
+			executable, argv, prepared := command.Invocation(env, "", args...)
 			return process.RunEnv(cwd, prepared, executable, argv...)
 		}
-		executable, _, _ := command.Invocation(nil)
+		executable, _, _ := command.Invocation(nil, "")
 		path, e := exec.LookPath(executable)
 		if e == nil && command.Shell != "" {
 			info["shell"] = command.Shell

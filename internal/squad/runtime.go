@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -80,7 +81,14 @@ func runEngine(st *Store, actor string, gen int, args []string) error {
 		memberEnv["CSQUAD_STATE_DIR"] = st.Dir
 		memberEnv["CSQUAD_MEMBER_ID"] = actor
 		memberEnv["CSQUAD_GENERATION"] = strconv.Itoa(gen)
-		name, argv, prepared := command.Invocation(memberEnv, args[1:]...)
+		// The generated launcher PATH is not an explicit user override. Let rc
+		// add client directories, then put the bound launcher back at the front.
+		pathPrefix := ""
+		if _, explicit := m.Env["PATH"]; !explicit {
+			pathPrefix = filepath.SplitList(memberEnv["PATH"])[0]
+			delete(memberEnv, "PATH")
+		}
+		name, argv, prepared := command.Invocation(memberEnv, pathPrefix, args[1:]...)
 		args, memberEnv = append([]string{name}, argv...), prepared
 	}
 	c := exec.Command(args[0], args[1:]...)

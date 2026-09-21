@@ -38,7 +38,7 @@ func codexConfigWithCommand(cwd string, trusted bool, env map[string]string, com
 	if trusted {
 		args = append(args, "-c", codexTrustOverride(cwd))
 	}
-	name, argv, env := command.Invocation(env, args...)
+	name, argv, env := command.Invocation(env, "", args...)
 	c := process.Command(ctx, cwd, env, name, argv...)
 	diagnostics := &codexDiagnostics{}
 	c.Stderr = diagnostics

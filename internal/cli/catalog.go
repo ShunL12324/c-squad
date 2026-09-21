@@ -95,7 +95,7 @@ func definitions() []definition {
 		{path: "resume", args: " [TEAM]", max: 1, complete: "team", summary: "Resume a stopped/interrupted team and its conversations from the ledger", flags: []string{"name", "env", "fresh", "detach"}, example: "  csquad resume my-team\n  csquad resume --fresh --detach"},
 		{path: "attach", args: " [TEAM_OR_MEMBER]", summary: "Enter a running team without restarting; select a member with --name TEAM", max: 1, complete: "team-or-member", flags: []string{"name"}, example: "  csquad attach research\n  csquad attach --name research reviewer"},
 		{path: "ui", summary: "Show team members and task panels", flags: []string{"view", "client", "name"}, example: "  csquad ui\n  csquad ui --view tasks\n  csquad ui --view hide"},
-		{path: "ui-layout", hidden: true},
+		{path: "ui-layout", hidden: true, flags: []string{"owner"}},
 		{path: "ui-remember-layout", hidden: true, flags: []string{"owner"}},
 		{path: "ui-toggle", hidden: true, flags: []string{"view", "client"}},
 		{path: "ui-panel", hidden: true, flags: []string{"view", "owner", "popup"}},

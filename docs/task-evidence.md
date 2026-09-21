@@ -114,3 +114,22 @@ is not a substitute for that evidence.
 Member navigation also keeps the current client's panel widths and header height
 when switching between existing or newly created members. Responsive visibility
 still hides panels when the terminal is too narrow or short.
+
+Native border drags are sampled from the source window before member navigation
+applies any saved dimensions. tmux's `after-resize-pane` hook observes the initial
+`resize-pane -M`, but subsequent mouse motion does not reliably invoke it. A
+matching saved window size identifies an unchanged viewport; a changed viewport
+still takes the responsive layout path before copying dimensions. Layout hooks
+repair only their owning session. Navigation batches pane changes and avoids
+reconfiguring unrelated members.
+
+`TestNativeBorderDragAndSwitchLatency` uses four isolated tmux sessions and a real
+PTY at 280×77. It sends twelve SGR mouse motions, releases the divider, immediately
+clicks another member, checks round trips, then performs a fresh drag before Alt
+navigation. The original implementation reproduced actual width 40 with saved
+width 28 and reset to 28 on the first click. Local eight-switch samples improved
+from 672–835 ms to 60–163 ms after the fix; these are observed timings on the test
+host, not a portable latency guarantee. The test logs latency rather than imposing
+a machine-dependent performance threshold. Existing PTY tests separately cover
+first-visit sizing, narrow windows, terminal resizing, two attached clients and
+Tasks popup/toggle races.

@@ -218,6 +218,9 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 		return st.rememberPanelLayout(o["owner"])
 	}
 	if p[0] == "ui-layout" {
+		if o["owner"] != "" {
+			return st.configureSelectedPanels(o["owner"])
+		}
 		return st.configurePanels()
 	}
 	if p[0] == "ui-panel" {

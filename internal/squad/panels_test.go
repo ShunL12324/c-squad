@@ -328,3 +328,23 @@ func TestTasksToggleDoesNotOpenPopupAfterConcurrentResize(t *testing.T) {
 		t.Fatal("popup did not close")
 	}
 }
+
+func TestNativeBorderDragAndSwitchLatency(t *testing.T) {
+	st, socket := reproTeam(t, "280", "77")
+	s, err := st.read()
+	must(t, err)
+	pane, err := tm(s, "new-session", "-d", "-s", "layout-c", "-x", "280", "-y", "77", "-P", "-F", "#{pane_id}", "cat")
+	must(t, err)
+	must(t, st.update(func(s *State) error {
+		s.Members["c"] = &Member{ID: "c", Engine: config.Codex, State: MemberStateIdle, Generation: 1, Session: "layout-c", Pane: pane}
+		return nil
+	}))
+	must(t, st.configureNavigation())
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "python3", "testdata/panel_layout.py", "native", socket, "layout-master").CombinedOutput()
+	t.Logf("%s", out)
+	if err != nil {
+		t.Fatalf("native drag/latency: %v", err)
+	}
+}

@@ -43,7 +43,9 @@ func (st *Store) panelCommand(s *State, owner, view string) string {
 }
 
 // configurePanels changes only panes owned by C Squad, never the engine pane.
-func (st *Store) configurePanels() (result error) {
+func (st *Store) configurePanels() error { return st.configureSelectedPanels() }
+
+func (st *Store) configureSelectedPanels(owners ...string) (result error) {
 	unlock, err := filelock.Acquire(st.Dir, "panels", false)
 	if err != nil {
 		return err
@@ -53,11 +55,29 @@ func (st *Store) configurePanels() (result error) {
 	if err != nil {
 		return err
 	}
+	return st.configurePanelState(s, owners...)
+}
+
+// The caller holds the panels lock, including when fitting a destination.
+func (st *Store) configurePanelState(s *State, owners ...string) (result error) {
 	if !s.Active {
 		return nil
 	}
 	for _, m := range navigationMembers(s) {
+		if len(owners) > 0 && !slices.Contains(owners, m.ID) {
+			continue
+		}
 		if m.Pane == "" {
+			continue
+		}
+		current, e := readPanelGeometry(s, m.Pane)
+		if e != nil {
+			continue
+		}
+		if current.ready(s.PanelView) {
+			if err := savePanelDimensions(s, m.Pane, current.dimensions); err != nil {
+				return err
+			}
 			continue
 		}
 		for option, value := range map[string]string{
@@ -76,6 +96,13 @@ func (st *Store) configurePanels() (result error) {
 		fields := strings.Fields(geometry)
 		if len(fields) != 3 || fields[2] != "0" {
 			continue
+		}
+		// Capture a native divider drag before applying any saved preferences.
+		// A changed window size instead denotes tmux's automatic reflow.
+		if current.size == current.saved {
+			if e := savePanelDimensions(s, m.Pane, current.dimensions); e != nil {
+				return e
+			}
 		}
 		width, _ := strconv.Atoi(fields[0])
 		height, _ := strconv.Atoi(fields[1])
@@ -198,8 +225,8 @@ func (st *Store) configurePanels() (result error) {
 
 		// A terminal can resize while a layout pass is running. Never save its
 		// transient reflow as the user's preferred size or mark that resize handled.
-		current, _ := tm(s, "display-message", "-p", "-t", m.Pane, "#{window_width} #{window_height}")
-		if current != fields[0]+" "+fields[1] {
+		currentSize, _ := tm(s, "display-message", "-p", "-t", m.Pane, "#{window_width} #{window_height}")
+		if currentSize != fields[0]+" "+fields[1] {
 			continue
 		}
 
@@ -260,48 +287,57 @@ func teamWindowSize(s *State) (string, string) {
 // asynchronous layout hook would only repair it a moment later.
 // It reports whether it pinned the window, which the caller has to undo.
 func (st *Store) fitSession(s *State, m *Member, client string) (bool, error) {
+	unlock, err := filelock.Acquire(st.Dir, "panels", false)
+	if err != nil {
+		return false, err
+	}
+	defer unlock()
 	source := clientSession(s, client)
 	if source == "" {
 		return false, nil
 	}
-	// A client resize hook can still be queued when the user clicks. Repair
-	// that resize before sampling dimensions, not the transient tmux reflow.
-	if err := st.configurePanels(); err != nil {
-		return false, err
-	}
-	want := windowSize(s, source)
-	if want == "" {
-		return false, nil
-	}
-	// Capture before resizing or creating destination panes. Each member has a
-	// separate tmux window, but switching members should retain this client's
-	// current panel dimensions rather than that window's old/default layout.
-	dimensions, err := panelDimensions(s, "="+source+":")
+	sourceTarget := "=" + source + ":"
+	g, err := readPanelGeometry(s, sourceTarget)
 	if err != nil {
 		return false, err
 	}
-	for role, d := range dimensions {
-		size := d[0]
-		if role == "header" {
-			size = d[1]
+	if !g.ready(s.PanelView) {
+		for _, host := range s.Members {
+			if host.Session == source {
+				if err := st.configurePanelState(s, host.ID); err != nil {
+					return false, err
+				}
+				break
+			}
 		}
-		if _, err := tm(s, "set-option", "-w", "-t", "="+source+":", "@csquad_size_"+role, strconv.Itoa(size)); err != nil {
+		g, err = readPanelGeometry(s, sourceTarget)
+		if err != nil {
 			return false, err
 		}
 	}
-	pinned := want != windowSize(s, m.Session)
+	if g.size == "" {
+		return false, nil
+	}
+	if err := savePanelDimensions(s, sourceTarget, g.dimensions); err != nil {
+		return false, err
+	}
+	destination, err := readPanelGeometry(s, m.Pane)
+	if err != nil {
+		return false, err
+	}
+	pinned := g.size != destination.size
 	if pinned {
-		size := strings.Fields(want)
+		size := strings.Fields(g.size)
 		if _, err := tm(s, "resize-window", "-t", "="+m.Session+":", "-x", size[0], "-y", size[1]); err != nil {
 			return false, err
 		}
 	}
-	if pinned {
-		if err := st.configurePanels(); err != nil {
+	if pinned || !destination.ready(s.PanelView) {
+		if err := st.configurePanelState(s, m.ID); err != nil {
 			return pinned, err
 		}
 	}
-	return pinned, applyPanelDimensions(s, m.Pane, dimensions)
+	return pinned, applyPanelDimensions(s, m.Pane, g.dimensions)
 }
 
 func (st *Store) setPanelView(view string, toggle bool) error {
@@ -578,58 +614,38 @@ func displayDirectory(path string) string {
 	return path
 }
 
-// panelDimensions uses roles rather than pane IDs, which differ by session.
-func panelDimensions(s *State, target string) (map[string][2]int, error) {
-	rows, err := tm(s, "list-panes", "-t", target, "-F", "#{@csquad_panel} #{pane_width} #{pane_height}")
-	out := map[string][2]int{}
-	for _, row := range strings.Split(rows, "\n") {
-		f := strings.Fields(row)
-		if len(f) != 3 {
-			continue
-		}
-		w, _ := strconv.Atoi(f[1])
-		h, _ := strconv.Atoi(f[2])
-		out[f[0]] = [2]int{w, h}
-	}
-	return out, err
-}
-
 func applyPanelDimensions(s *State, target string, dimensions map[string][2]int) error {
-	rows, err := tm(s, "list-panes", "-t", target, "-F", "#{pane_id} #{@csquad_panel}")
+	g, err := readPanelGeometry(s, target)
 	if err != nil {
 		return err
 	}
-	panes := map[string]string{}
-	for _, row := range strings.Split(rows, "\n") {
-		f := strings.Fields(row)
-		if len(f) == 2 {
-			panes[f[1]] = f[0]
-		}
-	}
-	// tmux clamps sizes to the available space. Hidden responsive panels stay
-	// hidden, so small clients retain usable engine space.
+	args := []string{"set-option", "-w", "-t", target, "@csquad_layout_active", "1"}
 	for _, role := range []string{"header", "members", "tasks"} {
 		d, ok := dimensions[role]
-		pane := panes[role]
+		pane := g.panes[role]
 		if !ok || pane == "" {
 			continue
 		}
-		axis, size := "-x", d[0]
+		axis, n, current := "-x", d[0], g.dimensions[role][0]
 		if role == "header" {
-			axis, size = "-y", d[1]
+			axis, n, current = "-y", d[1], g.dimensions[role][1]
 		}
-		if _, err := tm(s, "set-option", "-w", "-t", target, "@csquad_size_"+role, strconv.Itoa(size)); err != nil {
-			return err
-		}
-		if _, err := tm(s, "resize-pane", "-t", pane, axis, strconv.Itoa(size)); err != nil {
-			return err
+		args = appendTmCommand(args, "set-option", "-w", "-t", target, "@csquad_size_"+role, strconv.Itoa(n))
+		if n != current {
+			args = appendTmCommand(args, "resize-pane", "-t", pane, axis, strconv.Itoa(n))
 		}
 	}
-	return nil
+	args = appendTmCommand(args, "set-option", "-w", "-t", target, "@csquad_layout_active", "0")
+	_, err = tm(s, args...)
+	if err != nil {
+		_, _ = tm(s, "set-option", "-w", "-t", target, "@csquad_layout_active", "0")
+	}
+	return err
 }
 
-// rememberPanelLayout runs after an explicit resize-pane (including border
-// drags). Ignore layout repair during a window resize: those dimensions are a
+// rememberPanelLayout runs after an explicit resize-pane. Native border drags
+// only run this hook at their start; fitSession samples their final dimensions.
+// Ignore layout repair during a window resize: those dimensions are a
 // transient reflow, not a new user preference. No panels lock is taken because
 // configurePanels can itself trigger this synchronous tmux hook.
 func (st *Store) rememberPanelLayout(owner string) error {

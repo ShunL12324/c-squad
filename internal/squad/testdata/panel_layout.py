@@ -114,6 +114,50 @@ try:
         drain(float(sys.argv[4]))
         sys.exit(0)
 
+    if mode == "native":
+        fd = attach(280, 79)
+        client = list(sessions())[0]
+        timings = []
+        for _ in range(4):
+            for keys, target in ((b"\x1b[1;3B", "layout-a"), (b"\x1b[1;3A", master)):
+                started = time.monotonic()
+                os.write(fd, keys)
+                while sessions().get(client) != target:
+                    assert time.monotonic() - started < 3, "keyboard switch timed out"
+                    drain(.002)
+                timings.append((time.monotonic()-started)*1000)
+                drain(.1)
+        print("keyboard switch milliseconds:", timings, flush=True)
+        def drag_members():
+            rows = [row.split("|") for row in tm("list-panes", "-t", master,
+                    "-F", "#{pane_id}|#{@csquad_panel}|#{pane_right}|#{pane_top}|#{pane_width}").splitlines()]
+            members = next(row for row in rows if row[1] == "members")
+            x, y = int(members[2])+2, int(members[3])+8
+            os.write(fd, f"\x1b[<0;{x};{y}M".encode())
+            for offset in range(1, 13):
+                os.write(fd, f"\x1b[<32;{x+offset};{y}M".encode())
+                drain(.005)
+            os.write(fd, f"\x1b[<0;{x+12};{y}m".encode())
+            actual = int(tm("display-message", "-p", "-t", members[0], "#{pane_width}"))
+            print("native drag actual/pref:", actual, tm("show-options", "-wv", "-t", master, "@csquad_size_members"), flush=True)
+            assert actual > int(members[4]), "native border drag did not resize"
+
+        drag_members()
+        expected = layout(master)
+        for target in ("layout-b", master, "layout-a", master):
+            observed = click_and_watch(fd, client, target, seconds=1)
+            assert observed == [expected], f"native drag lost on {target}: {expected} -> {observed}"
+        drag_members()
+        expected = layout(master)
+        os.write(fd, b"\x1b[1;3B")
+        deadline = time.monotonic()+3
+        while sessions().get(client) != "layout-a" and time.monotonic()<deadline:
+            drain(.01)
+        assert sessions().get(client) == "layout-a", "keyboard switch failed"
+        assert layout("layout-a") == expected, "keyboard lost native drag"
+        print("PASS native drag immediate switch and round trips", flush=True)
+        sys.exit(0)
+
     newbie = sys.argv[4]
     fd = attach(180, 40)
     client = list(sessions())[0]

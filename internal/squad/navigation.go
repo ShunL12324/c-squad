@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -198,7 +199,7 @@ func (st *Store) configureNavigation() error {
 			}
 
 			for _, hook := range []string{"client-attached", "client-session-changed", "client-resized"} {
-				if _, err = tm(s, "set-hook", "-t", target, hook+"[914]", "run-shell -b "+shellQuote(panelCmd+" ui-layout")); err != nil {
+				if _, err = tm(s, "set-hook", "-t", target, hook+"[914]", "run-shell -b "+shellQuote(panelCmd+" ui-layout --owner "+shellQuote(m.ID))); err != nil {
 					return err
 				}
 			}
@@ -242,8 +243,13 @@ func (st *Store) navigate(client, direction, index string) error {
 	members := navigationMembers(s)
 	live := []*Member{}
 	at := -1
+	sessions, err := tm(s, "list-sessions", "-F", "#{session_name}")
+	if err != nil {
+		return err
+	}
+	liveSessions := strings.Split(sessions, "\n")
 	for _, m := range members {
-		if _, e := tm(s, "has-session", "-t", "="+m.Session); e == nil {
+		if slices.Contains(liveSessions, m.Session) {
 			if m.Session == current {
 				at = len(live)
 			}

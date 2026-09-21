@@ -644,7 +644,8 @@ func applyPanelDimensions(s *State, target string, dimensions map[string][2]int)
 }
 
 // rememberPanelLayout runs after an explicit resize-pane. Native border drags
-// only run this hook at their start; fitSession samples their final dimensions.
+// only run this hook at their start; the release binding saves final dimensions
+// directly in tmux, and fitSession samples them again before navigation.
 // Ignore layout repair during a window resize: those dimensions are a
 // transient reflow, not a new user preference. No panels lock is taken because
 // configurePanels can itself trigger this synchronous tmux hook.

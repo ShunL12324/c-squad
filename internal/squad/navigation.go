@@ -124,6 +124,41 @@ func (st *Store) configureNavigation() error {
 	}
 
 	panelCmd := shellQuote(s.Executable) + " --team " + shellQuote(st.Dir) + " --member master --generation 0"
+	// Native mouse motion bypasses after-resize-pane after its first frame.
+	// Save in tmux's release event itself, before a resize can reflow the panes.
+	var remember []string
+	for _, role := range []string{"members", "tasks", "header"} {
+		axis := "pane_width"
+		if role == "header" {
+			axis = "pane_height"
+		}
+		size := "#{P:#{?#{==:#{@csquad_panel}," + role + "},#{" + axis + "},}}"
+		command := "set-option -wF -t = @csquad_size_" + role + " " + shellQuote(size)
+		remember = append(remember, "if-shell -F -t = "+shellQuote(size)+" "+shellQuote(command))
+	}
+	// The pointer may end inside a pane if tmux clamps the dragged divider.
+	// Mark only border drags so application/copy-mode drags retain their bindings.
+	for _, key := range []string{"MouseDrag1Border", "MouseDragEnd1Border", "MouseDragEnd1Pane"} {
+		binding, _ := tm(s, "list-keys", "-T", "root", key)
+		_, fallback, _ := strings.Cut(binding, key)
+		fallback = strings.ReplaceAll(strings.TrimSpace(fallback), `\;`, ";")
+		command := ""
+		if key == "MouseDrag1Border" {
+			if fallback == "" {
+				fallback = "resize-pane -M"
+			}
+			command = "set-option -w -t = @csquad_dragging 1 ; " + fallback
+		} else {
+			save := strings.Join(remember, " ; ") + " ; set-option -wu -t = @csquad_dragging"
+			command = "if-shell -F -t = '#{@csquad_dragging}' " + shellQuote(save)
+			if fallback != "" {
+				command += " ; " + fallback
+			}
+		}
+		if _, err = tm(s, "bind-key", "-T", root, key, command); err != nil {
+			return err
+		}
+	}
 	for key, view := range map[string]string{"t": "tasks"} {
 		if _, err = tm(s, "bind-key", "-T", prefix, key, "run-shell", "-b", panelCmd+" ui-toggle --view "+view+" --client '#{client_name}'"); err != nil {
 			return err

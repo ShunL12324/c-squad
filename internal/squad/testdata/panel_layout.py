@@ -141,8 +141,27 @@ try:
             actual = int(tm("display-message", "-p", "-t", members[0], "#{pane_width}"))
             print("native drag actual/pref:", actual, tm("show-options", "-wv", "-t", master, "@csquad_size_members"), flush=True)
             assert actual > int(members[4]), "native border drag did not resize"
+            saved = int(tm("show-options", "-wv", "-t", master, "@csquad_size_members"))
+            assert actual == saved, f"native drag release left stale preference: {actual} != {saved}"
 
         drag_members()
+        immediate = layout(master)
+        for target in ("layout-b", master):
+            assert click_and_watch(fd, client, target, seconds=1) == [immediate]
+        drag_members()
+        # Expand before navigation has any chance to sample the final drag.
+        dragged = tm("show-options", "-wv", "-t", master, "@csquad_size_members")
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 79, 300, 0, 0))
+        os.kill(clients[0][1].pid, signal.SIGWINCH)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            geometry = layout(master)
+            if ("header:300x" in geometry and "members:" + dragged + "x" in geometry
+                    and tm("show-options", "-wv", "-t", master, "@csquad_geometry") == "300 77"):
+                break
+            drain(.02)
+        else:
+            raise AssertionError(f"expansion lost native drag {dragged}: {geometry}")
         expected = layout(master)
         for target in ("layout-b", master, "layout-a", master):
             observed = click_and_watch(fd, client, target, seconds=1)

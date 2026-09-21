@@ -3,6 +3,7 @@ package squad
 import (
 	"errors"
 	"fmt"
+	"slices"
 )
 
 func helpCommand(st *Store, actor string, p []string, o options) error {
@@ -27,7 +28,7 @@ func helpCommand(st *Store, actor string, p []string, o options) error {
 				if t.State == TaskPhaseDone || t.State == TaskPhaseMerging {
 					return errors.New("cannot block completed/merging task")
 				}
-				if actor != "master" && !contains(t.Participants, actor) {
+				if actor != "master" && !slices.Contains(t.Participants, actor) {
 					return errors.New("not a task participant")
 				}
 			}

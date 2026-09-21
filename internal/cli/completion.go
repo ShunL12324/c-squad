@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -17,7 +18,7 @@ func completeResource(kind string) func(*cobra.Command, []string, string) ([]str
 				selection[key], _ = cmd.Flags().GetString(key)
 			}
 		}
-		if contains([]string{"attach", "resume", "stop", "recover", "board", "ui"}, cmd.Name()) && cmd.Flags().Changed("name") {
+		if slices.Contains([]string{"attach", "resume", "stop", "recover", "board", "ui"}, cmd.Name()) && cmd.Flags().Changed("name") {
 			selection["name"], _ = cmd.Flags().GetString("name")
 		}
 		argsForSelection := []string{}

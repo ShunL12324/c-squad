@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -194,7 +195,7 @@ func execute(run runner, path []string) func(*cobra.Command, []string) error {
 			if operation[0] == "ui-panel" && name == "view" && values[name] == "header" {
 				continue
 			}
-			if value, ok := values[name]; ok && !contains(choices, value) {
+			if value, ok := values[name]; ok && !slices.Contains(choices, value) {
 				return &usageError{fmt.Errorf("invalid --%s %q; choose %s", name, value, strings.Join(choices, "|")), cmd.CommandPath()}
 			}
 		}
@@ -213,19 +214,11 @@ func execute(run runner, path []string) func(*cobra.Command, []string) error {
 		return run(append(append([]string(nil), operation...), args...), values, nil)
 	}
 }
-func contains(values []string, value string) bool {
-	for _, v := range values {
-		if v == value {
-			return true
-		}
-	}
-	return false
-}
 
 // Normalize aliases before dispatch so authorization sees the original operation.
 func normalizeInputs(cmd *cobra.Command, path []string, values map[string]string, args *[]string) error {
 	selectors := []string{"team", "state-dir", "team-name"}
-	if contains([]string{"start", "resume", "stop", "recover", "attach", "board", "ui"}, path[0]) {
+	if slices.Contains([]string{"start", "resume", "stop", "recover", "attach", "board", "ui"}, path[0]) {
 		selectors = append(selectors, "name")
 	}
 	count := 0
@@ -237,7 +230,7 @@ func normalizeInputs(cmd *cobra.Command, path []string, values map[string]string
 			count++
 		}
 	}
-	if (contains([]string{"start", "resume", "stop", "recover"}, path[0]) || (len(path) == 2 && path[0] == "team" && path[1] == "remove")) && len(*args) == 1 {
+	if (slices.Contains([]string{"start", "resume", "stop", "recover"}, path[0]) || (len(path) == 2 && path[0] == "team" && path[1] == "remove")) && len(*args) == 1 {
 		count++
 		values["name"] = (*args)[0]
 		*args = nil

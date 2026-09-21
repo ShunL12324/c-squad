@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/ShunL12324/c-squad/internal/preflight"
@@ -89,7 +90,7 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 			}
 			names := list(o["milestones"])
 			for _, gate := range list(o["gates"]) {
-				if !contains(names, gate) {
+				if !slices.Contains(names, gate) {
 					return fmt.Errorf("gate %s is not a milestone", gate)
 				}
 			}
@@ -99,7 +100,7 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 					return errors.New("duplicate milestone")
 				}
 				seen[name] = true
-				t.Milestones = append(t.Milestones, Milestone{name, contains(list(o["gates"]), name), MilestoneStatePending})
+				t.Milestones = append(t.Milestones, Milestone{name, slices.Contains(list(o["gates"]), name), MilestoneStatePending})
 			}
 			if o["code"] == "true" {
 				if err := preflight.Git(); err != nil {
@@ -159,7 +160,7 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 				}
 			}
 		}
-		if op != "claim" && !masterOnly && actor != "master" && !contains(t.Participants, actor) {
+		if op != "claim" && !masterOnly && actor != "master" && !slices.Contains(t.Participants, actor) {
 			return errors.New("not a participant in this task")
 		}
 		if (op == "claim" || op == "submit" || op == "approve") && len(t.Blockers) > 0 {
@@ -181,7 +182,7 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 				return e
 			}
 			members := list(o["to"])
-			if !contains(members, owner) {
+			if !slices.Contains(members, owner) {
 				members = append(members, owner)
 			}
 			if len(members) == 0 {
@@ -195,8 +196,8 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 				if m.State == MemberStateRemoved {
 					return errors.New("member removed")
 				}
-				newlyAssigned := t.Owner == "" || !contains(t.Participants, id)
-				if !contains(t.Participants, id) {
+				newlyAssigned := t.Owner == "" || !slices.Contains(t.Participants, id)
+				if !slices.Contains(t.Participants, id) {
 					t.Participants = append(t.Participants, id)
 				}
 				crossRepo := noticeCrossRepo(s, actor, t, m)

@@ -62,7 +62,7 @@ func (st *Store) deliver(id string) error {
 					if time.Since(at) < time.Minute {
 						return nil
 					}
-				} else if v.State != DeliveryStatePending && v.State != DeliveryStateSent {
+				} else if v.State != DeliveryStatePending {
 					return nil
 				}
 				v.State = DeliveryStateSending

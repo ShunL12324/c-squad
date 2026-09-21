@@ -3,6 +3,7 @@ package squad
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/ShunL12324/c-squad/internal/filelock"
 )
@@ -119,7 +120,7 @@ func messageCommand(st *Store, actor string, p []string, o options) error {
 							if e != nil {
 								return e
 							}
-							if !contains(t.Participants, id) {
+							if !slices.Contains(t.Participants, id) {
 								continue
 							}
 						}

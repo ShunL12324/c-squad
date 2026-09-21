@@ -29,10 +29,7 @@ func panelVisibility(view panelView, width int) (bool, bool) {
 	if width < 90 || view == panelHidden {
 		return false, false
 	}
-	if view == panelTasks {
-		return true, width >= 150
-	}
-	if view == panelBoth {
+	if view == panelTasks || view == panelBoth {
 		return true, width >= 150
 	}
 	return true, false

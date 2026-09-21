@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -58,7 +59,7 @@ func lifecycle(st *Store, actor, op, id, initial, directory string) error {
 	handoff := map[string]any{"member": m, "tasks": map[string]any{}, "questions": s.Questions}
 	tasks := handoff["tasks"].(map[string]any)
 	for _, t := range s.Tasks {
-		if contains(t.Participants, id) || id == "master" {
+		if slices.Contains(t.Participants, id) || id == "master" {
 			entry := map[string]any{"task": t}
 			if t.Workspace != "" {
 				entry["head"], _ = git(t.Workspace, "rev-parse", "HEAD")

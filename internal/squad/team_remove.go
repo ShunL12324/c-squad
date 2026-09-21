@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -345,7 +346,7 @@ func inspectRemovalPayload(dir string, s *State, worktrees map[string]*Task) err
 			if len(parts) == 2 && entry.Type().IsRegular() {
 				name := strings.TrimSuffix(parts[1], ".lock")
 				if name != parts[1] {
-					allowed = contains([]string{"team-lifecycle", "runtime", "runtime-start", "merge", "panels", "navigation"}, name) || s.Members[strings.TrimPrefix(name, "member-")] != nil && strings.HasPrefix(name, "member-") || s.Tasks[strings.TrimPrefix(name, "workspace-")] != nil && strings.HasPrefix(name, "workspace-")
+					allowed = slices.Contains([]string{"team-lifecycle", "runtime", "runtime-start", "merge", "panels", "navigation"}, name) || s.Members[strings.TrimPrefix(name, "member-")] != nil && strings.HasPrefix(name, "member-") || s.Tasks[strings.TrimPrefix(name, "workspace-")] != nil && strings.HasPrefix(name, "workspace-")
 				}
 			}
 		case "handoffs":

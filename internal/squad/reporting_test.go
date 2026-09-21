@@ -2,6 +2,7 @@ package squad
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"path/filepath"
 	"strings"
@@ -89,6 +90,9 @@ func TestReportingDecisionsExpireWhenResolved(t *testing.T) {
 	gate := s.Messages[0].ID
 	if s.Messages[0].Report.Kind != "decision" {
 		t.Fatal("gate was silenced")
+	}
+	if !strings.Contains(s.reportText(s.Messages[0]), `"milestone":"plan"`) {
+		t.Fatal("gate report omitted the required decision")
 	}
 	must(t, taskCommand(st, "master", []string{"gate", "T1"}, options{"name": "plan"}))
 	must(t, helpCommand(st, "a", []string{"request"}, options{"task": "T1", "text": "permission needed"}))
@@ -235,5 +239,82 @@ func TestReportRefreshesFactsAtTransport(t *testing.T) {
 	must(t, err)
 	if !strings.Contains(s.Messages[0].Text, "latest validation boundary") {
 		t.Fatal("message history does not retain the delivered snapshot")
+	}
+}
+
+func TestReportSummaryOmitsInstructionsAndHistoricalEvidence(t *testing.T) {
+	st := submissionStore(t)
+	must(t, st.update(func(s *State) error {
+		task := s.Tasks["T1"]
+		task.Title = strings.Repeat("标题", 1000)
+		task.Description = strings.Repeat("SECRET_DESCRIPTION", 10000)
+		task.Acceptance = "SECRET_ACCEPTANCE"
+		task.Setup = "SECRET_SETUP"
+		task.Workspace = "/SECRET_WORKSPACE"
+		task.Submission, task.Candidate = "T1-r2", "abc123"
+		task.SubmissionSummary = strings.Repeat("结论", 1000)
+		task.Progress = strings.Repeat("进展", 1000)
+		task.Evidence = []Evidence{
+			{Member: "b", Kind: EvidenceReview, Submission: "T1-r1", SHA: "old", Summary: "OLD_SUBMISSION"},
+			{Member: "b", Kind: EvidenceReview, Submission: "T1-r2", SHA: "abc123", Summary: strings.Repeat("OLD_RESULT", 10000)},
+			{Member: "b", Kind: EvidenceReview, Submission: "T1-r2", SHA: "abc123", Passed: true, Summary: strings.Repeat("最新结论", 1000)},
+			{Member: "c", Kind: EvidenceTest, Submission: "T1-r2", SHA: "abc123", Passed: true, Summary: "current test"},
+		}
+		return nil
+	}))
+	s, err := st.read()
+	must(t, err)
+	text := s.reportText(&Message{Task: "T1", Report: &ReportReference{Kind: "ready", Submission: "T1-r2"}})
+	for _, forbidden := range []string{"SECRET_", "OLD_SUBMISSION", "OLD_RESULT", `"description"`, `"acceptance"`, `"setup"`, `"workspace"`} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("default report leaked %s", forbidden)
+		}
+	}
+	if len(text) > 7000 || !strings.Contains(text, "[truncated; task inspect for full text]") {
+		t.Fatalf("summary length/truncation: %d bytes", len(text))
+	}
+	_, body, _ := strings.Cut(text, "\n")
+	var report compactTaskReport
+	must(t, json.Unmarshal([]byte(body), &report))
+	if len(report.Evidence) != 2 || report.EvidenceHistoryOmitted != 2 || report.FailingEvidence != 0 {
+		t.Fatalf("not current evidence only: %+v", report)
+	}
+	for _, e := range report.Evidence {
+		if e.Index < 3 || e.Submission != "T1-r2" || e.SHA != "abc123" || !e.Passed {
+			t.Fatalf("lost exact evidence reference: %+v", e)
+		}
+	}
+	if len(s.Tasks["T1"].Evidence[2].Summary) < 1000 {
+		t.Fatal("report mutated original evidence")
+	}
+}
+
+func TestReportSummaryBoundsListsAndKeepsTriggeringFailure(t *testing.T) {
+	s := &State{Tasks: map[string]*Task{}, Questions: map[string]*Question{}}
+	task := &Task{ID: "T1", Submission: "T1-r1"}
+	s.Tasks[task.ID] = task
+	for i := 0; i < 100; i++ {
+		member := fmt.Sprintf("member%d", i)
+		task.Evidence = append(task.Evidence, Evidence{Member: member, Kind: EvidenceReview, Submission: task.Submission, Summary: strings.Repeat("failure", 1000)})
+		task.Blockers = append(task.Blockers, strings.Repeat("blocker", 1000))
+		id := fmt.Sprintf("Q%d", i)
+		s.Questions[id] = &Question{ID: id, Task: task.ID, State: QuestionStateOpen, Text: strings.Repeat("QUESTION_DETAIL", 1000)}
+	}
+	msg := &Message{Task: task.ID, Report: &ReportReference{Kind: "failure", Submission: task.Submission, Evidence: 1}}
+	text := s.reportText(msg)
+	_, body, _ := strings.Cut(text, "\n")
+	var report compactTaskReport
+	must(t, json.Unmarshal([]byte(body), &report))
+	if len(report.Evidence) != 12 || report.EvidenceOmitted != 88 || report.FailingEvidence != 100 || report.Evidence[0].Index != 1 {
+		t.Fatalf("failure lost or lists unbounded: %+v", report)
+	}
+	if len(report.OpenQuestions) != 8 || report.QuestionsOmitted != 92 || len(report.Blockers) != 8 || report.BlockersOmitted != 92 {
+		t.Fatal("unbounded blockers/questions")
+	}
+	if len(text) > 10000 || strings.Contains(text, "QUESTION_DETAIL") {
+		t.Fatal("report is not compact")
+	}
+	if text != s.reportText(msg) {
+		t.Fatal("report ordering is unstable")
 	}
 }

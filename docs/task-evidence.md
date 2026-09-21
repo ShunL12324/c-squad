@@ -61,9 +61,15 @@ Master receives task reports when a candidate is submitted, an approval gate is
 reached, evidence fails, or the current submission acquires passing review and
 test evidence with no unresolved failure. Non-code approval still does not
 require a review/test pair. Reporting does not change any approval rule.
-Reports include the task state, owner/participants, immutable submission ID,
-candidate SHA, submission conclusion, progress, blockers, open questions and
-evidence with member/category/result references. Read `task inspect TASK` for the
+Reports include the task ID/title/state/owner, immutable submission ID, candidate
+SHA, submission conclusion, progress, blockers, open question IDs and the latest
+evidence per member/category for the current submission and SHA. Each evidence
+entry carries its one-based index into the task evidence list. Task descriptions,
+acceptance/setup instructions, workspace paths and old evidence bodies are omitted.
+Titles are capped at 120 characters, conclusion/progress at 480, and evidence
+summaries/blockers at 160, with an explicit truncation marker. Lists show at most
+12 evidence entries and 8 blockers/questions; omitted counts and the total current
+failure count remain visible. Triggering failures come first, then other failures. Read `task inspect TASK` for the
 current full record, `question list` for questions, and `board` for recent message
 history. The existing task-card Brief report action requests a human-readable
 explanation from master.

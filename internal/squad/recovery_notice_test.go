@@ -90,6 +90,11 @@ func TestRecoveryNoticeIsIdempotentAcrossFailedResumes(t *testing.T) {
 		if !strings.Contains(v, notices[0].ID) {
 			t.Fatalf("wrong message delivered: %s", v)
 		}
+		// Transport recomputes report text. A ledger snapshot cannot carry this
+		// instruction, so losing it would silently downgrade the notification.
+		if !strings.Contains(v, "Preserve review/approval gates") {
+			t.Fatalf("recovery notice lost its behavioural text: %s", v)
+		}
 	case <-time.After(time.Second):
 		t.Fatal("recovery notice not delivered")
 	}

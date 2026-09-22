@@ -44,6 +44,12 @@ func (s *State) reportCurrent(m *Message) bool {
 	if t == nil {
 		return false
 	}
+	// A recovery notification names no submission, so it answers before the
+	// review checks below. It stays current only while that task still needs
+	// this recipient to act.
+	if r.Kind == "recovery" {
+		return t.State != TaskPhaseDone && m.To == s.recoveryRecipient(t)
+	}
 	if r.Milestone != "" {
 		for _, ms := range t.Milestones {
 			if ms.Name == r.Milestone {
@@ -107,8 +113,48 @@ func (s *State) taskReport(actor string, t *Task, ref *ReportReference) {
 	m.Text = s.reportText(m)
 }
 
+const recoveryNoticeText = "Task recovered after team interruption. Inspect board, handoff and actual workspace before continuing. Preserve review/approval gates; do not repeat completed changes or merge on your own. Report current status to master."
+
+// recoveryRecipient routes a task recovery notification to its owner, or to
+// master when that owner is gone.
+func (s *State) recoveryRecipient(t *Task) string {
+	to := t.Owner
+	if m := s.Members[to]; m == nil || m.State == MemberStateRemoved {
+		to = "master"
+	}
+	return to
+}
+
+// recoveryNotice re-engages the member a task is waiting on. A stable
+// RequestKey reuses a notification that recipient has not received yet, so
+// repeated resume attempts cannot accumulate identical wake-ups. A delivered
+// notification is never reused: a later interruption is genuinely new.
+func (s *State) recoveryNotice(t *Task) {
+	to := s.recoveryRecipient(t)
+	key := "master:recovery:" + t.ID
+	for _, old := range s.Messages {
+		if old.RequestKey == key && old.To == to && (old.State == DeliveryStatePending || old.State == DeliveryStateSending) {
+			return
+		}
+	}
+	m := s.message("master", to, t.ID, recoveryNoticeText, "")
+	m.RequestKey = key
+	m.Report = &ReportReference{Kind: "recovery"}
+}
+
+// queueRecoveryNotices re-engages every task an interruption left open.
+func (s *State) queueRecoveryNotices() {
+	for _, t := range s.Tasks {
+		if t.State != TaskPhaseDone {
+			s.recoveryNotice(t)
+		}
+	}
+}
+
 func (s *State) reportText(m *Message) string {
-	if m.Report == nil || m.Report.Question != "" {
+	// A recovery notification carries behaviour the ledger snapshot cannot
+	// express (preserve gates, do not repeat completed work), so keep its text.
+	if m.Report == nil || m.Report.Question != "" || m.Report.Kind == "recovery" {
 		return m.Text
 	}
 	t := s.Tasks[m.Task]

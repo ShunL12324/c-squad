@@ -328,15 +328,7 @@ func resumeTeam(st *Store, o options) error {
 				}
 			}
 		}
-		for _, t := range cur.Tasks {
-			if t.State != TaskPhaseDone {
-				to := t.Owner
-				if m := cur.Members[to]; m == nil || m.State == MemberStateRemoved {
-					to = "master"
-				}
-				cur.message("master", to, t.ID, "Task recovered after team interruption. Inspect board, handoff and actual workspace before continuing. Preserve review/approval gates; do not repeat completed changes or merge on your own. Report current status to master.", "")
-			}
-		}
+		cur.queueRecoveryNotices()
 		cur.event("master", "team_resumed", handoff)
 		return nil
 	}); e != nil {

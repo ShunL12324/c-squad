@@ -62,6 +62,72 @@ release history; earlier releases remain available on
   the backup. Migration carries written values over as they are; only a
   configuration that set no Master model picks up the new built-in `opus[1m]`.
 
+## v0.9.0 — 2026-09-22
+
+### Removed
+
+- **Breaking.** The top-level `engine`, `model`, `master_engine` and
+  `master_model` settings, the `[env]` and `[startup_env]` tables, and the
+  `[engine_commands.*]` tables are gone. A launch profile now holds all of it.
+- **Breaking.** `member add` no longer accepts `--engine`, `--model`, `--env`,
+  `--role` or `--template`, and `start` no longer accepts `--engine`,
+  `--model` or `--env`. Each removed flag reports the profile field that
+  replaces it. A member's identity comes from `--instructions`; its name is its
+  label.
+- **Breaking.** The built-in Master model is now `opus[1m]` rather than `opus`.
+  A configuration that never set `master_model` starts Master on a different
+  model after upgrading. Set `model` in the profile that `master_profile`
+  selects to pin the previous value.
+- The `needs_attention` delivery state, `Message.DeliveryNote` and the legacy
+  ACK-warning migration that `normalizeState` ran over every message on every
+  read and update.
+- `Message.RecipientGeneration`. Production code never read it, and the prompt
+  rules that asked members to compare generations themselves could never fire,
+  because delivery already guarantees the stamped generation is the recipient's
+  current one. The `recipient_generation` header stays as audit information.
+
+### Added
+
+- Launch profiles. A `[profiles.NAME]` table holds `engine`, `model`, `env` and
+  an optional `command`, and `default_profile` / `master_profile` select the
+  profile used when `--profile` is omitted. A generated configuration ships both
+  defaults as real, editable tables rather than hidden constants.
+- A profile never holds responsibilities, and its name carries no meaning: a
+  profile called `master` applies to Master only when `master_profile` or
+  `start --profile` selects it, and a member's own text is never matched against
+  profile names.
+- `member list` summarises each member's instructions in place of the removed
+  role column, and `member inspect` surfaces the full text.
+
+### Changed
+
+- Existing configurations migrate on load and are rewritten once, after the
+  original is saved as `config.toml.before-profiles`. Top-level engine settings,
+  `[env]`, `[startup_env]`, `[engine_commands.*]` and legacy `[templates.*]`
+  become equivalent profiles. Within each profile the merge order stays what it
+  was: `[env]`, then the profile's own entries, then `[startup_env]` on top.
+  Legacy template prompts are dropped with a warning. Comments in the original
+  file do not survive the rewrite; the backup keeps them.
+- Members that predate profiles inherit the profile their engine migrated into,
+  so a launcher configured through `engine_commands` keeps working after the
+  upgrade instead of falling back to the bare engine name on the PATH.
+- The ledger version rises to 3. Delivery records left in `needs_attention` by
+  an older release are normalized once, off the hot path. Without this they
+  loaded but matched no branch of `deliver`, staying undelivered and uncleared
+  forever.
+
+### Fixed
+
+- Workers can no longer enter plan mode. Claude Code exposes `EnterPlanMode` and
+  `ExitPlanMode` as separate tools, so denying only the entry name left plan mode
+  reachable and the rule resting on the prompt alone.
+- Repeated team recovery no longer accumulates identical wake-ups. Each task's
+  recovery notification carries a stable request key and is reused while the
+  recipient has not received it; a delivered notification is never reused, so a
+  later genuine interruption still wakes its owner. A task finished in the
+  meantime supersedes its own pending notification instead of waking anyone.
+  Ordinary messages queued before a restart are still delivered. (#14)
+
 ## v0.8.0 — 2026-09-21
 
 ### Added

@@ -3,6 +3,7 @@ package squad
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -68,5 +69,40 @@ func TestUpdatedPolicyReplacesOldRuntimeMarker(t *testing.T) {
 	must(t, err)
 	if string(marker) != prompts.Revision+":1:first" {
 		t.Fatalf("old policy marker survived: %s", marker)
+	}
+}
+
+// Delivery stamps every frame with the recipient's current generation, so a rule
+// asking the model to compare generations can never fire and only costs it a turn.
+// The header itself stays as audit information.
+func TestPromptsDoNotDelegateGenerationFiltering(t *testing.T) {
+	st := testStore(t)
+	s, err := st.read()
+	must(t, err)
+	for _, id := range []string{"master", "a"} {
+		m := s.Members[id]
+		m.Role, m.Instructions = "reviewer", "review changes"
+		start, err := prompt(s, m, config.Template{Prompt: m.Instructions})
+		must(t, err)
+		runtime, err := runtimePrompt(s, m)
+		must(t, err)
+		for _, text := range []string{start, runtime} {
+			for _, unwanted := range []string{"Match incoming recipient_generation", "ignore messages for a different generation"} {
+				if strings.Contains(text, unwanted) {
+					t.Fatalf("%s prompt still delegates generation filtering: %q", id, unwanted)
+				}
+			}
+		}
+	}
+}
+
+// worker.tmpl forbids plan mode; the runtime must actually enforce it. Denying only
+// the entry tool left ExitPlanMode exposed and the invariant on the prompt alone.
+func TestWorkerToolDenialCoversPlanMode(t *testing.T) {
+	denied := strings.Split(workerDisallowedTools, ",")
+	for _, tool := range []string{"AskUserQuestion", "EnterPlanMode", "ExitPlanMode"} {
+		if !slices.Contains(denied, tool) {
+			t.Fatalf("worker sessions still expose %s", tool)
+		}
 	}
 }

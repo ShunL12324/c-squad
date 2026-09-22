@@ -19,8 +19,8 @@ func TestRestartPreservesConversationAndFencesOldDelivery(t *testing.T) {
 		m.RunnerPID, m.EnginePID = 111, 222
 		m.Processes = []process.Identity{{PID: 222, Start: "old"}}
 		msg := s.message("master", "a", "", "continue review", "")
-		msg.State, msg.Error, msg.Attempt = DeliveryStateNeedsAttention, "old transport error", "old-attempt"
-		msg.Attempts, msg.RecipientGeneration = 3, m.Generation
+		msg.State, msg.Error, msg.Attempt = DeliveryStateSending, "old transport error", "old-attempt"
+		msg.Attempts = 3
 		m.Generation++
 		m.resetRuntime()
 		msg.recoverDelivery()
@@ -36,7 +36,7 @@ func TestRestartPreservesConversationAndFencesOldDelivery(t *testing.T) {
 		t.Fatal("restart retained old process/transport identity")
 	}
 	msg := s.Messages[0]
-	if msg.State != DeliveryStatePending || msg.Error != "" || msg.Attempts != 0 || msg.Attempt != "" || msg.RecipientGeneration != 0 || msg.Text != "continue review" {
+	if msg.State != DeliveryStatePending || msg.Error != "" || msg.Attempts != 0 || msg.Attempt != "" || msg.Text != "continue review" {
 		t.Fatal("restart did not preserve message content and reset its delivery lease")
 	}
 }

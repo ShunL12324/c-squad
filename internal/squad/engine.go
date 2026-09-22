@@ -12,6 +12,12 @@ import (
 	"github.com/ShunL12324/c-squad/internal/config"
 )
 
+// workerDisallowedTools keeps the native tools that bypass master out of worker
+// sessions. Plan mode is entered and left through two separate tools, so denying
+// EnterPlanMode alone still left ExitPlanMode exposed and plan mode reachable;
+// the engine rejects unknown names, which confirms all three are current.
+const workerDisallowedTools = "AskUserQuestion,EnterPlanMode,ExitPlanMode"
+
 func (st *Store) launch(id string, resume bool, initial string) (launchErr error) {
 	s, e := st.read()
 	if e != nil {
@@ -87,7 +93,7 @@ func (st *Store) launch(id string, resume bool, initial string) (launchErr error
 			args = append(args, "--dangerously-skip-permissions")
 		}
 		if id != "master" {
-			args = append(args, "--disallowedTools", "AskUserQuestion,EnterPlanMode")
+			args = append(args, "--disallowedTools", workerDisallowedTools)
 		}
 		if resume && m.EngineID != "" {
 			args = append(args, "--resume", m.EngineID)

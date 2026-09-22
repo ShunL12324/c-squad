@@ -131,23 +131,22 @@ type Approval struct {
 const UserSender = "user"
 
 // Message retains transport history independently of optional recipient acknowledgment.
-// Attempt and RecipientGeneration fence delivery retries across member restarts.
+// Attempt fences delivery retries across member restarts: deliver compares it with the
+// recipient generation it claimed, so a message in flight never reaches a new incarnation.
 type Message struct {
-	DeliveryNote        string           `json:"delivery_note,omitempty"`
-	Report              *ReportReference `json:"report,omitempty"`
-	ID                  string           `json:"id"`
-	From                string           `json:"from"`
-	To                  string           `json:"to"`
-	Task                string           `json:"task,omitempty"`
-	Text                string           `json:"text"`
-	ReplyTo             string           `json:"reply_to,omitempty"`
-	State               DeliveryState    `json:"state"`
-	Error               string           `json:"error,omitempty"`
-	Created             string           `json:"created"`
-	Attempt             string           `json:"attempt,omitempty"`
-	Attempts            int              `json:"attempts"`
-	RecipientGeneration int              `json:"recipient_generation,omitempty"`
-	RequestKey          string           `json:"request_key,omitempty"`
+	Report     *ReportReference `json:"report,omitempty"`
+	ID         string           `json:"id"`
+	From       string           `json:"from"`
+	To         string           `json:"to"`
+	Task       string           `json:"task,omitempty"`
+	Text       string           `json:"text"`
+	ReplyTo    string           `json:"reply_to,omitempty"`
+	State      DeliveryState    `json:"state"`
+	Error      string           `json:"error,omitempty"`
+	Created    string           `json:"created"`
+	Attempt    string           `json:"attempt,omitempty"`
+	Attempts   int              `json:"attempts"`
+	RequestKey string           `json:"request_key,omitempty"`
 }
 
 // Question records a member request to master and its blocking answer state.
@@ -308,11 +307,42 @@ func (st *Store) read() (*State, error) {
 	return &s, err
 }
 
+// stateVersion is the schema version of the persisted ledger. Bump it together with
+// a matching one-time step in migrateLedger whenever a stored shape stops being read.
+const stateVersion = 3
+
+// migrateLedger rewrites stored records once, at a version boundary, so that obsolete
+// shapes never cost anything on the hot read/update path.
+func migrateLedger(s *State) {
+	if s.Version >= stateVersion {
+		return
+	}
+	if s.Version < 3 {
+		// The needs_attention delivery state was removed. Left alone such a message
+		// matches neither the pending nor the terminal branch of deliver, so it would
+		// stay in the ledger forever without being delivered or cleared. These two
+		// diagnostics were recorded only after successful transport (optional ACK was
+		// still mandatory then); any other cause is requeued for another attempt.
+		for _, m := range s.Messages {
+			if m.State != "needs_attention" {
+				continue
+			}
+			switch m.Error {
+			case "Transport succeeded but no agent ACK; inspect inbox/recipient or explicitly message retry (no automatic reinjection)",
+				"No agent ACK after 3 delivery attempts; inspect recipient or restart/requeue":
+				m.State = DeliveryStateSent
+				m.Error = ""
+			default:
+				m.resetDelivery()
+			}
+		}
+	}
+	s.Version = stateVersion
+}
+
 // Blockers describe independent reasons to wait. They never replace a task phase.
 func normalizeState(s *State) {
-	for _, m := range s.Messages {
-		m.migrateLegacyACKWarning()
-	}
+	migrateLedger(s)
 	for _, t := range s.Tasks {
 		if t.Dispatch == "" {
 			t.Dispatch = DispatchModeAssigned

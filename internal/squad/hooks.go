@@ -98,7 +98,7 @@ func hookInput(st *Store, actor string, gen int, input io.Reader) error {
 		return jsonOut(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "Question recorded for master. Use csquad question request; do not ask the human directly."}})
 	}
 	// No network or model work inside synchronous hooks; the CLI's explicit report path delivers notices.
-	if event == "SessionStart" || (event == "PreToolUse" && actor != "master" && (strings.Contains(strings.ToLower(tool), "askuserquestion") || strings.Contains(strings.ToLower(tool), "request_user_input"))) {
+	if event == "SessionStart" {
 		st.kickDelivery()
 	}
 	if installMessagingContext {

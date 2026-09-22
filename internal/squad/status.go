@@ -6,12 +6,11 @@ type DeliveryState string
 
 // Supported DeliveryState values.
 const (
-	DeliveryStateSuperseded     DeliveryState = "superseded"
-	DeliveryStateAcknowledged   DeliveryState = "acknowledged"
-	DeliveryStateNeedsAttention DeliveryState = "needs_attention"
-	DeliveryStatePending        DeliveryState = "pending"
-	DeliveryStateSending        DeliveryState = "sending"
-	DeliveryStateSent           DeliveryState = "sent"
+	DeliveryStateSuperseded   DeliveryState = "superseded"
+	DeliveryStateAcknowledged DeliveryState = "acknowledged"
+	DeliveryStatePending      DeliveryState = "pending"
+	DeliveryStateSending      DeliveryState = "sending"
+	DeliveryStateSent         DeliveryState = "sent"
 )
 
 // DispatchMode controls whether master assigns a task or members may claim it.

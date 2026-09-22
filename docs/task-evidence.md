@@ -107,12 +107,12 @@ transport prevents delivery. A native engine crash between transport acceptance
 and the ledger commit can still cause a duplicate; check message ID, generation
 and current candidate before acting, without requiring a routine ACK.
 
-Older `needs_attention` entries with either exact built-in missing-ACK diagnostic
-are normalized to `sent` (with prior attempt metadata preserved). The old warning
-is retained in `delivery_note`; it is not a read receipt. Other error causes are
-not inferred to be success. Normalization is visible on read and persisted by
-the next ledger update. Existing native-engine queued input cannot be withdrawn
-by this migration.
+The `needs_attention` delivery state no longer exists. A ledger written before it
+was removed is normalized once, when its version is raised: entries carrying either
+exact built-in missing-ACK diagnostic become `sent` (prior attempt metadata
+preserved), and every other cause is requeued as `pending` for another attempt.
+Normalization is visible on read and persisted by the next ledger update. Existing
+native-engine queued input cannot be withdrawn by this migration.
 
 ## Brief: direct user input
 

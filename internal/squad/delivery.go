@@ -70,7 +70,6 @@ func (st *Store) deliver(id string) error {
 				v.State = DeliveryStateSending
 				v.Attempt = now()
 				v.Attempts++
-				v.RecipientGeneration = member.Generation
 				attempt = v.Attempt
 				recipientGen = member.Generation
 				claimed = true

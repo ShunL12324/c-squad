@@ -98,13 +98,8 @@ func TestRecoveryNoticeIsIdempotentAcrossFailedResumes(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("recovery notice not delivered")
 	}
-	s, e := st.read()
-	must(t, e)
 	if got := recoveryNotices(t, st); len(got) != 1 || got[0].ID != notices[0].ID {
 		t.Fatal("delivery changed notice identity")
-	}
-	if s.Messages[0].RecipientGeneration != s.Members["a"].Generation {
-		t.Fatalf("stale recipient generation %d, member is at %d", s.Messages[0].RecipientGeneration, s.Members["a"].Generation)
 	}
 }
 

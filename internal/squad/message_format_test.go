@@ -65,7 +65,7 @@ func TestMessagingContextInjectedOnceAndOnResume(t *testing.T) {
 		must(t, err)
 		must(t, f.Close())
 		if step.want {
-			for _, want := range []string{"csquad COMMAND", "bound to this session", "recipient_generation against 1", "non-login shell", "Codex exec_command, set login:false", "without an absolute executable path or manual PATH overrides", "Developers and reviewers", "not message quotas", "ordinary uncertainty is not by itself a reason to stop"} {
+			for _, want := range []string{"csquad COMMAND", "bound to this session", "non-login shell", "Codex exec_command, set login:false", "without an absolute executable path or manual PATH overrides", "Developers and reviewers", "not message quotas", "ordinary uncertainty is not by itself a reason to stop"} {
 				if !strings.Contains(string(out), want) {
 					t.Fatalf("runtime context missing %q: %s", want, out)
 				}

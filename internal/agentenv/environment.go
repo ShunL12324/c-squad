@@ -23,23 +23,6 @@ func Validate(env map[string]string) error {
 	return nil
 }
 
-// Parse decodes NUL-separated KEY=VALUE arguments, with the last value winning.
-// NUL is the CLI parser separator; values may contain spaces and equals signs.
-func Parse(raw string) (map[string]string, error) {
-	out := map[string]string{}
-	for _, item := range strings.Split(raw, "\x00") {
-		if item == "" {
-			continue
-		}
-		k, v, ok := strings.Cut(item, "=")
-		if !ok {
-			return nil, fmt.Errorf("--env requires KEY=VALUE")
-		}
-		out[k] = v
-	}
-	return out, Validate(out)
-}
-
 // Merge overlays layers from left to right into a new map without mutating inputs.
 func Merge(layers ...map[string]string) map[string]string {
 	out := map[string]string{}

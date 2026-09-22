@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ShunL12324/c-squad/internal/agentenv"
 	"github.com/ShunL12324/c-squad/internal/buildinfo"
 	"github.com/ShunL12324/c-squad/internal/config"
 	"github.com/ShunL12324/c-squad/internal/filelock"
@@ -334,17 +333,15 @@ func start(o options) error {
 	if e != nil {
 		return e
 	}
-	selected := config.EngineDefaults(cfg, true).Engine
-	if o["engine"] != "" {
-		selected = config.Engine(o["engine"])
+	if e = rejectRemovedLaunchFlags(o); e != nil {
+		return e
 	}
-	cfg.Env = agentenv.Merge(agentenv.SnapshotSelectors(), cfg.Env)
-	startupEnv, e := agentenv.Parse(o["env"])
+	master, masterProfile, e := cfg.ResolveProfile(o["profile"], true)
 	if e != nil {
 		return e
 	}
-	cfg.StartupEnv = agentenv.Merge(cfg.StartupEnv, startupEnv)
-	if e = preflight.CheckConfig(cfg, selected); e != nil {
+	masterEnv := profileEnv(master)
+	if e = preflight.CheckCommand(master.Engine, master.LaunchCommand(master.Engine), masterEnv); e != nil {
 		return e
 	}
 	if e = excludeProjectState(root); e != nil {
@@ -388,17 +385,9 @@ func start(o options) error {
 	if v := os.Getenv("TMUX"); v != "" {
 		socket = strings.Split(v, ",")[0]
 	}
-	t := config.EngineDefaults(cfg, true)
-	if o["engine"] != "" {
-		t.Engine = config.Engine(o["engine"])
-		t.Model = ""
-	}
-	if o["model"] != "" {
-		t.Model = o["model"]
-	}
 	e = st.update(func(s *State) error {
-		*s = State{StartupOverrides: &startupEnv, Version: stateVersion, Epoch: 1, Phase: TeamPhaseStarting, OwnSocket: os.Getenv("TMUX") == "", Config: &cfg, ID: id, Root: root, Socket: socket, Executable: bin, Active: true, Members: map[string]*Member{}, Tasks: map[string]*Task{}, Questions: map[string]*Question{}, Messages: []*Message{}, Events: []Event{}}
-		s.Members["master"] = &Member{EnvOverrides: explicitMemberEnv(nil), Color: tmux.Color(o["color"]), Env: memberEnv(cfg, t, nil), ID: "master", Engine: t.Engine, Model: t.Model, Role: "master", Session: "csq-" + id + "-master", Cwd: root, State: MemberStateStarting, Generation: 1}
+		*s = State{Version: stateVersion, Epoch: 1, Phase: TeamPhaseStarting, OwnSocket: os.Getenv("TMUX") == "", Config: &cfg, ID: id, Root: root, Socket: socket, Executable: bin, Active: true, Members: map[string]*Member{}, Tasks: map[string]*Task{}, Questions: map[string]*Question{}, Messages: []*Message{}, Events: []Event{}}
+		s.Members["master"] = &Member{Color: tmux.Color(o["color"]), Env: masterEnv, ID: "master", Engine: master.Engine, Model: master.Model, Profile: masterProfile, Session: "csq-" + id + "-master", Cwd: root, State: MemberStateStarting, Generation: 1}
 		return nil
 	})
 	if e != nil {

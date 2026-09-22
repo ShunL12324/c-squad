@@ -15,9 +15,10 @@ The legacy `start NAME`, `start --name NAME`, and bare `csquad` remain
 supported. See the [CLI design](cli-design.md) for the command mapping and
 intentional differences from tmux.
 
-Start a team in your project with `csquad start --engine claude` or
-`csquad start --engine codex`. This opens the Master session. Tell it what you
-want built and how you want work divided; it recruits and coordinates members.
+Start a team in your project with `csquad start`, or `csquad start --profile pro`
+to launch Master from a configured [launch profile](#launch-profiles). This opens
+the Master session. Tell it what you want built and how you want work divided; it
+recruits and coordinates members.
 
 The task board is primarily for agents. Master uses it to track ownership,
 progress, blockers, and review/test evidence. You can ask Master for a summary
@@ -66,30 +67,107 @@ cleanup immediately; the next start/resume checks for remaining state.
 ## Configure only what you need
 
 The first configuration load creates `~/.config/csquad/config.toml` with detailed
-comments. Run `csquad config` to inspect the effective values and configuration
-path. An optional project `.csquad.toml` overrides user settings by field.
+comments and the two built-in launch profiles written out. Run `csquad config` to
+inspect the effective values and configuration path. An optional project
+`.csquad.toml` overrides user settings by field.
 
 ```sh
-csquad start --engine claude --model opus
-csquad start --engine codex
+csquad start                # Master uses master_profile
+csquad start --profile pro  # or a profile you name
 ```
 
 The Master recruits members through `csquad member add`, supplying their name,
-engine, and role description. You can describe the team you want in plain language.
+their responsibilities, and optionally a profile. You can describe the team you
+want in plain language.
+
+### Launch profiles
+
+A profile is a reusable launch definition: engine, model, environment overrides,
+and an optional command. It is the only place launch settings live. Define one per
+way of starting an engine — for example one account and model for routine work and
+another for harder work:
+
+```toml
+default_profile = "std"   # used by member add when --profile is omitted
+master_profile = "pro"    # used by start when --profile is omitted
+
+[profiles.std]
+engine = "claude"
+model = "sonnet"
+  [profiles.std.env]
+  CLAUDE_CONFIG_DIR = "/home/you/.claude-std"
+
+[profiles.pro]
+engine = "claude"
+model = "opus"
+  [profiles.pro.env]
+  CLAUDE_CONFIG_DIR = "/home/you/.claude-pro"
+  [profiles.pro.command]   # optional wrapper or renamed client
+  executable = "claude-pro"
+```
+
+```sh
+csquad start --profile pro
+csquad member add dev --profile std --instructions "Own the refund endpoint..."
+```
+
+Profile names use letters, digits, `_` and `-`. An unknown name fails with the
+list of names you have defined. A new configuration is created with the built-in
+defaults written out as `[profiles.codex]` and `[profiles.claude-opus]`; edit,
+rename, or delete them, keeping the pointers in step. Without `default_profile`
+and `master_profile`, members start `codex` and Master starts `claude` with
+`opus[1m]`.
+
+The command line carries exactly two things: which profile to launch with and
+what the member is for. There are no per-setting flags: `--engine`, `--model`,
+`--env` and `--role` were removed, and using one fails with the profile field to
+set instead. A member therefore always launches exactly what its profile says.
+
+A profile holds only *how* to launch. It never holds responsibilities: a member's
+identity always comes from `member add --instructions`, written for that member.
+Profile names carry no meaning of their own either — a profile named `master` is
+applied to Master only if `master_profile` or `start --profile` says so, and a
+member's name or instructions are never matched against a profile name.
+
+Engine, model, and environment are materialised into the member's record when it
+is added, so later configuration edits never change an existing member. The
+command is resolved at launch through the recorded profile name, so an edited
+wrapper reaches the next restart. Removing a profile that an existing member was
+added with is not fatal: that member launches the engine by name with a warning,
+and keeps the account it was added with.
+
+An earlier `[templates]` table is migrated to profiles of the same name the first
+time the configuration loads, and so are the former top-level `engine`, `model`,
+`master_engine`, and `master_model` fields, the shared `[env]` and `[startup_env]`
+tables, and `[engine_commands.ENGINE]`. Shared environment entries are merged into
+every profile in the order the old launch path used — `[env]`, then the profile's
+own values, then `[startup_env]` — and a legacy engine command into the profiles
+launching that engine, or into a profile created for it when none does. A saved
+team's existing members are pointed at the profile their launch settings became,
+so a configured wrapper keeps launching them. The original file is copied to
+`config.toml.before-profiles` before the migrated version is written. A template's
+`prompt` is discarded, because responsibilities now come from `--instructions`;
+the original text remains in the backup. `member add --template` has been removed.
+Migration keeps the values you wrote: a `master_model = "opus"` still launches
+`opus`, and only a configuration that set none uses the built-in `opus[1m]`.
 
 ### Custom engine executables
 
-For renamed clients or wrapper scripts, configure each engine independently in
-the user configuration or the project's `.csquad.toml`:
+For renamed clients or wrapper scripts, give the profile a command table in the
+user configuration or the project's `.csquad.toml`:
 
 ```toml
-[engine_commands.claude]
-executable = "cfuse"
-args = ["--cc"]
+[profiles.wrapped-claude]
+engine = "claude"
+  [profiles.wrapped-claude.command]
+  executable = "cfuse"
+  args = ["--cc"]
 
-[engine_commands.codex]
-executable = "codex-alt"
-args = ["--profile", "work"]
+[profiles.wrapped-codex]
+engine = "codex"
+  [profiles.wrapped-codex.command]
+  executable = "codex-alt"
+  args = ["--profile", "work"]
 ```
 
 `executable` is a command name on the PATH used to start C-Squad, or an absolute
@@ -104,7 +182,8 @@ spaces; do not put a whole shell command in `executable`.
 Every invocation is `executable` + configured `args` + C-Squad's generated
 arguments. This includes `doctor` probes, Codex `app-server` configuration lookup
 and `queue` messaging, and Claude `agents` observation, as well as interactive
-launches. Both Master and workers use their selected engine's command. Generated
+launches. Master and each member use the command of the profile they were
+launched with; a profile without a command table runs the engine by name. Generated
 identity, hooks, model, permission and resume arguments remain unchanged. Avoid
 conflicting options in the prefix; duplicate-option behavior belongs to the
 underlying client.
@@ -117,10 +196,10 @@ engine's CLI, hooks and communication protocol, including helper subcommands.
 Use environment overrides below for account configuration; do not place secrets
 in fixed arguments, which can appear in process listings and configuration output.
 
-New teams snapshot these settings. `member restart` and `recover` keep that
-snapshot. After stopping the team, `resume` reloads command settings from the
-current user/project configuration before starting any member; removing the
-settings restores the native commands. Changing the command alone preserves
+New teams snapshot the profile tables. `member restart` and `recover` keep that
+snapshot. After stopping the team, `resume` reloads the profiles from the
+current user/project configuration before starting any member; removing a
+command table restores the native commands. Changing the command alone preserves
 conversation IDs. Use `resume --fresh` when the replacement cannot read the old
 client's sessions. `doctor --strict --engine codex` checks the configured command's
 availability; it does not certify protocol compatibility or authenticate accounts.
@@ -133,10 +212,12 @@ alias mycc='ANTHROPIC_BASE_URL=https://example.invalid cfuse --cc'
 ```
 
 ```toml
-[engine_commands.claude]
-shell = "zsh" # or "bash"
-executable = "mycc"
-args = []
+[profiles.aliased]
+engine = "claude"
+  [profiles.aliased.command]
+  shell = "zsh" # or "bash"
+  executable = "mycc"
+  args = []
 ```
 
 This starts an interactive Zsh or Bash to load its normal rc file (including
@@ -161,7 +242,7 @@ available. At engine launch, the generation's bound C-Squad launcher directory
 is placed first. An explicit configuration/member `PATH` overrides the rc PATH,
 also with that launcher first at engine launch.
 Alias-local assignments then take precedence. Thus a global account variable in
-`.zshrc` cannot replace an explicit `--env` value, but an account-specific alias
+`.zshrc` cannot replace a profile's `env` value, but an account-specific alias
 can intentionally override it. Job control is disabled in this shell; C-Squad
 tracks and stops the shell and client process tree together. The shell returns
 the client's exit status (including the shell's usual status for a signal).
@@ -170,16 +251,19 @@ snapshotted: editing the alias affects the next invocation, including helpers.
 
 ### Environment overrides
 
-Environment overrides work without account profiles:
+A profile's `env` table selects the account, or any other variable, for the
+members launched with it:
 
-```sh
-csquad start --env CODEX_HOME=/absolute/path/to/codex-config
+```toml
+[profiles.second-account.env]
+CODEX_HOME = "/absolute/path/to/codex-config"
 ```
 
-Precedence: inherited environment → configuration `env` → `start --env` →
-`member add --env`. Running teams retain their startup configuration. On recovery, changes to
-configured environment defaults apply to members that inherited those defaults;
-member-specific overrides remain intact. Changing `CODEX_HOME` starts a fresh
+Precedence has two layers: the inherited environment, then the profile's `env`.
+Running teams retain their startup configuration. On recovery, an edit to the
+profile a member was added with applies to the values that member still holds
+from it; anything the member picked up elsewhere remains intact, and a member
+whose profile was deleted keeps its account. Changing `CODEX_HOME` starts a fresh
 Codex conversation in that configuration directory while preserving the task
 ledger and recovery handoff. Member
 limits are configurable; there is no conversation-turn cap. A member's
@@ -330,8 +414,8 @@ a local SQLite ledger and a per-team runtime; it installs no system service.
 Give collaborators the same status-bar color to make a task group easy to spot:
 
 ```sh
-csquad member add developer --engine codex --role developer --color mint
-csquad member add reviewer --engine claude --role reviewer --color mint
+csquad member add developer --instructions "Implement the refund endpoint" --color mint
+csquad member add reviewer --profile pro --instructions "Review the refund work" --color mint
 ```
 
 Colors are visual labels, not task assignments or status indicators. Master is
@@ -443,7 +527,7 @@ share its layout and panel selection.
 For a team spanning several projects, set each member's actual startup directory:
 
 ```sh
-csquad member add api-reader --engine codex --cwd /path/to/api --role "API researcher"
+csquad member add api-reader --cwd /path/to/api --instructions "Research the upstream API"
 csquad member restart api-reader --cwd /path/to/api
 ```
 
@@ -539,17 +623,14 @@ and `csquad version`. The first command should select the current member's
 
 ### Recovery environment and missing directories
 
-`resume` reloads both `[env]` and the compatibility `[startup_env]` table.
-New teams record command-line startup overrides separately, so editing or
-removing a configuration default can take effect without confusing it with
-`start --env`. Explicit startup and member overrides retain precedence;
-`resume --env KEY=VALUE` overrides the saved value for every resumed member.
-For older saved teams, startup values have no provenance: unchanged historical
-values are retained, while entries in either current `[env]` or `[startup_env]` table replace
-the old defaults. Use `resume --env CODEX_HOME=/new/account` to resolve an
-ambiguous old override. Account changes start a fresh native conversation while
-preserving the team ledger and handoff. No environment values are printed by
-recovery diagnostics.
+`resume` reloads the profile tables from the current configuration. Each member
+is then moved onto the current `env` of the profile it was added with: a value it
+still holds from that profile follows the edit, a variable the profile no longer
+sets is dropped, and anything else the member carries is left alone. A member
+whose profile was deleted, or one added before profiles existed, keeps the
+environment it was launched with. Account changes start a fresh native
+conversation while preserving the team ledger and handoff. No environment values
+are printed by recovery diagnostics.
 
 Recovery checks all member directories before stopping old processes or starting
 any new ones. If a worktree was removed, restore it, or update the saved directory

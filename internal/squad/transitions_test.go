@@ -42,81 +42,67 @@ func TestRestartPreservesConversationAndFencesOldDelivery(t *testing.T) {
 }
 
 func TestResumeEnvironmentUsesUpdatedDefaults(t *testing.T) {
+	// The member still holds the account its profile set, so the edited value
+	// replaces it and the old conversation is fenced. A variable the member
+	// materialised from somewhere else keeps the value it was added with.
 	m := Member{Engine: "codex", EngineID: "old-thread", Env: map[string]string{"CODEX_HOME": "/old", "CUSTOM": "member"}}
-	m.applyResumeEnvironment(map[string]string{"CODEX_HOME": "/old", "CUSTOM": "global"}, map[string]string{"CODEX_HOME": "/new", "CUSTOM": "new-global"}, nil)
+	m.applyResumeEnvironment(map[string]string{"CODEX_HOME": "/old", "CUSTOM": "profile"}, map[string]string{"CODEX_HOME": "/new", "CUSTOM": "new-profile"})
 	if m.Env["CODEX_HOME"] != "/new" || m.Env["CUSTOM"] != "member" || m.EngineID != "" {
 		t.Fatalf("incorrect recovery environment: %+v", m)
 	}
 	m.EngineID = "new-thread"
-	m.applyResumeEnvironment(map[string]string{"CODEX_HOME": "/new"}, map[string]string{"CODEX_HOME": "/new"}, nil)
+	m.applyResumeEnvironment(map[string]string{"CODEX_HOME": "/new"}, map[string]string{"CODEX_HOME": "/new"})
 	if m.EngineID != "new-thread" {
 		t.Fatal("unchanged account lost its conversation")
 	}
-	m.applyResumeEnvironment(nil, nil, map[string]string{"CODEX_HOME": "/explicit"})
-	if m.Env["CODEX_HOME"] != "/explicit" || m.EngineID != "" {
-		t.Fatal("explicit account override was not applied")
+}
+
+// A resume adopts an edited profile table and reads the member's environment
+// from the profile it was added with, the only layer above the inherited one.
+func TestResumeRefreshesProfileConfiguration(t *testing.T) {
+	saved := config.Config{Profiles: map[string]config.Profile{
+		"pro": {Engine: config.Codex, Env: map[string]string{"CODEX_HOME": "/old", "REMOVED": "old"}}}}
+	s := &State{Config: &saved}
+	edited := config.Config{Profiles: map[string]config.Profile{
+		"pro": {Engine: config.Codex, Env: map[string]string{"CODEX_HOME": "/new"}}}, DefaultProfile: "pro"}
+	m := Member{ID: "a", Engine: config.Codex, Profile: "pro", EngineID: "old-session",
+		Env: map[string]string{"CODEX_HOME": "/old", "REMOVED": "old", "CUSTOM": "member"}}
+	old, current := resumeProfileEnv(s.Config, edited, &m)
+	refreshResumeDefaults(s, edited)
+	m.applyResumeEnvironment(old, current)
+	if m.Env["CODEX_HOME"] != "/new" || m.EngineID != "" || m.Env["CUSTOM"] != "member" {
+		t.Fatalf("refresh: %+v", m)
+	}
+	if _, ok := m.Env["REMOVED"]; ok {
+		t.Fatal("a variable the profile no longer sets was retained")
+	}
+	if s.Config.DefaultProfile != "pro" || s.Config.Profiles["pro"].Env["CODEX_HOME"] != "/new" {
+		t.Fatalf("the snapshot did not adopt the edited profiles: %+v", s.Config)
+	}
+	// Resuming again with the same tables changes nothing, so a restart does not
+	// keep discarding conversations.
+	m.EngineID = "new-session"
+	old, current = resumeProfileEnv(s.Config, edited, &m)
+	m.applyResumeEnvironment(old, current)
+	if m.EngineID != "new-session" {
+		t.Fatal("unchanged account cleared")
 	}
 }
 
-func TestResumeRefreshesStartupConfiguration(t *testing.T) {
-	for _, modern := range []bool{false, true} {
-		s := &State{Config: &config.Config{Env: map[string]string{"REMOVED": "old"}, StartupEnv: map[string]string{"CODEX_HOME": "/old"}}}
-		if modern {
-			empty := map[string]string{}
-			s.StartupOverrides = &empty
+// A member outlives its profile: one added before profiles existed carries no
+// profile at all, and a profile can be deleted while the team runs. Neither may
+// move an existing member onto a different account.
+func TestResumeKeepsMembersWithoutALiveProfile(t *testing.T) {
+	saved := config.Config{Profiles: map[string]config.Profile{
+		"pro": {Engine: config.Codex, Env: map[string]string{"CODEX_HOME": "/old"}}}}
+	for _, m := range []Member{
+		{ID: "a", Engine: config.Codex, Profile: "pro", EngineID: "session", Env: map[string]string{"CODEX_HOME": "/old"}},
+		{ID: "legacy", Engine: config.Codex, EngineID: "session", Env: map[string]string{"CODEX_HOME": "/old"}},
+	} {
+		old, current := resumeProfileEnv(&saved, config.Config{}, &m)
+		m.applyResumeEnvironment(old, current)
+		if m.Env["CODEX_HOME"] != "/old" || m.EngineID != "session" {
+			t.Fatalf("%s lost its account when the profile went away: %+v", m.ID, m)
 		}
-		m := Member{Engine: config.Codex, EngineID: "old-session", Env: map[string]string{"CODEX_HOME": "/old", "REMOVED": "old", "CUSTOM": "member"}}
-		old, current := refreshResumeDefaults(s, config.Config{StartupEnv: map[string]string{"CODEX_HOME": "/new"}}, nil)
-		m.applyResumeEnvironment(old, current, nil)
-		if m.Env["CODEX_HOME"] != "/new" || m.EngineID != "" || m.Env["CUSTOM"] != "member" {
-			t.Fatalf("refresh: %+v", m)
-		}
-		if _, ok := m.Env["REMOVED"]; ok {
-			t.Fatal("deleted config retained")
-		}
-		m.EngineID = "new-session"
-		old, current = refreshResumeDefaults(s, config.Config{StartupEnv: map[string]string{"CODEX_HOME": "/new"}}, nil)
-		m.applyResumeEnvironment(old, current, nil)
-		if m.EngineID != "new-session" {
-			t.Fatal("unchanged account cleared")
-		}
-	}
-}
-
-func TestResumeRetainsExplicitStartupOverride(t *testing.T) {
-	overrides := map[string]string{"CODEX_HOME": "/explicit"}
-	s := &State{StartupOverrides: &overrides, Config: &config.Config{StartupEnv: overrides}}
-	_, current := refreshResumeDefaults(s, config.Config{Env: map[string]string{"CODEX_HOME": "/configured"}}, nil)
-	if current["CODEX_HOME"] != "/explicit" {
-		t.Fatal("lost explicit startup override")
-	}
-	_, current = refreshResumeDefaults(s, config.Config{}, map[string]string{"CODEX_HOME": "/resume"})
-	if current["CODEX_HOME"] != "/resume" {
-		t.Fatal("resume override ignored")
-	}
-}
-
-func TestResumePreservesMemberOverridesEvenWhenEqualToOldDefault(t *testing.T) {
-	for _, value := range []string{"/old", "/member"} {
-		m := Member{Engine: config.Codex, Env: map[string]string{"CODEX_HOME": value, "CUSTOM": "member"}, EnvOverrides: explicitMemberEnv(map[string]string{"CODEX_HOME": value, "CUSTOM": "member"})}
-		m.applyResumeEnvironment(map[string]string{"CODEX_HOME": "/old"}, map[string]string{"CODEX_HOME": "/new", "CUSTOM": "new-default"}, nil)
-		if m.Env["CODEX_HOME"] != value || m.Env["CUSTOM"] != "member" {
-			t.Fatalf("member override lost: %+v", m.Env)
-		}
-		m.applyResumeEnvironment(nil, nil, map[string]string{"CODEX_HOME": "/resume"})
-		m.applyResumeEnvironment(nil, map[string]string{"CODEX_HOME": "/later"}, nil)
-		if m.Env["CODEX_HOME"] != "/resume" {
-			t.Fatal("resume override was not retained")
-		}
-	}
-}
-
-func TestLegacyStartupMovedToEnvUsesCurrentAccount(t *testing.T) {
-	s := &State{Config: &config.Config{StartupEnv: map[string]string{"CODEX_HOME": "/old"}}}
-	m := Member{Engine: config.Codex, EngineID: "old-session", Env: map[string]string{"CODEX_HOME": "/old"}}
-	old, current := refreshResumeDefaults(s, config.Config{Env: map[string]string{"CODEX_HOME": "/new"}}, nil)
-	m.applyResumeEnvironment(old, current, nil)
-	if m.Env["CODEX_HOME"] != "/new" || m.EngineID != "" {
-		t.Fatalf("old startup masked current config: %+v", m)
 	}
 }

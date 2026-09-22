@@ -28,7 +28,7 @@ func codexConfig(cwd string, trusted bool, environments ...map[string]string) (c
 	if len(environments) > 0 {
 		env = environments[0]
 	}
-	return codexConfigWithCommand(cwd, trusted, env, engineconfig.Config{}.Command(engineconfig.Codex))
+	return codexConfigWithCommand(cwd, trusted, env, engineconfig.EngineCommand(engineconfig.Codex))
 }
 
 func codexConfigWithCommand(cwd string, trusted bool, env map[string]string, command engineconfig.Command) (config codexSessionConfig, err error) {

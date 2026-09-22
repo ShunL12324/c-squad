@@ -9,7 +9,7 @@ You do not need Go or a compiler.
 ```sh
 npm install -g csquad
 csquad doctor
-csquad new -s my-team --engine claude
+csquad new -s my-team
 ```
 
 Create a named team with `csquad new -s NAME`; `csquad start --name NAME`

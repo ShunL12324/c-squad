@@ -6,8 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ShunL12324/c-squad/internal/agentenv"
-	"github.com/ShunL12324/c-squad/internal/config"
 	"github.com/ShunL12324/c-squad/internal/filelock"
 	"github.com/ShunL12324/c-squad/internal/preflight"
 	"github.com/ShunL12324/c-squad/internal/tmux"
@@ -44,7 +42,12 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 		// The card truncates long branch names to fit a 28-column panel; this is
 		// where the untruncated value lives. It is resolved on demand rather than
 		// stored, so the ledger keeps no Git state to go stale.
-		record := map[string]any{"member": m, "terminal": out}
+		// Instructions are the reason a member exists, so they are surfaced at the
+		// top level rather than buried in the record. The member copy drops them:
+		// printing the same prose twice leaves a reader unsure which one is live.
+		visible := *m
+		visible.Instructions = ""
+		record := map[string]any{"member": &visible, "instructions": m.Instructions, "terminal": out}
 		if state, ok := memberGit(m.Cwd); ok {
 			record["git"] = state
 		}
@@ -80,37 +83,15 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 		if e != nil {
 			return e
 		}
-		role := o["role"]
-		if role == "" {
-			role = "team member"
+		if e = rejectRemovedLaunchFlags(o); e != nil {
+			return e
 		}
-		t := config.EngineDefaults(cfg, false)
-		// Keep explicitly requested legacy templates usable by existing masters.
-		if name := o["template"]; name != "" {
-			legacy, ok := cfg.Templates[name]
-			if !ok {
-				return fmt.Errorf("unknown legacy template %q; use --role and --instructions", name)
-			}
-			t = legacy
-			if o["role"] == "" {
-				role = name
-			}
-		}
-		if o["instructions"] != "" {
-			t.Prompt = o["instructions"]
-		}
-		if o["engine"] != "" && config.Engine(o["engine"]) != t.Engine {
-			t.Engine = config.Engine(o["engine"])
-			t.Model = ""
-		}
-		if o["model"] != "" {
-			t.Model = o["model"]
-		}
-		overrides, e := agentenv.Parse(o["env"])
+		p, profile, e := cfg.ResolveProfile(o["profile"], false)
 		if e != nil {
 			return e
 		}
-		if e = preflight.CheckConfig(cfg, t.Engine, memberEnv(cfg, t, overrides)); e != nil {
+		env := profileEnv(p)
+		if e = preflight.CheckCommand(p.Engine, p.LaunchCommand(p.Engine), env); e != nil {
 			return e
 		}
 		cwd := s.Root
@@ -140,7 +121,10 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 			if count >= cfg.MaxMembers {
 				return ErrMemberLimit
 			}
-			s.Members[id] = &Member{EnvOverrides: explicitMemberEnv(overrides), Color: tmux.Color(o["color"]), Instructions: t.Prompt, Env: memberEnv(cfg, t, overrides), ID: id, Engine: t.Engine, Model: t.Model, Role: role, Session: "csq-" + s.ID + "-" + id, Cwd: cwd, State: MemberStateStarting, Generation: 1}
+			// Engine, model and environment are materialised now, so later config
+			// edits never change an existing member. The profile name is kept
+			// because the launch command is resolved through it at every start.
+			s.Members[id] = &Member{Color: tmux.Color(o["color"]), Instructions: o["instructions"], Env: env, ID: id, Engine: p.Engine, Model: p.Model, Profile: profile, Session: "csq-" + s.ID + "-" + id, Cwd: cwd, State: MemberStateStarting, Generation: 1}
 			if o["task"] != "" {
 				t := s.Tasks[o["task"]]
 				t.Participants = append(t.Participants, id)

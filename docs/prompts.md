@@ -13,9 +13,10 @@ handoff. The command reference belongs to startup. Engine-specific transport
 notes are conditional; the permission and CLI identity rules apply to both.
 
 The renderer requires team, member, positive generation and a supported engine.
-Role, responsibilities, working directory, handoff and colors are typed data
-fields. Member instructions and legacy role-template text are passed as values,
-never parsed as templates; braces, quotation marks and code stay literal.
+Responsibilities, working directory, handoff and colors are typed data fields. Member instructions are passed as values, never parsed as templates;
+braces, quotation marks and code stay literal. They come only from that member's
+own record, written by `member add --instructions`; no configured text is looked
+up by member or profile name.
 The built-in instructions are English. User-provided responsibilities and
 paths retain their original language and contents rather than being translated.
 This prevents template execution, not semantic prompt injection: responsibilities

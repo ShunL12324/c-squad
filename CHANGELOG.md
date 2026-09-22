@@ -4,6 +4,64 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
+## Unreleased
+
+### Added
+
+- Define reusable launch profiles in `[profiles.NAME]`: engine, model,
+  environment overrides, and an optional command. Select one by name with
+  `member add --profile` or `start --profile`, or point `default_profile` and
+  `master_profile` at the profile each role uses by default. A new configuration
+  is written with the built-in defaults as `[profiles.codex]` and
+  `[profiles.claude-opus]`; without the pointers, members start `codex` and
+  Master starts `claude` with `opus[1m]`. Profile settings are validated when the
+  configuration loads.
+- `member list` shows each member's responsibilities in place of the removed role
+  column, reduced to their first line; `member inspect` surfaces the full text at
+  the top level and prints it only once.
+
+### Changed
+
+- A member's launch is determined entirely by its profile. The command line
+  carries only which profile to start and what the member is for, so a member
+  always launches exactly what its profile says.
+- A profile holds only how to launch. Responsibilities come from
+  `member add --instructions` alone, and no configured text is looked up by a
+  member's name to inject a prompt. Profile names carry no built-in meaning; a
+  profile named `master` applies to Master only when `master_profile` or
+  `start --profile` selects it.
+- A member's environment now has two layers: the inherited environment, then its
+  profile's `env`.
+- Engine, model, and environment are still materialised when a member is added;
+  the launch command is resolved through the member's recorded profile, so an
+  edited wrapper reaches the next restart. A profile removed after the member was
+  added launches the engine by name with a warning instead of failing, and that
+  member keeps the account it was added with.
+- Startup checks now probe the command the member will actually launch, including
+  a profile's wrapper, rather than the bare engine name.
+
+### Removed
+
+- `--engine`, `--model`, `--env` and `--role` on `start`, `member add` and
+  `resume`, and `member add --template`. Each one now fails with the profile
+  field to set instead. `doctor --engine` is unchanged.
+- The top-level `engine`, `model`, `master_engine` and `master_model` fields and
+  the `[env]`, `[startup_env]`, `[engine_commands.ENGINE]` and `[templates]`
+  tables. They are migrated to profiles the first time the configuration loads,
+  and team snapshots created before this release are migrated on read, so an
+  existing team keeps starting the engines it started before. Shared environment
+  entries merge into every profile in the order the old launch path applied them
+  — `[env]`, the profile's own values, then `[startup_env]` — and a legacy engine
+  command merges into the profiles launching that engine, or into a profile
+  created for it when none does. A saved team's existing members are pointed at
+  the profile their launch settings became, so a configured wrapper or alias
+  keeps launching them after the upgrade. The original
+  file is copied to `config.toml.before-profiles` first; a failed write-back
+  warns and keeps the in-memory migration. A template's `prompt` is discarded,
+  with a warning naming `--instructions` as its replacement; the text remains in
+  the backup. Migration carries written values over as they are; only a
+  configuration that set no Master model picks up the new built-in `opus[1m]`.
+
 ## v0.8.0 — 2026-09-21
 
 ### Added

@@ -9,27 +9,30 @@ import (
 
 func TestDynamicIdentitySurvivesSnapshotWithoutTemplates(t *testing.T) {
 	cfg := config.Defaults()
-	if len(cfg.Templates) != 0 {
-		t.Fatal("defaults still require role templates")
+	if len(cfg.Templates) != 0 || len(cfg.Profiles) != 0 {
+		t.Fatal("defaults still ship canned identities")
 	}
 	st := testStore(t)
 	must(t, st.update(func(s *State) error {
 		s.Config = &cfg
-		s.Members["a"].Role = "Payments API developer"
 		s.Members["a"].Instructions = "Implement the refund endpoint and verify idempotency"
 		return nil
 	}))
 	s, e := st.read()
 	must(t, e)
 	m := s.Members["a"]
-	text, promptErr := prompt(s, m, config.Template{Prompt: m.Instructions})
+	text, promptErr := prompt(s, m)
 	must(t, promptErr)
-	for _, want := range []string{m.Role, m.Instructions, "--role IDENTITY", "--instructions RESPONSIBILITIES"} {
+	// Responsibilities are the only identity a member carries, and the prompt
+	// documents the single flag that supplies them.
+	for _, want := range []string{m.Instructions, "--instructions RESPONSIBILITIES"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q", want)
 		}
 	}
-	if strings.Contains(text, "--template developer|") {
-		t.Fatal("prompt still requires fixed templates")
+	for _, gone := range []string{"--template developer|", "--role IDENTITY"} {
+		if strings.Contains(text, gone) {
+			t.Fatalf("prompt still advertises %q", gone)
+		}
 	}
 }

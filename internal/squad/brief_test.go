@@ -116,11 +116,12 @@ func TestBriefNativeCodexCustomCommandAndAlias(t *testing.T) {
 				cmd.Executable = "briefnative"
 				cmd.Shell = shell
 			}
-			cfg.EngineCommands = map[config.Engine]config.Command{config.Codex: cmd}
+			cfg.Profiles = map[string]config.Profile{"native": {Engine: config.Codex, Command: &cmd}}
+			cfg.MasterProfile = "native"
 			must(t, st.update(func(s *State) error {
 				s.Config = &cfg
 				m := s.Members["master"]
-				m.Engine = config.Codex
+				m.Engine, m.Profile = config.Codex, "native"
 				m.EngineID = "thread-7"
 				m.Cwd = root
 				m.Env = env

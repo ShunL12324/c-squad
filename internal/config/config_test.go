@@ -16,19 +16,43 @@ func must(t *testing.T, err error) {
 }
 func TestTOMLConfigMigrationAndPartialOverlay(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("CSQUAD_CONFIG", filepath.Join(dir, "config.toml"))
-	must(t, os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"max_members":12,"templates":{"developer":{"engine":"codex","model":"example"}}}`), 0600))
+	path := filepath.Join(dir, "config.toml")
+	t.Setenv("CSQUAD_CONFIG", path)
+	must(t, os.WriteFile(path, []byte("max_members = 12\n[templates.developer]\nengine = 'codex'\nmodel = 'example'\n"), 0600))
 	root := t.TempDir()
 	must(t, os.WriteFile(filepath.Join(root, ".csquad.toml"), []byte("[templates.developer.env]\nCODEX_HOME = '/second'\n"), 0600))
 	c, e := Load(root)
 	must(t, e)
-	if c.MaxMembers != 12 || c.Templates["developer"].Engine != Codex || c.Templates["developer"].Model != "example" || c.Templates["developer"].Env["CODEX_HOME"] != "/second" {
+	// The overlaid template is merged field by field and then migrated to a
+	// profile of the same name, which default_profile inherits from it.
+	if c.MaxMembers != 12 || c.Profiles["developer"].Engine != Codex || c.Profiles["developer"].Model != "example" || c.Profiles["developer"].Env["CODEX_HOME"] != "/second" || c.DefaultProfile != "developer" {
 		t.Fatalf("unexpected overlay: %+v", c)
 	}
-	b, e := os.ReadFile(Path())
+	// The rewritten user file keeps the user's own settings and only the value a
+	// project overlay supplied stays out of it.
+	b, e := os.ReadFile(path)
 	must(t, e)
-	if !strings.Contains(string(b), "max_members = 12") {
+	if !strings.Contains(string(b), "max_members = 12") || strings.Contains(string(b), "/second") {
 		t.Fatal(string(b))
+	}
+}
+
+// A legacy JSON configuration is imported once into the new TOML file, migrated
+// on the way in so the new file launches what the old one launched, and kept on
+// disk as a backup.
+func TestLegacyJSONConfigurationIsImportedAndMigrated(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CSQUAD_CONFIG", filepath.Join(dir, "config.toml"))
+	must(t, os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"max_members":12,"templates":{"developer":{"engine":"codex","model":"example"}}}`), 0600))
+	c, e := Load("")
+	must(t, e)
+	if c.MaxMembers != 12 || c.DefaultProfile != "developer" || c.Profiles["developer"].Model != "example" {
+		t.Fatalf("legacy import changed what a team launches: %+v", c)
+	}
+	// Master had no legacy setting, so it takes the built-in profile, written out
+	// beside the imported one.
+	if c.MasterProfile != "claude-opus" || c.Profiles["claude-opus"].Model != "opus[1m]" {
+		t.Fatalf("built-in master profile not seeded: %+v", c)
 	}
 	if _, e = os.Stat(filepath.Join(dir, "config.json")); e != nil {
 		t.Fatal("legacy backup removed")
@@ -53,38 +77,59 @@ func TestUnknownFieldsAndEngineAreRejected(t *testing.T) {
 	}
 }
 
+// Test 22: a new configuration is written with the built-in profiles spelled out
+// and both pointers set, so the defaults are visible and editable rather than
+// hidden in code, and a file that already uses profiles is never rewritten.
 func TestGeneratedConfigIsDocumentedAndPreserved(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	t.Setenv("CSQUAD_CONFIG", path)
 	got, err := Load("")
 	must(t, err)
-	if got.Engine != Codex || got.MasterEngine != Claude || got.MaxMembers != 8 {
+	if got.MaxMembers != 8 || got.DefaultProfile != "codex" || got.MasterProfile != "claude-opus" {
 		t.Fatalf("unexpected generated defaults: %+v", got)
+	}
+	if worker := got.Profiles["codex"]; worker.Engine != Codex || worker.Model != "" {
+		t.Fatalf("generated worker profile: %+v", worker)
+	}
+	if master := got.Profiles["claude-opus"]; master.Engine != Claude || master.Model != "opus[1m]" {
+		t.Fatalf("generated master profile: %+v", master)
 	}
 	body, err := os.ReadFile(path)
 	must(t, err)
-	for _, text := range []string{"# C-Squad", "including Master", "\n[env]\n", "master_model", "do not expand", "--env", "bypass_permissions"} {
+	for _, text := range []string{"# C-Squad", "including Master", "[profiles.codex]", "[profiles.claude-opus]",
+		`default_profile = 'codex'`, `master_profile = 'claude-opus'`, `model = 'opus[1m]'`, "do not expand", "bypass_permissions"} {
 		if !strings.Contains(string(body), text) {
 			t.Errorf("generated configuration is missing %q", text)
 		}
 	}
-	custom := "# User-maintained comments\nmax_members = 3\n[env]\nEXAMPLE = 'a=b c'\n"
+	// Legacy tables are not written into a new file; only a file that still has
+	// one is migrated, and that is covered by the migration tests.
+	for _, text := range []string{"\n[env]\n", "\n[startup_env]\n", "\n[engine_commands", "--env"} {
+		if strings.Contains(string(body), text) {
+			t.Errorf("generated configuration still offers %q", text)
+		}
+	}
+	custom := "# User-maintained comments\nmax_members = 3\n[profiles.mine]\nengine = 'claude'\n[profiles.mine.env]\nEXAMPLE = 'a=b c'\n"
 	must(t, os.WriteFile(path, []byte(custom), 0600))
 	got, err = Load("")
 	must(t, err)
-	if got.MaxMembers != 3 || got.Env["EXAMPLE"] != "a=b c" {
+	if got.MaxMembers != 3 || got.Profiles["mine"].Env["EXAMPLE"] != "a=b c" {
 		t.Fatalf("custom settings were not preserved: %+v", got)
 	}
 	body, err = os.ReadFile(path)
 	must(t, err)
 	if string(body) != custom {
-		t.Fatal("loading rewrote the user's configuration")
+		t.Fatal("loading rewrote a configuration that had nothing to migrate")
 	}
 }
 
 func TestDocumentPreservesEnvironmentAndLegacyValues(t *testing.T) {
 	want := Defaults()
-	want.Env = map[string]string{"EXAMPLE": "quotes \" and newline\nvalue", "CLAUDE_CONFIG_DIR": ""}
+	want.Profiles = map[string]Profile{"std": {Engine: Claude,
+		Env: map[string]string{"EXAMPLE": "quotes \" and newline\nvalue", "CLAUDE_CONFIG_DIR": ""}}}
+	want.DefaultProfile = "std"
+	// A legacy table still round trips: a file being migrated is decoded, and the
+	// write-back is generated from the same document writer.
 	want.Templates = map[string]Template{"reviewer": {Engine: Claude, Prompt: "review only"}}
 	body, err := Document(want)
 	must(t, err)

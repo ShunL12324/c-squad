@@ -10,40 +10,53 @@ import (
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
-
-	"github.com/ShunL12324/c-squad/internal/agentenv"
 )
 
-// Template holds engine defaults and supports legacy named role configurations.
+// Template is a legacy decode target only. Configurations that still carry a
+// [templates] table are migrated to profiles at load; the type participates in
+// no runtime decision. Prompt is dropped during migration because responsibilities
+// belong to member add --instructions, not to a launch definition.
 type Template struct {
-	Env    map[string]string `json:"env,omitempty" toml:"env,omitempty" comment:"Legacy template environment overrides; take precedence over global env. Prefer member add --env."`
-	Engine Engine            `json:"engine" toml:"engine" comment:"Legacy template engine: claude or codex."`
-	Model  string            `json:"model,omitempty" toml:"model,omitempty" comment:"Legacy template model. An empty string uses the native engine default."`
-	Prompt string            `json:"prompt" toml:"prompt" comment:"Legacy template responsibilities, injected into coordination instructions. Prefer member add --instructions."`
+	Env    map[string]string `json:"env,omitempty" toml:"env,omitempty" comment:"Legacy template environment overrides; migrated to a profile of the same name."`
+	Engine Engine            `json:"engine,omitempty" toml:"engine,omitempty" comment:"Legacy template engine; migrated to a profile of the same name."`
+	Model  string            `json:"model,omitempty" toml:"model,omitempty" comment:"Legacy template model; migrated to a profile of the same name."`
+	Prompt string            `json:"prompt,omitempty" toml:"prompt,omitempty" comment:"Legacy template responsibilities. Discarded on migration; supply responsibilities with member add --instructions."`
 }
 
-// Config holds engine defaults, team limits, and environment overrides.
+// Config holds launch profiles and team-wide limits. Everything about how a
+// member starts lives in a profile; the tables listed as legacy below are decoded
+// only so an older file still loads, and are migrated into profiles at load.
 // A startup snapshot is stored with the team so later config edits do not change it.
 type Config struct {
-	EngineCommands map[Engine]Command  `json:"engine_commands,omitempty" toml:"engine_commands,omitempty" comment:"Optional per-engine executable and literal prefix arguments. Applies to both Master and workers, including probes and messaging helpers."`
-	Engine         Engine              `json:"engine" toml:"engine" comment:"Default worker engine: codex (default) or claude. Override with member add --engine."`
-	Model          string              `json:"model,omitempty" toml:"model" comment:"Default worker model. Empty by default to use native engine configuration. Use a model supported by the selected engine; override with member add --model."`
-	MasterEngine   Engine              `json:"master_engine" toml:"master_engine" comment:"Default Master engine: claude (default) or codex. Override with start --engine."`
-	MasterModel    string              `json:"master_model,omitempty" toml:"master_model" comment:"Default Master model: opus (Claude). When changing master_engine, also change this model or set it to an empty string to use the native default."`
-	Env            map[string]string   `json:"env,omitempty" toml:"env" comment:"Environment overrides for Master and all members. Empty by default; values must be strings.\nPrecedence, lowest to highest: inherited environment -> env -> start --env -> member add --env.\nUse absolute paths. Paths do not expand ~, $HOME, or command substitutions. CODEX_HOME selects the Codex configuration directory.\nCLAUDE_CONFIG_DIR selects the Claude configuration directory. An empty value unsets the variable.\nCSQUAD_*, TMUX, and TMUX_PANE are managed by C Squad and cannot be overridden.\nExample entry in the [env] table below: CODEX_HOME = \"/home/yourname/.codex-alt\"."`
-	StartupEnv     map[string]string   `json:"startup_env,omitempty" toml:"startup_env,omitempty" comment:"Compatibility field for saved startup environment overrides; takes precedence over env. Normally set these through start --env KEY=VALUE rather than editing this field."`
-	Version        int                 `json:"version" toml:"version" comment:"Configuration schema version. Only 1 is supported. This is not the application version; do not change it."`
+	Profiles       map[string]Profile  `json:"profiles,omitempty" toml:"profiles,omitempty" comment:"Reusable launch definitions selected by name with member add --profile or start --profile.\nEach [profiles.NAME] table sets engine, model, env and an optional command, and is the only place launch settings are configured.\nNames use letters, digits, _ and - only.\nProfiles never carry responsibilities: a member's identity always comes from member add --instructions,\nand a profile name is never matched against a member."`
+	DefaultProfile string              `json:"default_profile,omitempty" toml:"default_profile,omitempty" comment:"Profile used for members when member add omits --profile. Empty uses the built-in default: codex."`
+	MasterProfile  string              `json:"master_profile,omitempty" toml:"master_profile,omitempty" comment:"Profile used for Master when start omits --profile. Empty uses the built-in default: claude with model opus[1m]."`
+	Engine         Engine              `json:"engine,omitempty" toml:"engine,omitempty" comment:"Legacy field, migrated to a profile at load and then cleared. Select the member engine with default_profile."`
+	Model          string              `json:"model,omitempty" toml:"model,omitempty" comment:"Legacy field, migrated to a profile at load and then cleared. Select the member model with default_profile."`
+	MasterEngine   Engine              `json:"master_engine,omitempty" toml:"master_engine,omitempty" comment:"Legacy field, migrated to a profile at load and then cleared. Select the Master engine with master_profile."`
+	MasterModel    string              `json:"master_model,omitempty" toml:"master_model,omitempty" comment:"Legacy field, migrated to a profile at load and then cleared. Select the Master model with master_profile."`
+	Env            map[string]string   `json:"env,omitempty" toml:"env,omitempty" comment:"Legacy table, merged into every profile at load and then cleared. Set environment overrides in [profiles.NAME.env]."`
+	StartupEnv     map[string]string   `json:"startup_env,omitempty" toml:"startup_env,omitempty" comment:"Legacy table, merged into every profile at load and then cleared. Set environment overrides in [profiles.NAME.env]."`
+	EngineCommands map[Engine]Command  `json:"engine_commands,omitempty" toml:"engine_commands,omitempty" comment:"Legacy table, merged into the profiles using that engine at load and then cleared. Set a launcher in [profiles.NAME.command]."`
+	Templates      map[string]Template `json:"templates,omitempty" toml:"templates,omitempty" comment:"Legacy role templates, migrated to profiles at load and then cleared. Define responsibilities with member add --instructions."`
+	Version        int                 `json:"version" toml:"version" comment:"Configuration schema version. Only 2 is supported; a version 1 file is migrated to it at load.\nThis is not the application version; do not change it."`
 	Bypass         bool                `json:"bypass_permissions" toml:"bypass_permissions" comment:"Bypass native permission approvals: true (default) or false.\nWhen true, uses Claude --dangerously-skip-permissions or Codex --yolo.\nAlso confirms Claude's native workspace-trust dialog for the selected working directory; Claude saves its normal project trust record. When false, native approvals remain enabled and members may wait for human approval.\nThis does not authenticate accounts, supply quota, or override organization policy."`
 	MaxMembers     int                 `json:"max_members" toml:"max_members" comment:"Maximum team size, including Master. Default: 8; must be an integer of at least 1.\nRemoved members do not count. This does not limit conversation turns or task count."`
-	Templates      map[string]Template `json:"templates,omitempty" toml:"templates,omitempty" comment:"Legacy role template compatibility field; new configurations do not need it. Define member responsibilities with member add --role and --instructions."`
 	PreviousKey    string              `json:"previous_member_key" toml:"previous_member_key" comment:"Key that switches to the previous member, in tmux key syntax. Default: M-Up (Alt/Option+Up).\nThe team binds it, so the agent CLI in the engine pane no longer receives it: tmux treats Alt and Meta as one M- namespace.\nSet it to an empty string to leave the key to the agent and navigate with Ctrl-b 0-9 or the sidebar instead."`
 	NextKey        string              `json:"next_member_key" toml:"next_member_key" comment:"Key that switches to the next member, in tmux key syntax. Default: M-Down (Alt/Option+Down).\nSet it to an empty string to leave the key to the agent."`
 }
 
+// Version is the only supported schema version. A file still declaring 1 is
+// migrated at load, including the tables that version allowed.
+const Version = 2
+
 // Defaults returns the built-in settings before user and project overlays.
+// It deliberately defines no profiles: they would be merged back into every
+// user file at load, so a profile the user deleted could never stay deleted.
+// Load seeds them into a new file instead, and an unset profile pointer
+// resolves to the built-in defaults in ResolveProfile.
 func Defaults() Config {
-	return Config{Version: 1, Bypass: true, MaxMembers: 8, Engine: Codex, MasterEngine: Claude, MasterModel: "opus",
-		PreviousKey: "M-Up", NextKey: "M-Down"}
+	return Config{Version: Version, Bypass: true, MaxMembers: 8, PreviousKey: "M-Up", NextKey: "M-Down"}
 }
 
 // Keys are validated against tmux's own spelling so a mistyped binding fails at
@@ -64,27 +77,6 @@ func validateKey(field, key string) error {
 		return nil
 	}
 	return fmt.Errorf("%s: %q is not a tmux key name; use forms like M-Up, C-M-n or F5, or an empty string to leave the key unbound", field, key)
-}
-
-// EngineDefaults resolves launch defaults for master or worker.
-// Legacy templates provide a fallback only when the corresponding engine is unset.
-func EngineDefaults(c Config, master bool) Template {
-	if master {
-		if c.MasterEngine != "" {
-			return Template{Engine: c.MasterEngine, Model: c.MasterModel}
-		}
-		if t, ok := c.Templates["master"]; ok {
-			return t
-		}
-		return Template{Engine: Claude, Model: "opus"}
-	}
-	if c.Engine != "" {
-		return Template{Engine: c.Engine, Model: c.Model}
-	}
-	if t, ok := c.Templates["developer"]; ok {
-		return t
-	}
-	return Template{Engine: Codex}
 }
 
 // Path resolves the user configuration path, honoring CSQUAD_CONFIG before XDG_CONFIG_HOME.
@@ -129,21 +121,6 @@ func decodeConfig(path string, b []byte, c *Config) error {
 	if err = json.Unmarshal(original, &base); err != nil {
 		return err
 	}
-	// Import old default engine choices, while dynamic roles no longer inherit
-	// the old developer identity. Explicit new fields always win.
-	if templates, ok := patch["templates"].(map[string]any); ok {
-		for role, keys := range map[string][]string{"master": {"master_engine", "master_model"}, "developer": {"engine", "model"}} {
-			if t, ok := templates[role].(map[string]any); ok {
-				for i, field := range []string{"engine", "model"} {
-					if _, explicit := patch[keys[i]]; !explicit {
-						if value, exists := t[field]; exists {
-							patch[keys[i]] = value
-						}
-					}
-				}
-			}
-		}
-	}
 	mergeConfigMap(base, patch)
 	merged, err := json.Marshal(base)
 	if err != nil {
@@ -171,15 +148,27 @@ func Load(root string) (Config, error) {
 	p := Path()
 	b, err := os.ReadFile(p)
 	if os.IsNotExist(err) {
-		// Import the legacy user file once; retain it as a backup.
+		// Import the legacy user file once; retain it as a backup. It predates
+		// profiles, so it is migrated before being written out: the new file has to
+		// launch what the old one launched, which means the built-in profiles are
+		// seeded only where the imported file left the choice to the defaults.
 		legacy := strings.TrimSuffix(p, ".toml") + ".json"
 		if strings.HasSuffix(p, ".toml") {
 			if old, e := os.ReadFile(legacy); e == nil {
 				if e = decodeConfig(legacy, old, &c); e != nil {
 					return c, fmt.Errorf("%s: %w", legacy, e)
 				}
+				for _, warning := range MigrateLegacy(&c) {
+					fmt.Fprintln(os.Stderr, "Configuration migration:", warning)
+				}
 			}
 		}
+		// The built-in launch profiles are written out as ordinary profiles, so a
+		// new user opens the file and sees two definitions to edit rather than
+		// having to guess what the defaults are. They carry no special meaning:
+		// only the pointers make them the defaults, and either may be renamed,
+		// edited, or deleted.
+		seedProfiles(&c)
 		if err = os.MkdirAll(filepath.Dir(p), 0700); err != nil {
 			return c, err
 		}
@@ -210,6 +199,7 @@ func Load(root string) (Config, error) {
 	if err = decodeConfig(p, b, &c); err != nil {
 		return c, fmt.Errorf("%s: %w", p, err)
 	}
+	userPath, userFile := p, b
 	if root != "" {
 		p = filepath.Join(root, ".csquad.toml")
 		b, err = os.ReadFile(p)
@@ -225,38 +215,40 @@ func Load(root string) (Config, error) {
 			return c, err
 		}
 	}
-	if c.Version != 1 || c.MaxMembers < 1 || EngineDefaults(c, true).Engine == "" {
-		return c, fmt.Errorf("invalid config version, max_members or master engine")
+	// Migrate before validating: a legacy file has no profiles yet, and the
+	// migrated result is what every later check and the whole run then use.
+	for _, warning := range MigrateLegacy(&c) {
+		fmt.Fprintln(os.Stderr, "Configuration migration:", warning)
 	}
-	for _, engine := range []Engine{EngineDefaults(c, true).Engine, EngineDefaults(c, false).Engine} {
-		if err = engine.Validate(); err != nil {
+	if hasLegacyFields(userPath, userFile) {
+		if err = writeBackMigration(userPath, userFile); err == nil {
+			fmt.Fprintf(os.Stderr, "Configuration migration: %s was rewritten from its migrated values; the original is kept as %s\n", userPath, userPath+backupSuffix)
+		} else {
+			// Persisting is an optimisation; the migration already applies to this
+			// run. A read-only or full filesystem must not stop a team from starting.
+			fmt.Fprintf(os.Stderr, "Configuration migration: %s was migrated in memory but could not be updated (%v); the migration will run again next time\n", userPath, err)
+		}
+	}
+	if c.Version != Version || c.MaxMembers < 1 {
+		return c, fmt.Errorf("invalid config version or max_members")
+	}
+	if err = c.ValidateProfiles(); err != nil {
+		return c, err
+	}
+	for _, master := range []bool{true, false} {
+		p, _, e := c.ResolveProfile("", master)
+		if e != nil {
+			return c, e
+		}
+		if err = p.Engine.Validate(); err != nil {
 			return c, err
 		}
 	}
 	if err = validateKey("previous_member_key", c.PreviousKey); err != nil {
 		return c, err
 	}
-	if err = c.ValidateCommands(); err != nil {
-		return c, err
-	}
 	if err = validateKey("next_member_key", c.NextKey); err != nil {
 		return c, err
-	}
-	if err = agentenv.Validate(c.Env); err != nil {
-		return c, err
-	}
-	if err = agentenv.Validate(c.StartupEnv); err != nil {
-		return c, err
-	}
-	for _, t := range c.Templates {
-		if t.Engine != "" {
-			if err = t.Engine.Validate(); err != nil {
-				return c, err
-			}
-		}
-		if err = agentenv.Validate(t.Env); err != nil {
-			return c, err
-		}
 	}
 	return c, nil
 }

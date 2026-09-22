@@ -41,7 +41,10 @@ func TestCrashCleanupAndProjectResume(t *testing.T) {
 	_, e = process.Run("", "tmux", "-f", "/dev/null", "-S", socket, "new-session", "-d", "-s", "unrelated", "sleep", "300")
 	must(t, e)
 	defer process.Run("", "tmux", "-S", socket, "kill-server")
-	env := agentenv.Environ(map[string]string{"PATH": fake + ":" + os.Getenv("PATH"), "CSQUAD_CONFIG": filepath.Join(temp, "config.toml"), "CSQUAD_HOME": "", "CSQUAD_STATE_DIR": "", "CSQUAD_MEMBER_ID": "", "CSQUAD_GENERATION": "", "TMUX": socket + ",0,0"})
+	// Only the fake claude exists, so both pointers select a profile launching it.
+	configPath := filepath.Join(temp, "config.toml")
+	must(t, os.WriteFile(configPath, []byte("version = 2\ndefault_profile = \"only\"\nmaster_profile = \"only\"\n[profiles.only]\nengine = \"claude\"\n"), 0600))
+	env := agentenv.Environ(map[string]string{"PATH": fake + ":" + os.Getenv("PATH"), "CSQUAD_CONFIG": configPath, "CSQUAD_HOME": "", "CSQUAD_STATE_DIR": "", "CSQUAD_MEMBER_ID": "", "CSQUAD_GENERATION": "", "TMUX": socket + ",0,0"})
 	cli := func(args ...string) []byte {
 		t.Helper()
 		c := exec.Command(binary, args...)
@@ -57,7 +60,7 @@ func TestCrashCleanupAndProjectResume(t *testing.T) {
 	broken := filepath.Join(root, ".csquad", "teams", "old")
 	must(t, os.MkdirAll(broken, 0700))
 	must(t, os.WriteFile(filepath.Join(broken, "state.db"), []byte("invalid sqlite database"), 0600))
-	failedStart := exec.Command(binary, "start", "test", "--engine", "claude", "--detach")
+	failedStart := exec.Command(binary, "start", "test", "--detach")
 	failedStart.Dir, failedStart.Env = root, env
 	if out, err := failedStart.CombinedOutput(); err == nil {
 		t.Fatalf("corrupt old ledger should block cleanup: %s", out)
@@ -75,7 +78,7 @@ func TestCrashCleanupAndProjectResume(t *testing.T) {
 	results := make(chan creation, 2)
 	for range 2 {
 		go func() {
-			c := exec.Command(binary, "start", "test", "--engine", "claude", "--detach")
+			c := exec.Command(binary, "start", "test", "--detach")
 			c.Dir, c.Env = root, env
 			out, err := c.CombinedOutput()
 			results <- creation{out, err}
@@ -122,7 +125,7 @@ func TestCrashCleanupAndProjectResume(t *testing.T) {
 	}
 	project := filepath.Join(temp, "member project")
 	must(t, os.Mkdir(project, 0700))
-	cli("member", "add", "alice", "--engine", "claude", "--role", "custom role", "--instructions", "preserve my work", "--cwd", project)
+	cli("member", "add", "alice", "--profile", "only", "--instructions", "preserve my work", "--cwd", project)
 	wait(func(s *State) bool { return s.Members["alice"].EnginePID > 0 })
 	assertDirectory := func(want string) {
 		t.Helper()

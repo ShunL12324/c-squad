@@ -21,14 +21,13 @@ import (
 // Member records an agent identity, its launch configuration, and observed runtime state.
 // Generation fences writes from previous incarnations of the same member.
 type Member struct {
-	EnvOverrides *map[string]string `json:"env_overrides,omitempty"`
 	Color        tmux.Color         `json:"color,omitempty"`
 	Instructions string             `json:"instructions,omitempty"`
 	Env          map[string]string  `json:"env,omitempty"`
 	ID           string             `json:"id"`
 	Engine       config.Engine      `json:"engine"`
 	Model        string             `json:"model,omitempty"`
-	Role         string             `json:"role"`
+	Profile      string             `json:"profile,omitempty"`
 	Session      string             `json:"tmux_session"`
 	Pane         string             `json:"pane,omitempty"`
 	EngineID     string             `json:"engine_id,omitempty"`
@@ -170,26 +169,25 @@ type Event struct {
 // State is the persisted team ledger shared by CLI commands and the runtime.
 // Mutations must use Store.update so generation checks and transactions apply.
 type State struct {
-	StartupOverrides *map[string]string   `json:"startup_overrides,omitempty"`
-	PanelView        panelView            `json:"panel_view,omitempty"`
-	Epoch            int                  `json:"epoch,omitempty"`
-	Phase            TeamPhase            `json:"phase,omitempty"`
-	OwnSocket        bool                 `json:"own_socket,omitempty"`
-	StopReason       string               `json:"stop_reason,omitempty"`
-	Version          int                  `json:"version"`
-	ID               string               `json:"id"`
-	Root             string               `json:"root"`
-	Socket           string               `json:"tmux_socket"`
-	Executable       string               `json:"executable"`
-	Active           bool                 `json:"active"`
-	Members          map[string]*Member   `json:"members"`
-	Tasks            map[string]*Task     `json:"tasks"`
-	Messages         []*Message           `json:"messages"`
-	Questions        map[string]*Question `json:"questions"`
-	Events           []Event              `json:"events"`
-	Sequence         int                  `json:"sequence"`
-	Config           *config.Config       `json:"config,omitempty"`
-	RuntimeSeen      string               `json:"runtime_seen,omitempty"`
+	PanelView   panelView            `json:"panel_view,omitempty"`
+	Epoch       int                  `json:"epoch,omitempty"`
+	Phase       TeamPhase            `json:"phase,omitempty"`
+	OwnSocket   bool                 `json:"own_socket,omitempty"`
+	StopReason  string               `json:"stop_reason,omitempty"`
+	Version     int                  `json:"version"`
+	ID          string               `json:"id"`
+	Root        string               `json:"root"`
+	Socket      string               `json:"tmux_socket"`
+	Executable  string               `json:"executable"`
+	Active      bool                 `json:"active"`
+	Members     map[string]*Member   `json:"members"`
+	Tasks       map[string]*Task     `json:"tasks"`
+	Messages    []*Message           `json:"messages"`
+	Questions   map[string]*Question `json:"questions"`
+	Events      []Event              `json:"events"`
+	Sequence    int                  `json:"sequence"`
+	Config      *config.Config       `json:"config,omitempty"`
+	RuntimeSeen string               `json:"runtime_seen,omitempty"`
 }
 
 func now() string { return time.Now().UTC().Format(time.RFC3339Nano) }
@@ -282,6 +280,12 @@ func (st *Store) update(fn func(*State) error) error {
 		}
 	}
 	normalizeState(&s)
+	// The snapshot migration runs on both read paths, but only this one persists.
+	// Recording the warnings here keeps them out of every read while still
+	// leaving one durable trace of what changed.
+	for _, warning := range migrateSnapshotConfig(&s) {
+		s.event("master", "config_migrated", warning)
+	}
 	if err = fn(&s); err != nil {
 		return err
 	}
@@ -304,6 +308,9 @@ func (st *Store) read() (*State, error) {
 	var s State
 	err := json.Unmarshal([]byte(raw), &s)
 	normalizeState(&s)
+	// Silent here: this copy is not persisted, so a legacy team would otherwise
+	// report the same migration on every read.
+	migrateSnapshotConfig(&s)
 	return &s, err
 }
 

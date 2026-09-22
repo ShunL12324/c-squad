@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os/exec"
 
-	"github.com/ShunL12324/c-squad/internal/agentenv"
 	"github.com/ShunL12324/c-squad/internal/config"
 	"github.com/ShunL12324/c-squad/internal/process"
 )
@@ -15,42 +14,44 @@ import (
 // ErrMissingDependency allows callers to distinguish setup failures from task failures.
 var ErrMissingDependency = errors.New("required executable unavailable")
 
-// Check requires tmux, ps, and the selected engine. An empty engine requires at least
-// one supported engine, as used by installation checks. Git is task-specific.
-func Check(engine config.Engine) error {
-	return CheckConfig(config.Config{}, engine)
+// Check requires tmux, ps and at least one supported engine, as used by an
+// installation check. Each engine is probed through the profile that would
+// launch it, so a renamed or wrapped client counts as installed. Git is
+// task-specific and checked separately.
+func Check(cfg config.Config) error {
+	failures := baseTools()
+	claudeCommand, claudeEnv := cfg.LaunchFor(config.Claude)
+	codexCommand, codexEnv := cfg.LaunchFor(config.Codex)
+	if EngineCommand(claudeCommand, claudeEnv) != nil && EngineCommand(codexCommand, codexEnv) != nil {
+		failures = append(failures, fmt.Errorf("install Claude Code or Codex and add it to PATH: %w", ErrMissingDependency))
+	}
+	return errors.Join(failures...)
 }
 
-// CheckConfig checks configured engine executables without executing them.
-func CheckConfig(cfg config.Config, engine config.Engine, environments ...map[string]string) error {
-	if err := cfg.ValidateCommands(); err != nil {
+// CheckCommand checks the command a member will actually launch, without
+// executing it. Launch settings all come from a profile now, so the caller
+// resolves the command and environment and passes them in; checking anything
+// else would pass while the real launch fails.
+func CheckCommand(engine config.Engine, command config.Command, env map[string]string) error {
+	if err := engine.Validate(); err != nil {
 		return err
 	}
-	var failures []error
-	env := agentenv.Merge(cfg.Env, cfg.StartupEnv)
-	if len(environments) > 0 {
-		env = environments[0]
+	failures := baseTools()
+	if err := EngineCommand(command, env); err != nil {
+		failures = append(failures, err)
 	}
+	return errors.Join(failures...)
+}
+
+// baseTools checks the dependencies every check shares.
+func baseTools() []error {
+	var failures []error
 	for _, name := range []string{"tmux", "ps"} {
 		if err := executable(name); err != nil {
 			failures = append(failures, err)
 		}
 	}
-	if engine != "" {
-		if err := engine.Validate(); err != nil {
-			return err
-		}
-		if err := EngineCommand(cfg.Command(engine), env); err != nil {
-			failures = append(failures, err)
-		}
-	} else {
-		claudeErr := EngineCommand(cfg.Command(config.Claude), env)
-		codexErr := EngineCommand(cfg.Command(config.Codex), env)
-		if claudeErr != nil && codexErr != nil {
-			failures = append(failures, fmt.Errorf("install Claude Code or Codex and add it to PATH: %w", ErrMissingDependency))
-		}
-	}
-	return errors.Join(failures...)
+	return failures
 }
 
 // EngineCommand checks direct executables or a persistent alias in its shell.

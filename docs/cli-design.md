@@ -17,8 +17,8 @@ session; a task ID (for example `T7`) identifies work, not a terminal.
 
 `new -s` follows tmux's creation spelling. It creates a C-Squad team, not an
 arbitrary tmux session. `-s` is a shorthand for `--name` on creation commands
-(including `start` and bare `csquad`). Creation flags such as `--engine`,
-`--env` and `--detach` work identically through either spelling. Existing
+(including `start` and bare `csquad`). Creation flags such as `--profile`
+and `--detach` work identically through either spelling. Existing
 names fail with guidance to attach or resume; creation never replaces a team.
 
 Existing targets use positional names on lifecycle commands, or the global

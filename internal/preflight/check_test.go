@@ -19,19 +19,21 @@ func TestSelectedEngineAndOptionalGit(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := Check(config.Claude); err != nil {
+	claude := config.EngineCommand(config.Claude)
+	if err := CheckCommand(config.Claude, claude, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := Check(""); err != nil {
+	// One installed engine satisfies the installation check.
+	if err := Check(config.Config{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Check(config.Codex); !errors.Is(err, ErrMissingDependency) || !strings.Contains(err.Error(), "codex") {
+	if err := CheckCommand(config.Codex, config.EngineCommand(config.Codex), nil); !errors.Is(err, ErrMissingDependency) || !strings.Contains(err.Error(), "codex") {
 		t.Fatalf("missing selected engine: %v", err)
 	}
 	if err := Git(); !errors.Is(err, ErrMissingDependency) {
 		t.Fatalf("Git should be missing: %v", err)
 	}
-	if err := Check(config.Engine("unknown")); err == nil {
+	if err := CheckCommand(config.Engine("unknown"), claude, nil); err == nil {
 		t.Fatal("accepted unknown engine")
 	}
 }
@@ -60,16 +62,21 @@ func TestConfiguredEngineWithoutNativeName(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cfg := config.Config{EngineCommands: map[config.Engine]config.Command{
-		config.Codex: {Executable: filepath.Join(dir, "renamed client"), Args: []string{"literal prefix"}},
-	}}
-	for _, engine := range []config.Engine{config.Codex, ""} {
-		if err := CheckConfig(cfg, engine); err != nil {
-			t.Fatal(err)
-		}
+	// The caller resolves the launch command from a profile, so the check probes
+	// the renamed executable a member would really start, not the engine name.
+	profile := config.Profile{Engine: config.Codex, Command: &config.Command{
+		Executable: filepath.Join(dir, "renamed client"), Args: []string{"literal prefix"}}}
+	if err := CheckCommand(config.Codex, profile.LaunchCommand(config.Codex), profile.Env); err != nil {
+		t.Fatal(err)
 	}
-	cfg.EngineCommands[config.Codex] = config.Command{Executable: "missing-custom-client"}
-	if err := CheckConfig(cfg, config.Codex); !errors.Is(err, ErrMissingDependency) || !strings.Contains(err.Error(), "missing-custom-client") {
+	// The installation check probes the profiles rather than the native names, so
+	// a configuration that only ever launches the renamed client still passes.
+	cfg := config.Config{Profiles: map[string]config.Profile{"renamed": profile}, DefaultProfile: "renamed"}
+	if err := Check(cfg); err != nil {
+		t.Fatal(err)
+	}
+	missing := config.Profile{Engine: config.Codex, Command: &config.Command{Executable: "missing-custom-client"}}
+	if err := CheckCommand(config.Codex, missing.LaunchCommand(config.Codex), nil); !errors.Is(err, ErrMissingDependency) || !strings.Contains(err.Error(), "missing-custom-client") {
 		t.Fatalf("missing custom executable: %v", err)
 	}
 }

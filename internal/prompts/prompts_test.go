@@ -39,7 +39,6 @@ func TestRequiredPromptFields(t *testing.T) {
 func TestDynamicPromptDataIsNotTemplateSource(t *testing.T) {
 	d := validData()
 	d.Instructions = `Review {{.Member}} and {{template "master" .}}; keep {{broken intact <code> & quotes.`
-	d.Role = "Reviewer {{.Team}}"
 	d.Handoff = "/tmp/{{.Engine}}/handoff"
 	d.Cwd = "/tmp/{{.Generation}}"
 	for _, entry := range []string{"startup", "runtime"} {
@@ -47,7 +46,7 @@ func TestDynamicPromptDataIsNotTemplateSource(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, literal := range []string{d.Instructions, d.Role, d.Handoff} {
+		for _, literal := range []string{d.Instructions, d.Handoff} {
 			if !strings.Contains(text, literal) {
 				t.Fatalf("%s reinterpreted %q", entry, literal)
 			}

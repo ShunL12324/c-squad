@@ -223,8 +223,7 @@ func (st *Store) checkMaster() error {
 }
 
 func resumeTeam(st *Store, o options) error {
-	overrides, err := agentenv.Parse(o["env"])
-	if err != nil {
+	if err := rejectRemovedLaunchFlags(o); err != nil {
 		return err
 	}
 	unlock, e := filelock.Acquire(st.Dir, "team-lifecycle", false)
@@ -243,24 +242,19 @@ func resumeTeam(st *Store, o options) error {
 	if err != nil {
 		return err
 	}
-	if s.StartupOverrides == nil && s.Config != nil && len(s.Config.StartupEnv) > 0 {
-		fmt.Fprintln(os.Stderr, "Legacy startup environment has no override provenance; current configuration entries take precedence. Use resume --env KEY=VALUE for an explicit override.")
-	}
 	if err := validateResumeDirectories(s); err != nil {
 		return err
 	}
-	preview := *s
-	if s.Config != nil {
-		saved := *s.Config
-		preview.Config = &saved
-	}
-	oldDefaults, newDefaults := refreshResumeDefaults(&preview, currentConfig, overrides)
 	for _, member := range s.Members {
 		if member.State != MemberStateRemoved {
 			resumed := *member
 			resumed.Env = agentenv.Merge(member.Env)
-			resumed.applyResumeEnvironment(oldDefaults, newDefaults, overrides)
-			if err := preflight.CheckConfig(currentConfig, member.Engine, resumed.Env); err != nil {
+			resumed.applyResumeEnvironment(resumeProfileEnv(s.Config, currentConfig, member))
+			command, warning := currentConfig.ProfileCommand(member.Profile, member.Engine)
+			if warning != "" {
+				fmt.Fprintln(os.Stderr, warning)
+			}
+			if err := preflight.CheckCommand(member.Engine, command, resumed.Env); err != nil {
 				return err
 			}
 		}
@@ -299,7 +293,15 @@ func resumeTeam(st *Store, o options) error {
 	// resume would reintroduce the unnormalised path that start just cleaned.
 	binary = cleanPath(binary)
 	if e = st.update(func(cur *State) error {
-		oldDefaults, newDefaults := refreshResumeDefaults(cur, currentConfig, overrides)
+		// The profiles a member inherited from are kept aside before the snapshot
+		// adopts the current tables, so an edit shows up as a difference instead of
+		// being compared against itself.
+		var saved *config.Config
+		if cur.Config != nil {
+			previous := *cur.Config
+			saved = &previous
+		}
+		refreshResumeDefaults(cur, currentConfig)
 
 		cur.Epoch++
 		cur.Active = true
@@ -313,7 +315,7 @@ func resumeTeam(st *Store, o options) error {
 			if m.State == MemberStateRemoved {
 				continue
 			}
-			m.applyResumeEnvironment(oldDefaults, newDefaults, overrides)
+			m.applyResumeEnvironment(resumeProfileEnv(saved, currentConfig, m))
 			m.Generation++
 			m.resetRuntime()
 			m.Handoff = handoff

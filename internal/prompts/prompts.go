@@ -19,11 +19,11 @@ var files embed.FS
 
 var templates, parseErr = template.New("prompts").Option("missingkey=error").ParseFS(files, "templates/*.tmpl")
 
-// Data is the launch or recovery context. Role, instructions, cwd, colors and
-// handoff may be empty; identity, generation and engine are required.
+// Data is the launch or recovery context. Instructions, cwd, colors and handoff
+// may be empty; identity, generation and engine are required.
 type Data struct {
-	Team, Member, Role, Instructions, Engine, Cwd, Handoff, Colors string
-	Generation                                                     int
+	Team, Member, Instructions, Engine, Cwd, Handoff, Colors string
+	Generation                                               int
 }
 
 // Render accepts only entry templates; fragments are implementation details.

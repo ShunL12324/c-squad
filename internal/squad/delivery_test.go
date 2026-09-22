@@ -192,7 +192,7 @@ func TestReplyToUserOriginatedMessageRefused(t *testing.T) {
 // human behind a brief-report request.
 func TestMemberAddRefusesReservedUserID(t *testing.T) {
 	st := testStore(t)
-	if e := memberCommand(st, "master", []string{"add", UserSender}, options{"role": "impostor"}); e == nil {
+	if e := memberCommand(st, "master", []string{"add", UserSender}, options{"instructions": "impostor"}); e == nil {
 		t.Fatal("member add must refuse the reserved user ID")
 	}
 	s, e := st.read()

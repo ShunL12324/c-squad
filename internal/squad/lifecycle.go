@@ -55,7 +55,8 @@ func lifecycle(st *Store, actor, op, id, initial, directory string) error {
 		if err != nil {
 			return err
 		}
-		if err := preflight.CheckConfig(cfg, m.Engine, m.Env); err != nil {
+		command, _ := cfg.ProfileCommand(m.Profile, m.Engine)
+		if err := preflight.CheckCommand(m.Engine, command, m.Env); err != nil {
 			return err
 		}
 	}

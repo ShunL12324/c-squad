@@ -15,10 +15,10 @@ func TestRecoveryPromptUsesStartupInstructionsAndSharedPolicy(t *testing.T) {
 	st := testStore(t)
 	must(t, st.update(func(s *State) error {
 		cfg := config.Defaults()
-		cfg.Engine = ""
-		cfg.Templates = map[string]config.Template{"reviewer": {Prompt: "legacy {{.Member}} responsibilities"}}
+		// A legacy table named after the member. Nothing may read it: a member's
+		// responsibilities come only from its own record.
+		cfg.Templates = map[string]config.Template{"a": {Prompt: "legacy responsibilities"}}
 		s.Config = &cfg
-		s.Members["a"].Role = "reviewer"
 		s.Members["a"].Handoff = "/tmp/restore.json"
 		return nil
 	}))
@@ -27,18 +27,17 @@ func TestRecoveryPromptUsesStartupInstructionsAndSharedPolicy(t *testing.T) {
 	m := s.Members["a"]
 	for _, instructions := range []string{"", "explicit {{.Team}} responsibilities"} {
 		m.Instructions = instructions
-		tmpl := s.Config.Templates[m.Role]
-		if instructions != "" {
-			tmpl.Prompt = instructions
-		}
-		start, err := prompt(s, m, tmpl)
+		start, err := prompt(s, m)
 		must(t, err)
 		recovered, err := runtimePrompt(s, m)
 		must(t, err)
 		for _, text := range []string{start, recovered} {
-			if !strings.Contains(text, tmpl.Prompt) || !strings.Contains(text, "not message quotas") ||
+			if !strings.Contains(text, instructions) || !strings.Contains(text, "not message quotas") ||
 				!strings.Contains(text, "ordinary uncertainty is not by itself a reason to stop") {
 				t.Fatalf("startup/recovery policy drift: %s", text)
+			}
+			if strings.Contains(text, "legacy responsibilities") {
+				t.Fatal("a configured table was injected by matching the member's name")
 			}
 		}
 	}
@@ -81,8 +80,8 @@ func TestPromptsDoNotDelegateGenerationFiltering(t *testing.T) {
 	must(t, err)
 	for _, id := range []string{"master", "a"} {
 		m := s.Members[id]
-		m.Role, m.Instructions = "reviewer", "review changes"
-		start, err := prompt(s, m, config.Template{Prompt: m.Instructions})
+		m.Instructions = "review changes"
+		start, err := prompt(s, m)
 		must(t, err)
 		runtime, err := runtimePrompt(s, m)
 		must(t, err)

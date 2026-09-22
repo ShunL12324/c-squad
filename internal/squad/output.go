@@ -11,6 +11,9 @@ import (
 	"text/tabwriter"
 )
 
+// instructionsSummaryWidth keeps the member table readable on a narrow terminal.
+const instructionsSummaryWidth = 48
+
 // queryOut keeps JSON as the established query default. Tables are concise
 // human-readable projections; JSON remains the complete machine representation.
 func queryOut(o options, value any) error {
@@ -26,9 +29,9 @@ func writeTable(out io.Writer, value any) error {
 		rows := [][]string{}
 		for _, id := range sortedKeys(data) {
 			m := data[id]
-			rows = append(rows, []string{id, string(m.State), string(m.Engine), m.Role, m.Cwd})
+			rows = append(rows, []string{id, string(m.State), string(m.Engine), instructionsSummary(m.Instructions), m.Cwd})
 		}
-		return writeRows(out, []string{"MEMBER", "STATE", "ENGINE", "ROLE", "DIRECTORY"}, rows)
+		return writeRows(out, []string{"MEMBER", "STATE", "ENGINE", "INSTRUCTIONS", "DIRECTORY"}, rows)
 	case map[string]*Task:
 		rows := [][]string{}
 		for _, id := range sortedKeys(data) {
@@ -102,6 +105,20 @@ func writeTable(out io.Writer, value any) error {
 		}
 	}
 	return w.Flush()
+}
+
+// instructionsSummary reduces responsibilities to one table cell. Instructions
+// are written as prose and often span paragraphs, so only the first line is
+// kept, its internal whitespace collapsed, and the result cut to a width that
+// still leaves room for the directory column. member inspect shows the rest.
+func instructionsSummary(text string) string {
+	line, _, _ := strings.Cut(text, "\n")
+	summary := strings.Join(strings.Fields(line), " ")
+	runes := []rune(summary)
+	if len(runes) <= instructionsSummaryWidth {
+		return summary
+	}
+	return string(runes[:instructionsSummaryWidth-1]) + "\u2026"
 }
 
 func sortedKeys[V any](items map[string]V) []string {

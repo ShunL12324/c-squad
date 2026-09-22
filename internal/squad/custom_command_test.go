@@ -63,40 +63,41 @@ func TestCustomCommandsAcrossLifecycle(t *testing.T) {
 				capture := filepath.Join(root, "capture")
 				must(t, os.Mkdir(capture, 0700))
 				cfg := config.Defaults()
-				cfg.MasterEngine, cfg.MasterModel = masterEngine, "test-model"
 				workerEngine := config.Claude
 				if masterEngine == config.Claude {
 					workerEngine = config.Codex
 				}
-				cfg.Engine = workerEngine
-				cfg.Env = map[string]string{"ENGINE_CAPTURE": capture, "CUSTOM_ACCOUNT": "team account", "CODEX_HOME": filepath.Join(root, "codex account"), "CLAUDE_CONFIG_DIR": filepath.Join(root, "claude account")}
-				cfg.Env["ANTHROPIC_AUTH_TOKEN"], cfg.Env["TEST_MODEL"] = "config fake token", "config model"
-				cfg.EngineCommands = map[config.Engine]config.Command{}
+				// Everything a member launches with comes from its profile, so the
+				// two profiles carry the same shared variables and differ only where
+				// the test needs them to.
+				shared := map[string]string{"ENGINE_CAPTURE": capture, "CUSTOM_ACCOUNT": "team account", "CODEX_HOME": filepath.Join(root, "codex account"), "CLAUDE_CONFIG_DIR": filepath.Join(root, "claude account")}
+				shared["ANTHROPIC_AUTH_TOKEN"], shared["TEST_MODEL"] = "config fake token", "config model"
+				commands := map[config.Engine]config.Command{}
 				prefix := []string{"profile with spaces", "", "$(touch should-not-exist)"}
 				for _, engine := range []config.Engine{config.Claude, config.Codex} {
 					path := filepath.Join(root, "custom client "+string(engine))
 					must(t, os.WriteFile(path, append([]byte("#!"+python+"\n"), body...), 0700))
-					cfg.EngineCommands[engine] = config.Command{Executable: path, Args: prefix}
+					commands[engine] = config.Command{Executable: path, Args: prefix}
 				}
 				if mode != "" {
 					home := filepath.Join(root, "isolated home")
 					must(t, os.Mkdir(home, 0700))
-					cfg.Env["HOME"], cfg.Env["ZDOTDIR"] = home, home
+					shared["HOME"], shared["ZDOTDIR"] = home, home
 					var rc strings.Builder
 					if explicitPath {
-						cfg.Env["PATH"] = root + string(os.PathListSeparator) + bin
+						shared["PATH"] = root + string(os.PathListSeparator) + bin
 						// A conflicting rc path must lose to the explicit override.
 						rc.WriteString("export PATH=/missing-client-directory\n")
 					} else {
 						rc.WriteString("export PATH=" + shellQuote(root) + ":$PATH\n")
 					}
 					rc.WriteString("export CUSTOM_ACCOUNT=wrong CODEX_HOME=/wrong ANTHROPIC_AUTH_TOKEN=wrong TEST_MODEL=wrong CSQUAD_MEMBER_ID=wrong CSQUAD_GENERATION=0\n")
-					for engine, command := range cfg.EngineCommands {
+					for engine, command := range commands {
 						name := "my-" + string(engine) + "-client"
 						expansion := "ANTHROPIC_AUTH_TOKEN=" + shellQuote("alias fake token") + " " + shellQuote(filepath.Base(command.Executable)) + " " + shellQuote(prefix[0])
 						rc.WriteString("alias " + name + "=" + shellQuote(expansion) + "\n")
 						command.Executable, command.Shell, command.Args = name, shell, prefix[1:]
-						cfg.EngineCommands[engine] = command
+						commands[engine] = command
 					}
 					for _, name := range []string{".bashrc", ".zshrc"} {
 						must(t, os.WriteFile(filepath.Join(home, name), []byte(rc.String()), 0600))
@@ -105,6 +106,13 @@ func TestCustomCommandsAcrossLifecycle(t *testing.T) {
 				configPath := filepath.Join(root, "config.toml")
 				writeConfig := func() {
 					t.Helper()
+					masterCommand, workerCommand := commands[masterEngine], commands[workerEngine]
+					cfg.Profiles = map[string]config.Profile{
+						"master-account": {Engine: masterEngine, Model: "test-model", Env: agentenv.Merge(shared), Command: &masterCommand},
+						"worker-account": {Engine: workerEngine, Model: "worker-model", Command: &workerCommand,
+							Env: agentenv.Merge(shared, map[string]string{"CUSTOM_ACCOUNT": "worker account"})},
+					}
+					cfg.MasterProfile, cfg.DefaultProfile = "master-account", "worker-account"
 					body, err := config.Document(cfg)
 					must(t, err)
 					must(t, os.WriteFile(configPath, body, 0600))
@@ -127,7 +135,7 @@ func TestCustomCommandsAcrossLifecycle(t *testing.T) {
 				must(t, err)
 				defer st.DB.Close()
 				defer stop(st)
-				cli("member", "add", "worker", "--env", "CUSTOM_ACCOUNT=worker account", "--model", "worker-model")
+				cli("member", "add", "worker", "--instructions", "capture the launch")
 				waitLaunch := func(id string, generation int, engine config.Engine, wantPrefix []string, resumed bool) {
 					t.Helper()
 					until := time.Now().Add(15 * time.Second)
@@ -164,7 +172,7 @@ func TestCustomCommandsAcrossLifecycle(t *testing.T) {
 							if record.Token != wantToken || record.ModelEnv != "config model" || !strings.HasPrefix(record.Path, filepath.Join(st.Dir, "runtime", id, strconv.Itoa(generation), "bin")+string(os.PathListSeparator)) {
 								t.Fatalf("alias/rc override precedence changed: %+v", record)
 							}
-							if record.Account != wantAccount || record.CodexHome != cfg.Env["CODEX_HOME"] || record.ClaudeHome != cfg.Env["CLAUDE_CONFIG_DIR"] {
+							if record.Account != wantAccount || record.CodexHome != shared["CODEX_HOME"] || record.ClaudeHome != shared["CLAUDE_CONFIG_DIR"] {
 								t.Fatalf("environment changed: %+v", record)
 							}
 							if !slices.Contains(record.Args, "--model") || engine == config.Claude && !slices.Contains(record.Args, "--dangerously-skip-permissions") || engine == config.Codex && !slices.Contains(record.Args, "--dangerously-bypass-approvals-and-sandbox") {
@@ -199,12 +207,12 @@ func TestCustomCommandsAcrossLifecycle(t *testing.T) {
 					must(t, err)
 				}
 				newPrefix := []string{prefix[0], "", "literal ; value"}
-				for engine, command := range cfg.EngineCommands {
+				for engine, command := range commands {
 					command.Args = newPrefix
 					if mode != "" {
 						command.Args = newPrefix[1:]
 					}
-					cfg.EngineCommands[engine] = command
+					commands[engine] = command
 				}
 				writeConfig()
 				cli("member", "restart", "worker")

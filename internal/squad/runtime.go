@@ -66,10 +66,10 @@ func runEngine(st *Store, actor string, gen int, args []string) error {
 	if cfgErr != nil {
 		return cfgErr
 	}
-	if err := cfg.ValidateCommands(); err != nil {
+	if err := cfg.ValidateProfiles(); err != nil {
 		return err
 	}
-	command := cfg.Command(m.Engine)
+	command, _ := cfg.ProfileCommand(m.Profile, m.Engine)
 	if command.Shell != "" {
 		if args[0] != command.Executable {
 			return fmt.Errorf("engine alias does not match the configured command")

@@ -90,14 +90,15 @@ use WSL 2 instead.
 ```sh
 cd /path/to/your/project
 csquad doctor
-csquad new -s my-team --engine claude
+csquad new -s my-team
 ```
 
 Create a named team with `csquad new -s NAME`; `csquad start --name NAME`
 remains compatible. Use `list` to find teams, `attach NAME` to enter a running
 team, `resume NAME` to restore a stopped team, and `stop NAME` to stop it.
 
-Use `--engine codex` if you want Codex as Master. C Squad opens tmux for you;
+Set `master_profile`, or pass `--profile NAME`, if you want another engine, model
+or account as Master. C Squad opens tmux for you;
 there is no separate server or tmux session to start by hand. For development
 tasks, your project must be a Git repository with at least one commit.
 `start` always creates a new team and rejects an existing name. Continue a saved

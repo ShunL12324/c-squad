@@ -39,11 +39,15 @@ func (st *Store) launch(id string, resume bool, initial string) (launchErr error
 	if e != nil {
 		return e
 	}
-	t := cfg.Templates[m.Role]
-	if m.Instructions != "" || cfg.Engine != "" {
-		t.Prompt = m.Instructions
+	// Profiles resolve at launch so an edited command reaches a restart, unlike
+	// engine, model and environment, which are snapshotted when the member is added.
+	command, warning := cfg.ProfileCommand(m.Profile, m.Engine)
+	if warning != "" {
+		fmt.Fprintln(os.Stderr, "Profile warning:", warning)
+		if e = st.update(func(s *State) error { s.event(id, "config_warning", warning); return nil }); e != nil {
+			return e
+		}
 	}
-	command := cfg.Command(m.Engine)
 	name := command.Executable
 	if command.Shell != "" {
 		name = command.Shell
@@ -63,7 +67,7 @@ func (st *Store) launch(id string, resume bool, initial string) (launchErr error
 	if e != nil {
 		return e
 	}
-	renderedPrompt, e := prompt(s, m, t)
+	renderedPrompt, e := prompt(s, m)
 	if e != nil {
 		return e
 	}

@@ -12,9 +12,10 @@ import (
 
 // Command selects an executable and literal arguments prepended to every engine
 // invocation. Shell is opt-in for persistent aliases, not a command template.
+// It is configured in a profile's [profiles.NAME.command] table.
 type Command struct {
 	Shell      string   `json:"shell,omitempty" toml:"shell,omitempty" comment:"Optional interactive shell for a persistent alias: bash or zsh. Empty runs the executable directly."`
-	Executable string   `json:"executable" toml:"executable" comment:"Executable name on C-Squad's PATH or an absolute path; in shell mode, a command/alias name. Empty uses the engine name. Not a shell command string."`
+	Executable string   `json:"executable" toml:"executable" comment:"Executable name on C-Squad's PATH or an absolute path; in shell mode, a command/alias name. Empty uses the profile's engine name. Not a shell command string."`
 	Args       []string `json:"args" toml:"args" comment:"Literal fixed arguments placed before C-Squad's generated arguments, including helper subcommands."`
 }
 
@@ -69,49 +70,38 @@ func shellEnvironment(env map[string]string) (string, map[string]string) {
 	return script.String(), protected
 }
 
-// Command returns the configured invocation, with the native executable as fallback.
-func (c Config) Command(engine Engine) Command {
-	command := c.EngineCommands[engine]
-	if command.Executable == "" {
-		command.Executable = string(engine)
-	}
-	return command
-}
-
 // Arguments copies the fixed prefix so composing one invocation cannot change the snapshot.
 func (c Command) Arguments(args ...string) []string {
 	return append(append([]string(nil), c.Args...), args...)
 }
 
-// ValidateCommands rejects unsupported engines and values that cannot be passed
-// as argv. Relative paths are ambiguous across member workspaces and recovery.
-func (c Config) ValidateCommands() error {
-	for engine, command := range c.EngineCommands {
-		if err := engine.Validate(); err != nil {
-			return fmt.Errorf("engine_commands: %w", err)
+// validateCommand rejects values that cannot be passed as argv. Relative paths
+// are ambiguous across member workspaces and recovery. The label names the table
+// being checked, so a profile command and a legacy engine_commands entry
+// migrating into one report the same rules against their own key. An empty
+// engine leaves the executable required, as no native name can fill in.
+func validateCommand(label string, engine Engine, command Command) error {
+	name := command.Executable
+	if command.Shell != "" {
+		if command.Shell != "bash" && command.Shell != "zsh" {
+			return fmt.Errorf("%s.shell must be bash or zsh", label)
 		}
-		name := command.Executable
-		if command.Shell != "" {
-			if command.Shell != "bash" && command.Shell != "zsh" {
-				return fmt.Errorf("engine_commands.%s.shell must be bash or zsh", engine)
-			}
-			if name == "" {
-				name = string(engine)
-			}
-			if !aliasName.MatchString(name) {
-				return fmt.Errorf("engine_commands.%s.executable: shell mode requires a command or alias name (letters, digits, _, ., +, -; starting with a letter or _)", engine)
-			}
+		if name == "" {
+			name = string(engine)
 		}
-		if strings.ContainsRune(name, 0) || (name != "" && strings.TrimSpace(name) == "") {
-			return fmt.Errorf("engine_commands.%s.executable must be a nonblank executable without NUL bytes", engine)
+		if !aliasName.MatchString(name) {
+			return fmt.Errorf("%s.executable: shell mode requires a command or alias name (letters, digits, _, ., +, -; starting with a letter or _)", label)
 		}
-		if (strings.ContainsAny(name, `/\\`) || name == "." || name == "..") && !filepath.IsAbs(name) {
-			return fmt.Errorf("engine_commands.%s.executable: use an absolute path or a command name on PATH", engine)
-		}
-		for _, arg := range command.Args {
-			if strings.ContainsRune(arg, 0) {
-				return fmt.Errorf("engine_commands.%s.args must not contain NUL bytes", engine)
-			}
+	}
+	if strings.ContainsRune(name, 0) || (name != "" && strings.TrimSpace(name) == "") {
+		return fmt.Errorf("%s.executable must be a nonblank executable without NUL bytes", label)
+	}
+	if (strings.ContainsAny(name, `/\\`) || name == "." || name == "..") && !filepath.IsAbs(name) {
+		return fmt.Errorf("%s.executable: use an absolute path or a command name on PATH", label)
+	}
+	for _, arg := range command.Args {
+		if strings.ContainsRune(arg, 0) {
+			return fmt.Errorf("%s.args must not contain NUL bytes", label)
 		}
 	}
 	return nil

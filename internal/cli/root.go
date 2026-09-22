@@ -74,7 +74,7 @@ func Report(w io.Writer, err error) int {
 }
 
 func newCommand(run runner) *cobra.Command {
-	root := &cobra.Command{Use: "csquad", Short: "Coordinate Claude Code and Codex teams in tmux", Long: "Start a master session, delegate tasks, and recover teams in the current project.\nCreate with new -s NAME; list saved teams with list.\nAttach enters a running team; resume restores a stopped team; recover restarts only master.\nWith no command, csquad starts a new team. Use --help on any command for details.\nUse 'question request' to ask master a question; '--help' displays CLI usage.", SilenceUsage: true, SilenceErrors: true, Args: cobra.NoArgs, Example: "  csquad new -s my-team\n  csquad member add reviewer --engine claude --role reviewer\n  csquad board\n  csquad resume my-team"}
+	root := &cobra.Command{Use: "csquad", Short: "Coordinate Claude Code and Codex teams in tmux", Long: "Start a master session, delegate tasks, and recover teams in the current project.\nCreate with new -s NAME; list saved teams with list.\nAttach enters a running team; resume restores a stopped team; recover restarts only master.\nWith no command, csquad starts a new team. Use --help on any command for details.\nUse 'question request' to ask master a question; '--help' displays CLI usage.", SilenceUsage: true, SilenceErrors: true, Args: cobra.NoArgs, Example: "  csquad new -s my-team\n  csquad member add reviewer --profile claude-opus --instructions 'Review the candidate'\n  csquad board\n  csquad resume my-team"}
 	root.SetOut(os.Stdout)
 	root.SetErr(os.Stderr)
 	root.PersistentFlags().String("team", "", "Team state directory (defaults to the current project's last team)")

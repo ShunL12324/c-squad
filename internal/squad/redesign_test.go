@@ -7,8 +7,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/ShunL12324/c-squad/internal/config"
 )
 
 func TestStartCollisionIsReadOnlyBeforePreflight(t *testing.T) {
@@ -108,7 +106,7 @@ func TestResourceTablesAreConciseRows(t *testing.T) {
 		value           any
 		header, content string
 	}{
-		{map[string]*Member{"alice": {ID: "alice", State: MemberStateIdle, Role: "reviewer"}}, "MEMBER", "alice"},
+		{map[string]*Member{"alice": {ID: "alice", State: MemberStateIdle, Instructions: "Review the candidate"}}, "MEMBER", "alice"},
 		{map[string]*Task{"T1": {ID: "T1", Title: "Check result", Owner: "alice"}}, "OWNER", "Check result"},
 		{map[string]*Question{"Q1": {ID: "Q1", Member: "alice", Text: "Which target?"}}, "QUESTION", "Which target?"},
 		{[]*Message{{ID: "M1", From: "alice", To: "master", Text: "line\nnext"}}, "FROM", "line\\nnext"},
@@ -142,7 +140,7 @@ func TestPromptUsesCanonicalCLIAndSubmissionIdentity(t *testing.T) {
 	st := testStore(t)
 	s, err := st.read()
 	must(t, err)
-	text, promptErr := prompt(s, s.Members["a"], config.Template{})
+	text, promptErr := prompt(s, s.Members["a"])
 	must(t, promptErr)
 	for _, want := range []string{"csquad COMMAND", "message reply MESSAGE", "question request", "question answer", "--submission ID", "Non-code evidence requires --submission", "Routine messages do not require message ack"} {
 		if !strings.Contains(text, want) {

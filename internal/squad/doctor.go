@@ -5,7 +5,6 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/ShunL12324/c-squad/internal/agentenv"
 	"github.com/ShunL12324/c-squad/internal/config"
 	"github.com/ShunL12324/c-squad/internal/preflight"
 	"github.com/ShunL12324/c-squad/internal/process"
@@ -30,8 +29,7 @@ func doctor(o options) error {
 		command := config.Command{Executable: name}
 		var env map[string]string
 		if name == "claude" || name == "codex" {
-			command = cfg.Command(config.Engine(name))
-			env = agentenv.Merge(cfg.Env, cfg.StartupEnv)
+			command, env = cfg.LaunchFor(config.Engine(name))
 			info["executable"] = command.Executable
 			info["args"] = command.Args
 		}
@@ -89,7 +87,12 @@ func doctor(o options) error {
 		return err
 	}
 	if o["strict"] == "true" {
-		return preflight.CheckConfig(cfg, config.Engine(o["engine"]))
+		engine := config.Engine(o["engine"])
+		if engine == "" {
+			return preflight.Check(cfg)
+		}
+		command, env := cfg.LaunchFor(engine)
+		return preflight.CheckCommand(engine, command, env)
 	}
 	return nil
 }

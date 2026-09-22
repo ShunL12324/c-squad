@@ -42,9 +42,12 @@ func (m *Message) recoverDelivery() {
 	}
 }
 
-// applyResumeEnvironment updates inherited defaults while retaining per-member
-// overrides. Native conversation IDs belong to the selected configuration home.
-func (m *Member) applyResumeEnvironment(oldDefaults, currentDefaults, explicit map[string]string) {
+// applyResumeEnvironment moves a member onto its profile's current environment.
+// Values the member still holds from the profile it was added with follow the
+// edit, and a variable the profile no longer sets is dropped; anything else the
+// member carries is left alone, because a resume must not rewrite state the
+// member acquired elsewhere.
+func (m *Member) applyResumeEnvironment(oldDefaults, currentDefaults map[string]string) {
 	selector := "CLAUDE_CONFIG_DIR"
 	if m.Engine == config.Codex {
 		selector = "CODEX_HOME"
@@ -52,11 +55,6 @@ func (m *Member) applyResumeEnvironment(oldDefaults, currentDefaults, explicit m
 	before := m.Env[selector]
 	changes := map[string]string{}
 	for key, value := range currentDefaults {
-		if m.EnvOverrides != nil {
-			if _, explicit := (*m.EnvOverrides)[key]; explicit {
-				continue
-			}
-		}
 		old, inherited := oldDefaults[key]
 		existing, present := m.Env[key]
 		if inherited && existing == old || !inherited && !present {
@@ -64,54 +62,41 @@ func (m *Member) applyResumeEnvironment(oldDefaults, currentDefaults, explicit m
 		}
 	}
 	for key, old := range oldDefaults {
-		if m.EnvOverrides != nil {
-			if _, explicit := (*m.EnvOverrides)[key]; explicit {
-				continue
-			}
-		}
 		if _, exists := currentDefaults[key]; !exists && m.Env[key] == old {
 			delete(m.Env, key)
 		}
 	}
-	if m.EnvOverrides != nil {
-		m.EnvOverrides = explicitMemberEnv(agentenv.Merge(*m.EnvOverrides, explicit))
-		changes = agentenv.Merge(changes, *m.EnvOverrides)
-	}
-	m.Env = agentenv.Merge(m.Env, changes, explicit)
+	m.Env = agentenv.Merge(m.Env, changes)
 	if before != m.Env[selector] {
 		m.EngineID = ""
 	}
 }
 
-// Reload both supported config tables; saved startup values must not hide edits
-// to [startup_env]. New teams distinguish CLI overrides from config defaults.
-func refreshResumeDefaults(s *State, current config.Config, overrides map[string]string) (map[string]string, map[string]string) {
+// resumeProfileEnv reports the environment a member's profile supplied when the
+// team was saved and what the same profile supplies now, so a resume adopts an
+// edited profile. A profile that has since been deleted, like a member added
+// before profiles existed, reports the saved values unchanged: a member keeps
+// the account it was launched with instead of moving mid-team.
+func resumeProfileEnv(saved *config.Config, current config.Config, m *Member) (map[string]string, map[string]string) {
 	old := map[string]string{}
-	startup := map[string]string{}
-	if s.Config != nil {
-		old = agentenv.Merge(s.Config.Env, s.Config.StartupEnv)
-		if s.StartupOverrides == nil {
-			// Legacy snapshots mixed config and CLI values. Preserve unknown overrides,
-			// but current explicit config entries take priority over that old snapshot.
-			startup = agentenv.Merge(s.Config.StartupEnv)
-			for key := range agentenv.Merge(current.Env, current.StartupEnv) {
-				delete(startup, key)
-			}
-		}
+	if saved != nil {
+		old = agentenv.Merge(saved.Profiles[m.Profile].Env)
 	}
-	if s.StartupOverrides != nil {
-		startup = agentenv.Merge(*s.StartupOverrides)
+	if _, ok := current.Profiles[m.Profile]; !ok {
+		return old, old
 	}
-	startup = agentenv.Merge(startup, overrides)
-	s.StartupOverrides = &startup
-	env := agentenv.Merge(agentenv.SnapshotSelectors(), current.Env)
-	startupEnv := agentenv.Merge(current.StartupEnv, startup)
+	return old, agentenv.Merge(current.Profiles[m.Profile].Env)
+}
+
+// refreshResumeDefaults adopts the current profile tables into the team snapshot.
+// Only the profiles are reloaded: the engine, model and environment a member was
+// added with stay snapshotted, and its command is resolved through its profile at
+// every launch, so an edited launcher reaches the next start.
+func refreshResumeDefaults(s *State, current config.Config) {
 	if s.Config == nil {
 		s.Config = &current
+		return
 	}
-	s.Config.Env, s.Config.StartupEnv = env, startupEnv
-	// A full resume adopts edited command paths, just like account environment
-	// defaults. Individual member restarts continue using the saved snapshot.
-	s.Config.EngineCommands = current.EngineCommands
-	return old, agentenv.Merge(env, startupEnv)
+	s.Config.Profiles = current.Profiles
+	s.Config.DefaultProfile, s.Config.MasterProfile = current.DefaultProfile, current.MasterProfile
 }

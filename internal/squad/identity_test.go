@@ -213,12 +213,11 @@ func TestInjectedPrefixDropsIdentityFlags(t *testing.T) {
 	st := testStore(t)
 	must(t, st.update(func(s *State) error {
 		s.Executable = "/opt/csquad/native/csquad"
-		s.Members["a"].Role = "reviewer"
 		return nil
 	}))
 	s, e := st.read()
 	must(t, e)
-	text, promptErr := prompt(s, s.Members["a"], config.Template{})
+	text, promptErr := prompt(s, s.Members["a"])
 	must(t, promptErr)
 	// The old prefix bound concrete values; the instruction naming the flags as
 	// forbidden must survive, so assert on the values rather than the flag names.

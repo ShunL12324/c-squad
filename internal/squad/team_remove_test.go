@@ -75,7 +75,7 @@ func TestSavedTeamRemovalDryRunAndRemove(t *testing.T) {
 }
 
 func TestSavedTeamRemovalRefusesUnsafeWork(t *testing.T) {
-	for _, mode := range []string{"active", "dirty", "untracked", "unmerged", "external", "unknown", "symlink", "merge-intent", "process", "lock"} {
+	for _, mode := range []string{"active", "dirty", "untracked", "unmerged", "external", "unknown", "symlink", "merge-intent", "process", "lock", "assume-unchanged", "skip-worktree"} {
 		t.Run(mode, func(t *testing.T) {
 			st, path := savedRemovalTeam(t, true)
 			s, e := st.read()
@@ -107,6 +107,14 @@ func TestSavedTeamRemovalRefusesUnsafeWork(t *testing.T) {
 					s.Members["master"] = &Member{ID: "master", Processes: []process.Identity{p}}
 					return nil
 				}))
+			case "assume-unchanged", "skip-worktree":
+				// A merged, tracked file whose local edit git status cannot see.
+				commitFile(t, path, "tracked", "merged")
+				_, e = git(s.Root, "merge", "--ff-only", "csquad/old/T1")
+				must(t, e)
+				_, e = git(path, "update-index", "--"+mode, "tracked")
+				must(t, e)
+				must(t, os.WriteFile(filepath.Join(path, "tracked"), []byte("hidden local edits"), 0600))
 			case "lock":
 				unlock, e := filelock.Acquire(st.Dir, "team-lifecycle", false)
 				must(t, e)

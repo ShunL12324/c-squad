@@ -268,6 +268,13 @@ func planTeamRemoval(st *Store, s *State) (*removalPlan, error) {
 		if e != nil || ce != nil || !sameDir(own, common) {
 			return nil, fmt.Errorf("workspace repository changed: %s", path)
 		}
+		hidden, e := hasHiddenIndexEntries(path)
+		if e != nil {
+			return nil, e
+		}
+		if hidden {
+			return nil, fmt.Errorf("workspace has assume-unchanged or skip-worktree files: %s", path)
+		}
 		dirty, e := git(path, "status", "--porcelain", "--untracked-files=all")
 		if e != nil {
 			return nil, e

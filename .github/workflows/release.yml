@@ -136,11 +136,31 @@ jobs:
         with:
           # Release runs on a tag; publish the formula to the default branch.
           ref: ${{ github.event.repository.default_branch }}
+      # A rerun of an older tag must not roll the Formula back (#32). Compare
+      # with the newest branch state rather than the checkout; the push below
+      # is fast-forward only, so a formula pushed after this check fails it.
+      - name: Check the current Formula version
+        id: guard
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          TARGET_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch origin "$TARGET_BRANCH"
+          current="$RUNNER_TEMP/current-formula.rb"
+          git show "origin/$TARGET_BRANCH:Formula/csquad.rb" > "$current" 2>/dev/null || rm -f "$current"
+          gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
+            --limit 1000 --json tagName --jq '.[].tagName' > "$RUNNER_TEMP/published"
+          mapfile -t published < "$RUNNER_TEMP/published"
+          python3 scripts/release-guard.py --version "$TAG" --formula "$current" \
+            --published "${published[@]}" --github-output
       - uses: actions/download-artifact@v4
+        if: steps.guard.outputs.deploy == 'true'
         with:
           name: homebrew-formula
           path: Formula
       - name: Update formula in this repository
+        if: steps.guard.outputs.deploy == 'true'
         env:
           TARGET_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
@@ -150,21 +170,49 @@ jobs:
           git add Formula/csquad.rb
           if ! git diff --cached --quiet; then
             git commit -m 'Update csquad formula'
-            git pull --rebase origin "$TARGET_BRANCH"
+            git rebase "origin/$TARGET_BRANCH"
             git push origin "HEAD:$TARGET_BRANCH"
           fi
   apt:
     needs: publish
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pages: write
       id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          sparse-checkout: scripts
+      # Deploying replaces the whole site, so a rerun of an older tag would roll
+      # APT back (#32). Releases are serialized, so nothing deploys between this
+      # check and the deployment below.
+      - name: Check the deployed APT version
+        id: guard
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
+            --limit 1000 --json tagName --jq '.[].tagName' > "$RUNNER_TEMP/published"
+          mapfile -t published < "$RUNNER_TEMP/published"
+          site=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .html_url)
+          packages="$RUNNER_TEMP/Packages"
+          status=$(curl -sS -o "$packages" -w '%{http_code}' "${site%/}/apt/dists/stable/main/binary-amd64/Packages")
+          case "$status" in
+            200) ;;
+            404) rm -f "$packages" ;;
+            *) echo "Cannot read the deployed APT index (HTTP $status)." >&2; exit 1 ;;
+          esac
+          python3 scripts/release-guard.py --version "$TAG" --packages "$packages" \
+            --published "${published[@]}" --github-output
       - name: Deploy APT repository
         id: deployment
+        if: steps.guard.outputs.deploy == 'true'
         uses: actions/deploy-pages@v4
 
   npm-test:

@@ -149,6 +149,21 @@ If a formula push or Pages deployment fails after publication, rerun the failed 
 rebuilding or overwriting an already published release. Users can still install
 the `.deb` or archive from GitHub Releases while a channel is being repaired.
 
+APT and the Formula each serve a single version, so a rerun of an older tag must
+not replace a newer one. Before deploying, the `apt` and `homebrew` jobs run
+`scripts/release-guard.py`, which compares the tag with every published stable
+Release and with the version currently deployed (the public APT `Packages`
+index, or the Formula on the default branch). An older tag skips the deployment
+and the job still succeeds; the same version is redeployed, so a failed job can
+be repaired. Releases are serialized, so no other deployment lands between the
+APT check and its deployment; the Formula push is fast-forward only, so a
+Formula committed after its check makes the push fail instead of being
+overwritten. Runs from before this guard existed use their own workflow file
+and have no guard: do not rerun their `apt` or `homebrew` jobs once a newer
+version is published. Starting a rerun while another release run is queued
+cancels the queued run (GitHub keeps one pending run per concurrency group);
+start that run again afterwards.
+
 After the first publication, verify:
 
 ```sh

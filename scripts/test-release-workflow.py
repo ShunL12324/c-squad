@@ -49,6 +49,23 @@ class ReleaseWorkflowTests(unittest.TestCase):
                 self.assertIn("publish", needs(self.jobs, channel))
         self.assertIn("homebrew-test", needs(self.jobs, "homebrew"))
 
+    def test_single_version_channels_are_guarded(self):
+        # Reruns of an older tag must not roll back APT or the Formula (#32).
+        for name, uses, script in (("apt", "actions/deploy-pages@", None),
+                                   ("homebrew", "actions/download-artifact@", "Update formula in this repository")):
+            steps = self.jobs[name]["steps"]
+            guard = [step for step in steps if step.get("id") == "guard"]
+            self.assertEqual(len(guard), 1, name)
+            self.assertIn("scripts/release-guard.py", guard[0]["run"])
+            position = steps.index(guard[0])
+            guarded = [step for step in steps if step.get("uses", "").startswith(uses)
+                       or (script and step.get("name") == script)]
+            self.assertTrue(guarded, name)
+            for step in guarded:
+                with self.subTest(job=name, step=step.get("name") or step.get("uses")):
+                    self.assertGreater(steps.index(step), position)
+                    self.assertEqual(step.get("if"), "steps.guard.outputs.deploy == 'true'")
+
 
 if __name__ == "__main__":
     unittest.main()

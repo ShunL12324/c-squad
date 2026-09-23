@@ -17,7 +17,10 @@ requires a running server.
    default branch; later releases update it. `Formula/csquad.rb.in` is the source
    template, not an installable formula.
 2. In this repository's Pages settings, choose **GitHub Actions** as the source.
-   Allow the `github-pages` environment to deploy release tags.
+   Allow the `github-pages` environment to deploy release tags. This must be
+   done before the first release: the `apt` job stops with "GitHub Pages is not
+   enabled" otherwise, and `deploy-pages` could not deploy anyway. Rerun that
+   job after enabling Pages.
 3. The workflow uses the standard `GITHUB_TOKEN` with `contents: write` to publish
    Releases and commit the formula to this repository's default branch. No
    additional Homebrew token is needed. Branch protection/rulesets must permit
@@ -163,6 +166,15 @@ and have no guard: do not rerun their `apt` or `homebrew` jobs once a newer
 version is published. Starting a rerun while another release run is queued
 cancels the queued run (GitHub keeps one pending run per concurrency group);
 start that run again afterwards.
+
+`scripts/read-apt-index.sh` reads the deployed index for the APT guard. With
+Pages enabled but nothing deployed yet, the index returns 404 and the first
+deployment goes ahead, compared only with published Releases. Anything else
+that leaves the deployed version unknown stops the job without deploying: Pages
+not enabled, no permission to read its configuration, no site URL, a network
+error, or any other HTTP status. Pages caches the index for up to ten minutes;
+this cannot let an older tag through, because every newer version is published
+as a Release before it deploys and the guard compares with those too.
 
 After the first publication, verify:
 

@@ -106,3 +106,22 @@ func TestResumeKeepsMembersWithoutALiveProfile(t *testing.T) {
 		}
 	}
 }
+
+// A profile switched to another engine is treated like a deleted one on resume:
+// its environment was written for that engine, so an existing member keeps the
+// account it was launched with (#21).
+func TestResumeKeepsMembersWhoseProfileChangedEngine(t *testing.T) {
+	saved := config.Config{Profiles: map[string]config.Profile{
+		"work": {Engine: config.Codex, Env: map[string]string{"CODEX_HOME": "/old"}}}}
+	edited := config.Config{Profiles: map[string]config.Profile{
+		"work": {Engine: config.Claude, Env: map[string]string{"CLAUDE_CONFIG_DIR": "/claude"}}}}
+	m := Member{ID: "a", Engine: config.Codex, Profile: "work", EngineID: "session", Env: map[string]string{"CODEX_HOME": "/old"}}
+	old, current := resumeProfileEnv(&saved, edited, &m)
+	m.applyResumeEnvironment(old, current)
+	if m.Env["CODEX_HOME"] != "/old" || m.EngineID != "session" {
+		t.Fatalf("member moved onto a profile for another engine: %+v", m)
+	}
+	if _, ok := m.Env["CLAUDE_CONFIG_DIR"]; ok {
+		t.Fatalf("member adopted another engine's environment: %+v", m.Env)
+	}
+}

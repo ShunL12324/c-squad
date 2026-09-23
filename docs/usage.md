@@ -144,7 +144,9 @@ is added, so later configuration edits never change an existing member. The
 command is resolved at launch through the recorded profile name, read from the
 current configuration, so an edited wrapper reaches the next restart. Removing a profile that an existing member was
 added with is not fatal: that member launches the engine by name with a warning,
-and keeps the account it was added with.
+and keeps the account it was added with. Changing that profile's `engine` is
+treated the same way, because its command and environment were written for the
+other engine.
 
 An earlier `[templates]` table is migrated to profiles of the same name the first
 time the configuration loads, and so are the former top-level `engine`, `model`,

@@ -96,7 +96,9 @@ func (c Config) profileChoices() string {
 // command is read from the profile at launch, so an edited launcher reaches the
 // next restart. A profile deleted after the member was added falls back to the
 // built-in default, which runs the engine by name, and warns instead of failing:
-// editing a configuration must not stop an existing team from starting.
+// editing a configuration must not stop an existing team from starting. A
+// profile whose engine was changed since is treated the same way: its command
+// was written for the other engine, and would receive this engine's arguments.
 func (c Config) ProfileCommand(name string, engine Engine) (Command, string) {
 	if name == "" {
 		return EngineCommand(engine), ""
@@ -105,7 +107,17 @@ func (c Config) ProfileCommand(name string, engine Engine) (Command, string) {
 	if !ok {
 		return EngineCommand(engine), fmt.Sprintf("profile %q is no longer defined; launching %s from the built-in default profile", name, engine)
 	}
+	if !p.Launches(engine) {
+		return EngineCommand(engine), fmt.Sprintf("profile %q now launches %s, not %s; launching %s from the built-in default profile", name, p.Engine, engine, engine)
+	}
 	return p.LaunchCommand(engine), ""
+}
+
+// Launches reports whether a member recorded with engine can still use this
+// profile's launch settings. A profile saved before engines were required names
+// none and matches any engine, as it did when that member was added.
+func (p Profile) Launches(engine Engine) bool {
+	return p.Engine == "" || p.Engine == engine
 }
 
 // LaunchCommand fills in the engine name for a profile that defines no command

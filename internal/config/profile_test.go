@@ -148,6 +148,23 @@ func TestRemovedProfileFallsBackWithWarning(t *testing.T) {
 	}
 }
 
+// A profile whose engine was changed after a member was added no longer fits
+// that member: its command was written for the other engine. The member falls
+// back to its engine by name with a warning, as for a deleted profile (#21).
+func TestProfileWithChangedEngineFallsBackWithWarning(t *testing.T) {
+	c, _ := loadFrom(t, "[profiles.work]\nengine = 'claude'\n[profiles.work.command]\nexecutable = '/usr/bin/wrapper'\nargs = ['--claude-only']\n")
+	command, warning := c.ProfileCommand("work", Codex)
+	if command.Executable != "codex" || len(command.Args) != 0 {
+		t.Fatalf("mismatched profile command was used: %+v", command)
+	}
+	if !strings.Contains(warning, `"work"`) || !strings.Contains(warning, "now launches claude, not codex") {
+		t.Fatalf("mismatched profile warning: %q", warning)
+	}
+	if command, warning = c.ProfileCommand("work", Claude); command.Executable != "/usr/bin/wrapper" || warning != "" {
+		t.Fatalf("matching profile lost its command: %+v %q", command, warning)
+	}
+}
+
 // Test 18 and 19: the shared tables were the layers below a profile's env, so
 // they merge into every profile in that order and a profile's own key always
 // wins. Afterwards nothing reads them and the file no longer carries them.

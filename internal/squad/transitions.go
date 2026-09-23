@@ -74,15 +74,16 @@ func (m *Member) applyResumeEnvironment(oldDefaults, currentDefaults map[string]
 
 // resumeProfileEnv reports the environment a member's profile supplied when the
 // team was saved and what the same profile supplies now, so a resume adopts an
-// edited profile. A profile that has since been deleted, like a member added
-// before profiles existed, reports the saved values unchanged: a member keeps
-// the account it was launched with instead of moving mid-team.
+// edited profile. A profile that has since been deleted or switched to another
+// engine, like a member added before profiles existed, reports the saved values
+// unchanged: a member keeps the account it was launched with instead of moving
+// mid-team onto one configured for a different engine.
 func resumeProfileEnv(saved *config.Config, current config.Config, m *Member) (map[string]string, map[string]string) {
 	old := map[string]string{}
 	if saved != nil {
 		old = agentenv.Merge(saved.Profiles[m.Profile].Env)
 	}
-	if _, ok := current.Profiles[m.Profile]; !ok {
+	if p, ok := current.Profiles[m.Profile]; !ok || !p.Launches(m.Engine) {
 		return old, old
 	}
 	return old, agentenv.Merge(current.Profiles[m.Profile].Env)

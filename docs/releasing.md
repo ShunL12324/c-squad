@@ -76,10 +76,12 @@ checkout check identify the candidate. Any source change requires a new run.
 Do not infer macOS success from a Linux fixture or from cross-compilation alone.
 
 The stable-tag Release workflow also calls this same validation and makes its
-release job depend on success. A failure therefore blocks creation/publication
-of GitHub release assets and all downstream npm, Homebrew, and APT jobs. Existing
-post-build channel checks remain in place. This gate builds disposable packages;
-the release job still builds and verifies the final distribution assets.
+release job depend on success. A failure therefore blocks creation of the
+GitHub draft and every channel. It does not cover the later checks: a failure in
+the release job's own tests or in npm-test after the draft exists leaves an
+unpublished draft and no channel changed, while a failure after publication
+(see below) leaves the channels out of step. This gate builds disposable
+packages; the release job still builds and verifies the final distribution assets.
 
 ## Publish
 
@@ -97,10 +99,12 @@ Ordinary pushes and pull requests run only `make check`. Before every release:
    commit is on the remote default branch and that the version is unused in
    Git tags, GitHub Releases, and npm. Tag that explicit commit, not an
    intermediate or moving branch tip.
-4. Prepare English GitHub Release notes from the matching changelog section.
-   Include the exact source SHA, check the tag/version and changes agree, and
-   omit preparation markers. GoReleaser changelog generation is disabled, so
-   these notes must be supplied explicitly.
+4. Check the matching changelog section reads as English Release notes. The
+   Release workflow extracts that section with `scripts/release-notes.py`,
+   appends the exact source SHA, and applies it when it publishes the draft.
+   It stops before building if the section is missing, empty, undated, or still
+   marked Unreleased or Pending integration. Preview the body locally with
+   `python3 scripts/release-notes.py --version vX.Y.Z --sha FULL_SHA --output /tmp/notes.md`.
 
 For example, after filling in the approved values:
 
@@ -111,11 +115,11 @@ git tag -a "$RELEASE_TAG" "$RELEASE_SHA" -m "C Squad $RELEASE_TAG"
 git push origin "$RELEASE_TAG"
 ```
 
-The stable tag triggers checks, compilation, and publication. When the workflow
-creates its draft, apply the prepared notes with
-`gh release edit "$RELEASE_TAG" --notes-file /path/to/release-notes.md`.
-Recheck the public Release body against that tag's changelog after publication;
-do not assume an empty or automatically generated body is sufficient. If the
+The stable tag triggers checks, compilation, and publication. GoReleaser
+changelog generation stays disabled; the workflow sets the Release body from the
+changelog section when it publishes the draft, and shows it in the release job
+summary. Recheck the public Release body against that tag's changelog after
+publication. If the
 actual publication crosses a UTC date boundary, correct the changelog date on
 the default branch in a follow-up commit; never move the published tag.
 
@@ -125,17 +129,40 @@ APT repository. Check installation and reported version/source where supported.
 Never overwrite or move a published tag.
 
 The Release workflow checks the source, builds a draft, and tests APT
-installation, upgrade, and removal before publishing GitHub assets. It then
-tests the Formula on a macOS runner and commits it to the default branch.
-A separate job deploys the signed APT metadata. Only stable `vX.Y.Z` versions are accepted. The APT source
+installation, upgrade, and removal. The npm package is then installed and tested
+on Linux and macOS from the uploaded artifact. Only after all of that passes
+does the `publish` job make the GitHub Release public. From there the channels
+run in parallel: the Formula is tested on a macOS runner against the public
+archives and committed to the default branch, a separate job deploys the signed
+APT metadata, and npm publishes. Only stable `vX.Y.Z` versions are accepted. The APT source
 contains the current release for amd64 and arm64; it is not a historical archive.
 Releases are serialized so simultaneous tags cannot overwrite each other's output.
 
-The Release, formula commit, and Pages deployment are not one transaction.
+The Release, npm publication, formula commit, and Pages deployment are not one
+transaction, and nothing is rolled back. Homebrew can only be tested after the
+Release is public, because the Formula downloads the public archives, so a
+Homebrew test failure leaves GitHub, APT and npm on the new version with the
+Formula unchanged. A failed npm publish, Pages deployment or formula push has
+the same effect on its own channel.
 The formula commit is an ordinary branch push and does not trigger another build.
 If a formula push or Pages deployment fails after publication, rerun the failed jobs in Actions rather than
 rebuilding or overwriting an already published release. Users can still install
 the `.deb` or archive from GitHub Releases while a channel is being repaired.
+
+APT and the Formula each serve a single version, so a rerun of an older tag must
+not replace a newer one. Before deploying, the `apt` and `homebrew` jobs run
+`scripts/release-guard.py`, which compares the tag with every published stable
+Release and with the version currently deployed (the public APT `Packages`
+index, or the Formula on the default branch). An older tag skips the deployment
+and the job still succeeds; the same version is redeployed, so a failed job can
+be repaired. Releases are serialized, so no other deployment lands between the
+APT check and its deployment; the Formula push is fast-forward only, so a
+Formula committed after its check makes the push fail instead of being
+overwritten. Runs from before this guard existed use their own workflow file
+and have no guard: do not rerun their `apt` or `homebrew` jobs once a newer
+version is published. Starting a rerun while another release run is queued
+cancels the queued run (GitHub keeps one pending run per concurrency group);
+start that run again afterwards.
 
 After the first publication, verify:
 
@@ -186,7 +213,9 @@ Native Windows is intentionally unsupported; use WSL 2.
 `test-npm.py` also runs `csquad completion install` against a throwaway `HOME`
 and then checks, with a real Tab key in an isolated Zsh, that the file it wrote
 is the one the shell loads. That last step needs `zsh`; without it the test
-prints a `SKIP` line and the rest still runs.
+prints a `SKIP` line and the rest still runs. The release workflow installs Zsh
+on Linux and fails before testing if either runner lacks it, so CI never skips
+these checks.
 
 npm versions are immutable. If npm publication fails, fix the authentication or
 trusted-publisher configuration and rerun the failed job. Check the registry

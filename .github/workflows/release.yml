@@ -19,7 +19,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.ref }}
           fetch-depth: 0
@@ -34,13 +34,19 @@ jobs:
           test -s LICENSE
           test -n "$APT_KEY" || { echo 'Set APT_SIGNING_KEY.' >&2; exit 1; }
           test -n "$APT_FINGERPRINT" || { echo 'Set APT_SIGNING_FINGERPRINT.' >&2; exit 1; }
-      - uses: actions/setup-go@v5
+          # The Release body comes from the tag's changelog section; stop before
+          # creating a draft if that section is missing or unfinished.
+          python3 scripts/test-release-notes.py
+          python3 scripts/release-notes.py --version "$TAG" --sha "$(git rev-parse HEAD)" \
+            --output "$RUNNER_TEMP/release-notes.md"
+          cat "$RUNNER_TEMP/release-notes.md" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.26.0'
           cache: true
       - run: sudo apt-get update && sudo apt-get install -y tmux apt-utils
       - run: make check
-      - uses: goreleaser/goreleaser-action@v6
+      - uses: goreleaser/goreleaser-action@v7
         with:
           version: v2.18.2
           args: release --clean
@@ -48,7 +54,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSQUAD_PUBLISH: 'true'
       - run: make test-packaging
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - name: Package npm distribution
@@ -57,7 +63,7 @@ jobs:
         run: |
           python3 scripts/build-npm.py --version "${TAG#v}"
           npm pack ./dist/npm/package --pack-destination dist/npm
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: npm-package
           path: dist/npm/*.tgz
@@ -73,24 +79,41 @@ jobs:
           trap 'gpgconf --kill gpg-agent; rm -rf "$GNUPGHOME"' EXIT
           printf '%s' "$APT_KEY" | gpg --batch --import
           bash scripts/build-apt-repo.sh dist/release dist/site/apt "$APT_FINGERPRINT"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: homebrew-formula
           path: dist/tap/Formula/csquad.rb
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist/site
+
+  # The Release stays a draft until the npm package passes on Linux and macOS.
+  # npm-test only needs the uploaded artifact, not public download URLs.
+  publish:
+    needs: [release, npm-test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }}
       - name: Publish verified release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
-        run: gh release edit "$TAG" --draft=false
+        run: |
+          python3 scripts/release-notes.py --version "$TAG" --sha "$(git rev-parse HEAD)" \
+            --output "$RUNNER_TEMP/release-notes.md"
+          gh release edit "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md" --draft=false
 
+  # Homebrew downloads the public release archives, so it can only be tested
+  # after publication.
   homebrew-test:
-    needs: release
+    needs: publish
     runs-on: macos-14
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: homebrew-formula
           path: formula
@@ -104,20 +127,40 @@ jobs:
           brew test c-squad/ci/csquad
           brew uninstall csquad
   homebrew:
-    needs: [release, homebrew-test]
+    needs: [publish, homebrew-test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Release runs on a tag; publish the formula to the default branch.
           ref: ${{ github.event.repository.default_branch }}
-      - uses: actions/download-artifact@v4
+      # A rerun of an older tag must not roll the Formula back (#32). Compare
+      # with the newest branch state rather than the checkout; the push below
+      # is fast-forward only, so a formula pushed after this check fails it.
+      - name: Check the current Formula version
+        id: guard
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          TARGET_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch origin "$TARGET_BRANCH"
+          current="$RUNNER_TEMP/current-formula.rb"
+          git show "origin/$TARGET_BRANCH:Formula/csquad.rb" > "$current" 2>/dev/null || rm -f "$current"
+          gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
+            --limit 1000 --json tagName --jq '.[].tagName' > "$RUNNER_TEMP/published"
+          mapfile -t published < "$RUNNER_TEMP/published"
+          python3 scripts/release-guard.py --version "$TAG" --formula "$current" \
+            --published "${published[@]}" --github-output
+      - uses: actions/download-artifact@v8
+        if: steps.guard.outputs.deploy == 'true'
         with:
           name: homebrew-formula
           path: Formula
       - name: Update formula in this repository
+        if: steps.guard.outputs.deploy == 'true'
         env:
           TARGET_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
@@ -127,22 +170,50 @@ jobs:
           git add Formula/csquad.rb
           if ! git diff --cached --quiet; then
             git commit -m 'Update csquad formula'
-            git pull --rebase origin "$TARGET_BRANCH"
+            git rebase "origin/$TARGET_BRANCH"
             git push origin "HEAD:$TARGET_BRANCH"
           fi
   apt:
-    needs: release
+    needs: publish
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pages: write
       id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }}
+          sparse-checkout: scripts
+      # Deploying replaces the whole site, so a rerun of an older tag would roll
+      # APT back (#32). Releases are serialized, so nothing deploys between this
+      # check and the deployment below.
+      - name: Check the deployed APT version
+        id: guard
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
+            --limit 1000 --json tagName --jq '.[].tagName' > "$RUNNER_TEMP/published"
+          mapfile -t published < "$RUNNER_TEMP/published"
+          site=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .html_url)
+          packages="$RUNNER_TEMP/Packages"
+          status=$(curl -sS -o "$packages" -w '%{http_code}' "${site%/}/apt/dists/stable/main/binary-amd64/Packages")
+          case "$status" in
+            200) ;;
+            404) rm -f "$packages" ;;
+            *) echo "Cannot read the deployed APT index (HTTP $status)." >&2; exit 1 ;;
+          esac
+          python3 scripts/release-guard.py --version "$TAG" --packages "$packages" \
+            --published "${published[@]}" --github-output
       - name: Deploy APT repository
         id: deployment
-        uses: actions/deploy-pages@v4
+        if: steps.guard.outputs.deploy == 'true'
+        uses: actions/deploy-pages@v5
 
   npm-test:
     needs: release
@@ -151,30 +222,35 @@ jobs:
         os: [ubuntu-latest, macos-14]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: npm-package
           path: dist/npm
+      # ubuntu-latest has no Zsh; without it the npm tests skip Zsh completion.
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y zsh
+      - name: Require shells for completion tests
+        run: command -v zsh && command -v bash
       - run: python3 scripts/test-packaging-process.py
       - run: python3 scripts/test-npm.py dist/npm/*.tgz
 
   npm:
-    needs: [release, npm-test]
+    needs: publish
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           registry-url: https://registry.npmjs.org
       - run: npm install --global npm@11.6.2
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: npm-package
           path: dist/npm

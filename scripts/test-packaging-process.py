@@ -49,21 +49,38 @@ class ProcessTests(unittest.TestCase):
     def test_timeout_kills_descendant_in_another_session(self):
         self.check_timeout_cleanup()
 
+    def test_slow_child_startup_retries_until_descendant_exists(self):
+        # A loaded runner can take longer than the first deadline to start the
+        # child; the check must then retry instead of reading a missing marker.
+        self.check_timeout_cleanup(startup_delay=1.5)
+
     def test_denied_group_signal_still_reaps_directly_killed_processes(self):
         with mock.patch("packaging_test_support.os.killpg", side_effect=PermissionError("group signal denied")) as group_signal:
             self.check_timeout_cleanup()
             group_signal.assert_not_called()
 
-    def check_timeout_cleanup(self):
+    def check_timeout_cleanup(self, startup_delay=0):
+        # The deadline must expire after the descendant exists. Startup time is
+        # unbounded on shared runners, so retry with a longer deadline until the
+        # child reports its descendant. A child killed earlier is still reaped by
+        # command(), and a descendant spawned before the marker is its child too.
         with tempfile.TemporaryDirectory() as directory:
             marker = Path(directory) / "child"
             script = ("import os,subprocess,sys,time; from pathlib import Path; "
+                      f"time.sleep({startup_delay}); "
                       "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)'],start_new_session=True); "
-                      "Path(sys.argv[1]).write_text(str(child.pid)+' '+str(os.getpid())); time.sleep(30)")
-            started = time.monotonic()
-            with self.assertRaises(subprocess.TimeoutExpired):
-                command(sys.executable, "-c", script, marker, timeout=1)
-            self.assertLess(time.monotonic() - started, 8)
+                      "partial=Path(sys.argv[1]+'.partial'); partial.write_text(str(child.pid)+' '+str(os.getpid())); "
+                      "os.replace(partial,sys.argv[1]); time.sleep(30)")
+            for timeout in (1, 2, 4, 8, 16):
+                started = time.monotonic()
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    command(sys.executable, "-c", script, marker, timeout=timeout)
+                # Cleanup after the deadline must itself be prompt.
+                self.assertLess(time.monotonic() - started, timeout + 7)
+                if marker.exists():
+                    break
+            else:
+                self.fail("child never reported its descendant before the deadline")
             pid, parent = map(int, marker.read_text().split())
             with self.assertRaises(ChildProcessError):
                 os.waitpid(parent, os.WNOHANG)
@@ -73,21 +90,25 @@ class ProcessTests(unittest.TestCase):
 
     def test_inherited_output_descriptors_do_not_hold_parent_wait(self):
         # A child with an inherited output descriptor must not delay collection
-        # of its parent's result. Clean up our fixture explicitly afterward.
+        # of its parent's result. The deadline only bounds a regression; the
+        # proof is that the descendant is still running when the result returns,
+        # so a slow parent startup cannot fail this check. Clean up afterward.
         with tempfile.TemporaryDirectory() as directory:
             marker = Path(directory) / "child"
             script = ("import subprocess,sys; from pathlib import Path; "
-                      "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)'],start_new_session=True); "
+                      "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(300)'],start_new_session=True); "
                       "Path(sys.argv[1]).write_text(str(child.pid)); print('parent done')")
             try:
-                started = time.monotonic()
-                result = command(sys.executable, "-c", script, marker, timeout=2)
+                result = command(sys.executable, "-c", script, marker, timeout=60)
                 self.assertEqual(result.stdout, "parent done\n")
-                self.assertLess(time.monotonic() - started, 3)
+                # Signal 0 raises if the descendant already exited or was reaped.
+                os.kill(int(marker.read_text()), 0)
             finally:
                 if marker.exists():
-                    os.kill(int(marker.read_text()), 9)
-
+                    try:
+                        os.kill(int(marker.read_text()), 9)
+                    except ProcessLookupError:
+                        pass
 
 if __name__ == "__main__":
     unittest.main()

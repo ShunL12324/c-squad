@@ -22,6 +22,12 @@ release history; earlier releases remain available on
   and model and updates only variables inherited from the profile, then names
   the members whose profile still differs.
 
+### Changed
+
+- A task assignment or availability notice tells the member to run
+  `task inspect TASK`, which shows that task's workspace, acceptance and
+  milestones, instead of reading the whole team board.
+
 ### Fixed
 
 - Members start even when a rendered Codex prompt or a long `PATH` (as on WSL)

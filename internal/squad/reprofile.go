@@ -39,7 +39,7 @@ func resolveReprofile(s *State, m *Member, name string) (*reprofile, error) {
 	if err != nil {
 		return nil, err
 	}
-	next := &reprofile{Profile: resolved, Engine: m.Engine, Model: p.Model, Env: profileEnv(p)}
+	next := &reprofile{Profile: resolved, Engine: m.Engine, Model: p.Model, Env: reprofileEnv(m, p)}
 	if p.Engine != "" {
 		next.Engine = p.Engine
 	}
@@ -47,6 +47,23 @@ func resolveReprofile(s *State, m *Member, name string) (*reprofile, error) {
 	// A native conversation belongs to one engine and one account directory.
 	next.fresh = next.Engine != m.Engine || m.Env[accountSelector(m.Engine)] != next.Env[accountSelector(next.Engine)]
 	return next, nil
+}
+
+// reprofileEnv is the member's new environment: the profile's variables over
+// the account selectors the member already has. At member add the selectors
+// come from the adding process, but a reprofile often runs from another
+// terminal, whose CODEX_HOME or CLAUDE_CONFIG_DIR must not silently move the
+// member to another account. Both selectors are recorded at add, so an engine
+// switch also keeps the account the member was added with. A selector the
+// profile sets, including an empty value that unsets it, still wins.
+func reprofileEnv(m *Member, p config.Profile) map[string]string {
+	kept := map[string]string{}
+	for _, k := range []string{"CODEX_HOME", "CLAUDE_CONFIG_DIR"} {
+		if v, ok := m.Env[k]; ok {
+			kept[k] = v
+		}
+	}
+	return agentenv.Merge(kept, p.Env)
 }
 
 func accountSelector(engine config.Engine) string {

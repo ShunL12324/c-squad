@@ -118,12 +118,22 @@ func profileLoadWarning(err error) string {
 // refreshProfiles persists the live profile tables into the snapshot before a
 // member is added or launched, so the launch, and the helper commands that later
 // resolve through the same snapshot, all use the profile the member was given.
-func (st *Store) refreshProfiles() (*State, error) {
+func (st *Store) refreshProfiles() (*State, error) { return st.loadProfiles(false) }
+
+// requireProfiles is refreshProfiles for a caller that asked to re-read the
+// configuration: falling back to the snapshot would silently ignore the edit
+// the caller wants applied, so a configuration that does not load is an error.
+func (st *Store) requireProfiles() (*State, error) { return st.loadProfiles(true) }
+
+func (st *Store) loadProfiles(required bool) (*State, error) {
 	s, err := st.read()
 	if err != nil {
 		return nil, err
 	}
 	current, err := config.Load(s.Root)
+	if err != nil && required {
+		return nil, fmt.Errorf("cannot re-read profiles; nothing was stopped or changed: %w", err)
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Profile warning:", profileLoadWarning(err))
 		return s, nil

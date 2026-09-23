@@ -4,7 +4,7 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
-## v0.11.0 — 2026-09-23
+## v0.11.1 — 2026-09-23
 
 ### Added
 
@@ -54,6 +54,10 @@ release history; earlier releases remain available on
 
 ### Fixed
 
+- The npm cold-Zsh test uses private completion initialization functions so
+  insecure completion directories on a CI host cannot interrupt the test.
+  It still executes the printed loading instruction unchanged and keeps
+  Zsh's permission checks enabled; installed shell behavior is unchanged.
 - Members start even when a rendered Codex prompt or a long `PATH` (as on WSL)
   exceeds tmux's 16 KB command limit. The engine arguments and environment now
   reach the runner through a private file instead of the tmux command line, so

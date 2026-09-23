@@ -4,6 +4,8 @@
 import importlib.util
 import os
 from pathlib import Path
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -12,6 +14,7 @@ import unittest
 from unittest import mock
 
 from packaging_test_support import command
+from npm_completion_test import cold_fpath
 
 
 spec = importlib.util.spec_from_file_location("shell_completion", Path(__file__).with_name("test-shell-completion.py"))
@@ -20,6 +23,39 @@ spec.loader.exec_module(shell_completion)
 
 
 class ProcessTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("zsh"), "zsh unavailable")
+    def test_cold_zsh_isolation_preserves_permission_checks(self):
+        with tempfile.TemporaryDirectory(prefix="cold zsh '") as temporary:
+            home = Path(temporary)
+            env = dict(os.environ, HOME=temporary, ZDOTDIR=temporary)
+            prologue = cold_fpath(home, env)
+            insecure = home / "unsafe host functions"
+            insecure.mkdir()
+            insecure.chmod(0o777)
+            host = f"fpath=({shlex.quote(str(insecure))} $fpath); "
+            loading = ('(( $+functions[compdef] )) || { autoload -Uz compinit; compinit; }; '
+                       'print -r -- ${+functions[compdef]}')
+
+            def run(setup):
+                return command("zsh", "-f", "-c", setup + loading, env=env,
+                               stdin=subprocess.DEVNULL)
+
+            before = run(host)
+            self.assertEqual(before.stdout.strip(), "0")
+            self.assertIn("initialization aborted", before.stderr)
+            after = run(host + prologue)
+            self.assertEqual(after.stdout.strip(), "1")
+            self.assertEqual(after.stderr, "")
+            self.assertTrue((home / ".zcompdump").is_file())
+            cached = run(host + prologue)
+            self.assertEqual(cached.stdout.strip(), "1")
+            self.assertEqual(cached.stderr, "")
+            # A bypass such as compinit -u would wrongly pass this control.
+            (home / "cold functions").chmod(0o777)
+            rejected = run(prologue)
+            self.assertEqual(rejected.stdout.strip(), "0")
+            self.assertIn("initialization aborted", rejected.stderr)
+
     def test_completion_origin_resolves_alias_and_rejects_other_file(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

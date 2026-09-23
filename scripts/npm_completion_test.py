@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import pty
 import select
+import shlex
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,23 @@ import tarfile
 import time
 
 from packaging_test_support import command, kill_tree
+
+
+def cold_fpath(home, env):
+    """Use this Zsh's initialization functions without host completion directories."""
+    directory = home / "cold functions"
+    directory.mkdir(mode=0o755)
+    paths = command("zsh", "-f", "-c", 'print -rl -- $fpath', env=env).stdout.splitlines()
+    # Keep one autoloadable completion so compdump does not emit a bare
+    # "autoload -Uz" (which prints functions when the empty cache is sourced).
+    for name in ("compinit", "compaudit", "compdump", "compinstall", "_main_complete"):
+        source = next((Path(path) / name for path in paths if (Path(path) / name).is_file()), None)
+        assert source is not None, f"Zsh {name} not found in fpath: {paths}"
+        shutil.copyfile(source, directory / name)
+        (directory / name).chmod(0o644)
+    # No -u/-C: the real compaudit must still reject unsafe fixture permissions.
+    # Discover from Zsh itself, so system and Homebrew layouts both work.
+    return f"fpath=({shlex.quote(str(directory))}); "
 
 
 def interactive(binary, *args, env):
@@ -52,7 +70,7 @@ def check(root, binary, package):
         print("SKIP: Zsh npm first-use and stale-cache checks (zsh unavailable)")
         return
     home = root / "cold zsh home"
-    home.mkdir()
+    home.mkdir(mode=0o700)
     rc = home / ".zshrc"
     rc.write_text("# no csquad setup\n")
     user = dict(os.environ, HOME=str(home), ZDOTDIR=str(home), SHELL=shutil.which("zsh"),
@@ -63,15 +81,16 @@ def check(root, binary, package):
             user.pop(key)
     dump = home / ".zcompdump"
     # The npm package is installed, but its completion directory is not in fpath.
-    # Exclude a host-installed csquad completion from this isolated cold-shell test.
-    cold = command("zsh", "-f", "-c", '''
-        kept=(); for directory in $fpath; do
-            [[ -f $directory/_csquad ]] || kept+=($directory)
-        done
-        fpath=($kept); autoload -Uz compinit; compinit -u -d "$ZDOTDIR/.zcompdump"
+    # Host fpath may contain csquad or insecure CI/Homebrew directories. Isolate
+    # both cold shells without disabling compaudit or preloading compdef.
+    prologue = cold_fpath(home, user)
+    cold = command("zsh", "-f", "-c", prologue + '''
+        autoload -Uz compinit; compinit -d "$ZDOTDIR/.zcompdump"
         print -r -- ${_comps[csquad]:-missing}
-    ''', env=user).stdout.strip()
-    assert cold == "missing", cold
+    ''', env=user)
+    assert cold.stdout.strip() == "missing", cold
+    assert not cold.stderr, cold.stderr
+    assert dump.is_file(), "cold compinit did not create its cache"
     print("REPRO: npm global install alone leaves Zsh completion missing")
     marker = home / "state/csquad/npm-completion-notice-v1"
     # Agent panes and completion protocol calls must never consume/show the notice.
@@ -87,8 +106,11 @@ def check(root, binary, package):
     loading = next(line.strip() for line in installed.splitlines() if line.strip().startswith("(( $+functions[compdef]"))
     script = home / "data/zsh/site-functions/_csquad"
     # The printed line also works in a shell with no compinit at all.
-    assert command("zsh", "-f", "-c", loading + '; print -r -- ${_comps[csquad]:-missing}',
-                   env=user).stdout.strip() == "_csquad"
+    loaded = command("zsh", "-f", "-c", prologue + loading + '; print -r -- ${_comps[csquad]:-missing}',
+                     env=user)
+    assert loaded.stdout.strip() == "_csquad", loaded
+    assert not loaded.stderr, loaded.stderr
+    print("PASS: cold Zsh printed instruction registered _csquad without diagnostics")
     assert rc.read_text() == "# no csquad setup\n", "installer modified startup configuration"
     tester = Path(__file__).with_name("test-shell-completion.py")
 

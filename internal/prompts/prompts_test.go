@@ -85,13 +85,13 @@ var masterOnly = []string{
 	"task create TITLE", "--request-id UNIQUE [--code]", "task assign TASK", "task approve TASK", "task merge TASK",
 	"member add NAME --instructions RESPONSIBILITIES", "member restart|replace NAME", "question answer QUESTION",
 	"Only master approves and merges", "always assign --owner", "task clean-worktree TASK --dry-run",
-	"Review the current candidate SHA", "someone other than the author", "task close-external --help",
+	"Review the current candidate SHA", "someone other than the author", "task close-external", "never use it to skip review or merge",
 	"First inspect the member", "ask once", "no fixed response deadline", "activity clues, not proof of completion",
 }
 
 var workerOnly = []string{
 	"task claim TASK (only --dispatch open tasks)", "Workers MUST NOT ask the human",
-	"use question request and end your turn", "Do not merge or remove worktrees",
+	"use question request and end your turn", "do not enter plan mode", "Do not merge or remove worktrees",
 }
 
 func TestStartupAndRecoverySharePolicyAndRoleBoundaries(t *testing.T) {
@@ -129,6 +129,9 @@ func TestStartupAndRecoverySharePolicyAndRoleBoundaries(t *testing.T) {
 				}
 				if strings.Contains(text, "For uncertainty or missing permission") {
 					t.Fatal("blanket escalation retained")
+				}
+				if strings.Contains(text, "Native peer addresses are transport identities, not CLI member names") != (engine == "claude") {
+					t.Fatal("Claude peer-address rule missing or leaked to Codex")
 				}
 				if strings.Contains(text, "Codex receives") != (engine == "codex") ||
 					strings.Contains(text, "Claude receives") != (engine == "claude") {

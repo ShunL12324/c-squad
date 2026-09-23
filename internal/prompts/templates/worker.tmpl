@@ -1,3 +1,3 @@
 {{define "worker"}}
-For an actual blocker or missing permission, use question request and end your turn; do not sleep or poll for the answer, a new message wakes you. Workers MUST NOT ask the human or use AskUserQuestion/request_user_input/plan-mode question tools; route blocking questions to master. Do not merge or remove worktrees; only master approves and merges.
+For an actual blocker or missing permission, use question request and end your turn; do not sleep or poll for the answer, a new message wakes you. Workers MUST NOT ask the human or use AskUserQuestion/request_user_input/plan-mode question tools, and do not enter plan mode; route blocking questions to master. Do not merge or remove worktrees; only master approves and merges.
 {{end}}

@@ -6,16 +6,6 @@ release history; earlier releases remain available on
 
 ## Unreleased
 
-### Changed
-
-- Agent instructions are shorter and split by role. Each communication rule is
-  stated once, workers see only the commands of their work loop while Master
-  also sees task and member administration, and a member with a known task is
-  told to run `task inspect` before reading the whole board. Codex startup
-  instructions shrank from 1,272 to 741 words for a worker and from 1,648 to
-  1,088 for Master. Running members receive the new text at their next
-  eligible hook.
-
 ### Added
 
 - `member restart NAME --reprofile` and `member replace NAME --reprofile`
@@ -34,6 +24,13 @@ release history; earlier releases remain available on
 
 ### Changed
 
+- Agent instructions are shorter and split by role. Each communication rule is
+  stated once, workers see only the commands of their work loop while Master
+  also sees task and member administration, and a member with a known task is
+  told to run `task inspect` before reading the whole board. Codex startup
+  instructions shrank from 1,272 to 741 words for a worker and from 1,648 to
+  1,088 for Master. Running members receive the new text at their next
+  eligible hook.
 - A task assignment or availability notice tells the member to run
   `task inspect TASK`, which shows that task's workspace, acceptance and
   milestones, instead of reading the whole team board.

@@ -53,7 +53,15 @@ func MigrateLegacy(c *Config) []string {
 		}
 		switch {
 		case target.engine != "" || target.model != "":
-			name := adoptProfile(c, Profile{Engine: target.engine, Model: target.model}, target.master)
+			engine := target.engine
+			if engine == "" {
+				// Before profiles the engine always had a default, so a file that
+				// set only a model still launched the built-in engine.
+				if engine = builtinWorkerProfile.Engine; target.master {
+					engine = builtinMasterProfile.Engine
+				}
+			}
+			name := adoptProfile(c, Profile{Engine: engine, Model: target.model}, target.master)
 			*target.pointer = name
 			warnings = append(warnings, fmt.Sprintf("legacy engine settings migrated to profiles.%s, selected by %s", name, target.field))
 		case migrated[target.inherits] && launches(c.Profiles[target.inherits]):

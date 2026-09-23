@@ -421,3 +421,17 @@ func TestLegacyJSONConfigurationWritesBackAsJSON(t *testing.T) {
 		t.Fatalf("reload changed the resolved profiles: %+v", again)
 	}
 }
+
+// Before profiles every role had a default engine, so a file that set only a
+// model was valid. Migration must keep it loadable instead of producing a
+// profile with no engine that validation then rejects.
+func TestLegacyModelWithoutEngineKeepsTheDefaultEngine(t *testing.T) {
+	c, _ := loadFrom(t, "model = 'gpt-5'\nmaster_model = 'sonnet'\n")
+	worker, _, err := c.ResolveProfile("", false)
+	must(t, err)
+	master, _, err := c.ResolveProfile("", true)
+	must(t, err)
+	if worker.Engine != Codex || worker.Model != "gpt-5" || master.Engine != Claude || master.Model != "sonnet" {
+		t.Fatalf("model-only settings migrated to %+v and %+v", worker, master)
+	}
+}

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -334,11 +335,13 @@ func generatedName(p Profile, master bool) string {
 }
 
 // sameLaunch reports whether an existing profile already starts what the
-// generated one would. Generated profiles carry no env or command, so a profile
-// holding either is never treated as equivalent.
+// generated one would. A generated profile carries no command, and env only
+// when it was derived from a legacy template, so a profile is equivalent only
+// with the same env and no command: reusing one without the template's env
+// would drop the account it selected.
 func sameLaunch(existing, generated Profile) bool {
 	return existing.Engine == generated.Engine && existing.Model == generated.Model &&
-		len(existing.Env) == 0 && existing.Command == nil
+		maps.Equal(existing.Env, generated.Env) && existing.Command == nil && generated.Command == nil
 }
 
 func setProfile(c *Config, name string, p Profile) {

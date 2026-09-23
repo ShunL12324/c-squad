@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -607,5 +608,51 @@ func TestLegacyRoleFieldsKeepTemplateEnvironment(t *testing.T) {
 	must(t, err)
 	if master.Env["CODEX_HOME"] != "/acct" || master.Model != "" {
 		t.Fatalf("Master lost the template env next to a user profile: %+v", master)
+	}
+}
+
+// Migration reuses an existing profile only when it launches exactly what the
+// derived one would. A profile with the same engine and model but without the
+// template's env, or with a command of its own, is not equivalent: reusing it
+// would drop the account the template selected, or add a launcher the legacy
+// settings never had.
+func TestLegacyTemplateEnvIsNotLostToAnEquivalentLookingProfile(t *testing.T) {
+	const master = "[templates.master]\nengine = 'codex'\nmodel = 'gpt-x'\n[templates.master.env]\nCODEX_HOME = '/acct'\n"
+	for _, test := range []struct {
+		name, body, pointer, env string
+		model                    string
+		master                   bool
+	}{
+		{"empty model", "master_model = ''\n" + master + "[profiles.plain]\nengine = 'codex'\n", "plain", "/acct", "", true},
+		{"model", "master_model = 'm2'\n" + master + "[profiles.plain]\nengine = 'codex'\nmodel = 'm2'\n", "plain", "/acct", "m2", true},
+		{"developer", "engine = 'claude'\n[templates.developer]\nengine = 'codex'\nmodel = 'g'\n[templates.developer.env]\nCODEX_HOME = '/dev'\n[profiles.p2]\nengine = 'claude'\nmodel = 'g'\n", "p2", "/dev", "g", false},
+		{"command", "master_model = ''\n" + master + "[profiles.wrapped]\nengine = 'codex'\n[profiles.wrapped.env]\nCODEX_HOME = '/acct'\n[profiles.wrapped.command]\nexecutable = 'wrapper'\nargs = []\n", "wrapped", "/acct", "", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c, _ := loadFrom(t, test.body)
+			p, name, err := c.ResolveProfile("", test.master)
+			must(t, err)
+			if name == test.pointer || p.Env["CODEX_HOME"] != test.env || p.Model != test.model || p.Command != nil {
+				t.Fatalf("migrated to profiles.%s %+v", name, p)
+			}
+			if existing := c.Profiles[test.pointer]; test.name != "command" && len(existing.Env) != 0 {
+				t.Fatalf("user profile %s was changed: %+v", test.pointer, existing)
+			}
+			again, err := Load("")
+			must(t, err)
+			// Command is a pointer, so compare what the profiles encode to.
+			before, err := json.Marshal(c.Profiles)
+			must(t, err)
+			after, err := json.Marshal(again.Profiles)
+			must(t, err)
+			if string(before) != string(after) {
+				t.Fatalf("rewritten file changed on reload:\n%s\n%s", before, after)
+			}
+		})
+	}
+	// A profile that does launch the same thing, env included, is still reused.
+	c, _ := loadFrom(t, "master_model = ''\n"+master+"[profiles.same]\nengine = 'codex'\n[profiles.same.env]\nCODEX_HOME = '/acct'\n")
+	if c.MasterProfile != "same" {
+		t.Fatalf("an equivalent profile was not reused: %q %+v", c.MasterProfile, c.Profiles)
 	}
 }

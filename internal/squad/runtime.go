@@ -45,7 +45,18 @@ func attach(st *Store, id string) error {
 }
 func runEngine(st *Store, actor string, gen int, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("missing engine argv")
+		// launch passes the engine through a file to stay under tmux's
+		// command-size limit; adopt its environment as tmux -e would have.
+		spec, err := readLaunchSpec(launchSpecPath(st, actor, gen))
+		if err != nil {
+			return fmt.Errorf("missing engine argv: %w", err)
+		}
+		for k, v := range spec.Env {
+			if err = os.Setenv(k, v); err != nil {
+				return err
+			}
+		}
+		args = spec.Argv
 	}
 	s, e := st.read()
 	if e != nil {

@@ -159,16 +159,19 @@ func (st *Store) launch(id string, resume bool, initial string) (launchErr error
 	if initial != "" {
 		args = append(args, initial)
 	}
-	launch := []string{s.Executable, "--team", st.Dir, "--member", id, "--generation", strconv.Itoa(m.Generation), "run-engine", "--"}
-	launch = append(launch, executable)
-	launch = append(launch, command.Arguments(args...)...)
+	// tmux sends a command in one message of at most 16 KB, which a rendered
+	// Codex prompt and a long PATH exceed on their own. Only the short runner
+	// command crosses tmux; the runner reads the engine argv and environment
+	// from this generation's launch file.
+	spec := launchSpec{Argv: append([]string{executable}, command.Arguments(args...)...), Env: memberEnv}
+	if e = writeLaunchSpec(launchSpecPath(st, id, m.Generation), spec); e != nil {
+		return e
+	}
+	launch := []string{s.Executable, "--team", st.Dir, "--member", id, "--generation", strconv.Itoa(m.Generation), "run-engine"}
 	// tmux accepts argv when more than one shell-command argument is supplied.
 	width, height := teamWindowSize(s)
 	ta := []string{"new-session", "-d", "-s", m.Session, "-c", m.Cwd, "-x", width, "-y", height, "-P", "-F", "#{pane_id}"}
 	for k, v := range map[string]string{"CSQUAD_STATE_DIR": st.Dir, "CSQUAD_MEMBER_ID": id, "CSQUAD_GENERATION": strconv.Itoa(m.Generation)} {
-		ta = append(ta, "-e", k+"="+v)
-	}
-	for k, v := range memberEnv {
 		ta = append(ta, "-e", k+"="+v)
 	}
 	ta = append(ta, launch...)
@@ -205,6 +208,57 @@ func (st *Store) launch(id string, resume bool, initial string) (launchErr error
 	}
 	cleanup = e != nil
 	return e
+}
+
+// launchSpec is what a member's runner executes: the engine argv and the
+// environment the runner adopts before resolving it, exactly as tmux -e set it.
+type launchSpec struct {
+	Argv []string          `json:"argv"`
+	Env  map[string]string `json:"env"`
+}
+
+func launchSpecPath(st *Store, id string, generation int) string {
+	return filepath.Join(st.Dir, "runtime", id, strconv.Itoa(generation), "launch.json")
+}
+
+// writeLaunchSpec stores the spec privately: the environment may hold account
+// selectors or tokens, which never appear in tmux argv or output.
+func writeLaunchSpec(path string, spec launchSpec) error {
+	b, err := json.Marshal(spec)
+	if err != nil {
+		return err
+	}
+	if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".launch-")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(tmp.Name()) }()
+	if _, err = tmp.Write(b); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err = tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
+}
+
+func readLaunchSpec(path string) (launchSpec, error) {
+	var spec launchSpec
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return spec, err
+	}
+	if err = json.Unmarshal(b, &spec); err != nil {
+		return spec, fmt.Errorf("invalid launch file %s: %w", path, err)
+	}
+	if len(spec.Argv) == 0 {
+		return spec, fmt.Errorf("launch file %s has no engine argv", path)
+	}
+	return spec, nil
 }
 
 func commandHook(command string, timeout int) map[string]any {

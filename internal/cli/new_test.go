@@ -13,13 +13,13 @@ func TestNewCreationCompatibility(t *testing.T) {
 			called := false
 			root := newCommand(func(path []string, values map[string]string, native []string) error {
 				called = true
-				want := map[string]string{"name": "demo", "engine": "codex", "env": "A=one\x00B=two", "detach": "true"}
+				want := map[string]string{"name": "demo", "profile": "work", "detach": "true"}
 				if !reflect.DeepEqual(path, []string{"start"}) || !reflect.DeepEqual(values, want) || len(native) != 0 {
 					t.Fatalf("dispatch: %v %v %v", path, values, native)
 				}
 				return nil
 			})
-			root.SetArgs(append(prefix, "--engine", "codex", "--env", "A=one", "--env", "B=two", "--detach"))
+			root.SetArgs(append(prefix, "--profile", "work", "--detach"))
 			if err := root.Execute(); err != nil {
 				t.Fatal(err)
 			}

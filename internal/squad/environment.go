@@ -24,10 +24,27 @@ var removedLaunchFlagHelp = map[string]string{
 func rejectRemovedLaunchFlags(o options) error {
 	for _, flag := range removedLaunchFlags {
 		if o[flag] != "" {
-			return fmt.Errorf("--%s was removed; %s", flag, removedLaunchFlagHelp[flag])
+			return removedLaunchFlagError(flag)
 		}
 	}
 	return nil
+}
+
+// RejectRemovedLaunchFlags reports the first removed launch flag present on a
+// command line, even with an empty value. The parser calls it before anything
+// else, so an unrelated failure such as "no team selected" or a value check
+// cannot hide the explanation. doctor still takes --engine and is exempt.
+func RejectRemovedLaunchFlags(operation string, set map[string]string) error {
+	for _, flag := range removedLaunchFlags {
+		if _, ok := set[flag]; ok && !(operation == "doctor" && flag == "engine") {
+			return removedLaunchFlagError(flag)
+		}
+	}
+	return nil
+}
+
+func removedLaunchFlagError(flag string) error {
+	return fmt.Errorf("--%s was removed; %s", flag, removedLaunchFlagHelp[flag])
 }
 
 // profileEnv layers the environment a member launches with: the inherited

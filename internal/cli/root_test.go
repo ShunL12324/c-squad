@@ -51,7 +51,7 @@ func TestParsedValuesPreserveOpaqueTextAndNativeArguments(t *testing.T) {
 		values             map[string]string
 	}{
 		{args: []string{"resume", "folio", "--detach"}, path: []string{"resume"}, values: map[string]string{"name": "folio", "detach": "true"}},
-		{args: []string{"--team", "/tmp/team", "member", "add", "alice", "--env", "A=a,b", "--env", "B=x=y", "--role", "reviewer"}, path: []string{"member", "add", "alice"}, values: map[string]string{"team": "/tmp/team", "env": "A=a,b\x00B=x=y", "role": "reviewer"}},
+		{args: []string{"--team", "/tmp/team", "member", "add", "alice", "--instructions", "a,b=c"}, path: []string{"member", "add", "alice"}, values: map[string]string{"team": "/tmp/team", "instructions": "a,b=c"}},
 		{args: []string{"task", "create", "--acceptance", "done", "--", "--literal-title"}, path: []string{"task", "create", "--literal-title"}, values: map[string]string{"acceptance": "done"}},
 		{args: []string{"--name", "demo", "--detach"}, path: []string{"start"}, values: map[string]string{"name": "demo", "detach": "true"}},
 		{args: []string{"run-engine", "--", "claude", "--settings", "{\"x\":1}", "--help"}, path: []string{"run-engine"}, engine: []string{"claude", "--settings", "{\"x\":1}", "--help"}, values: map[string]string{}},
@@ -139,5 +139,37 @@ func TestErrorPresentationPreservesClassification(t *testing.T) {
 	usage := &usageError{errors.New("missing task"), "csquad task inspect"}
 	if code := Report(&out, usage); code != 2 || !strings.Contains(out.String(), "task inspect --help") {
 		t.Fatalf("%d %s", code, out.String())
+	}
+}
+
+// A removed launch flag is explained before any other check can fail first,
+// whatever its value, while doctor keeps its own --engine.
+func TestRemovedLaunchFlagsAreExplainedFirst(t *testing.T) {
+	for _, args := range [][]string{
+		{"start", "--engine", "gpt"},
+		{"member", "add", "x", "--engine", "codex"},
+		{"member", "add", "x", "--model", ""},
+		{"resume", "--env", "A=B"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			root := newCommand(func([]string, map[string]string, []string) error {
+				t.Fatal("removed flag reached backend")
+				return nil
+			})
+			root.SetArgs(args)
+			root.SetOut(&bytes.Buffer{})
+			root.SetErr(&bytes.Buffer{})
+			if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "was removed") {
+				t.Fatalf("got %v, want the removal explanation", err)
+			}
+		})
+	}
+	called := false
+	root := newCommand(func([]string, map[string]string, []string) error { called = true; return nil })
+	root.SetArgs([]string{"doctor", "--engine", "codex"})
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	if err := root.Execute(); err != nil || !called {
+		t.Fatalf("doctor --engine was rejected: %v", err)
 	}
 }

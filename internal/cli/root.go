@@ -180,6 +180,9 @@ func execute(run runner, path []string) func(*cobra.Command, []string) error {
 		if len(operation) == 2 && operation[0] == "message" && operation[1] == "reply" {
 			operation = []string{"reply"}
 		}
+		if err := squad.RejectRemovedLaunchFlags(operation[0], values); err != nil {
+			return &usageError{err, cmd.CommandPath()}
+		}
 		if err := normalizeInputs(cmd, operation, values, &args); err != nil {
 			return &usageError{err, cmd.CommandPath()}
 		}

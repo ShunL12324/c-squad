@@ -658,3 +658,37 @@ func TestDetailScrollStopsAtTheEnd(t *testing.T) {
 		t.Fatalf("page and wheel scrolled to %d, past %d", m.offset, limit)
 	}
 }
+
+// The last page also moves when the pane grows or the details shrink. The stored
+// offset follows, so the first k after either still moves the view.
+func TestDetailScrollBoundFollowsResizeAndContent(t *testing.T) {
+	task := Task{ID: "T1", Title: "Research", Detail: strings.Repeat("Evidence\n", 60)}
+	m := model{kind: "tasks", width: 40, height: 30, detail: true, selectedID: "T1", data: Snapshot{Active: true, Tasks: []Task{task}}}
+	update := func(msg tea.Msg) {
+		next, _ := m.Update(msg)
+		m = next.(model)
+	}
+	firstKMoves := func(when string) {
+		t.Helper()
+		if m.offset != m.maxOffset() {
+			t.Fatalf("%s: offset %d, last page at %d", when, m.offset, m.maxOffset())
+		}
+		before := ansi.Strip(m.View())
+		update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+		if ansi.Strip(m.View()) == before {
+			t.Fatalf("%s: the first k did not move the view", when)
+		}
+	}
+	for range 100 {
+		update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	}
+	update(tea.WindowSizeMsg{Width: 40, Height: 50})
+	firstKMoves("after enlarging the pane")
+
+	for range 100 {
+		update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	}
+	task.Detail = strings.Repeat("Evidence\n", 40)
+	update(snapshotMsg{data: Snapshot{Active: true, Tasks: []Task{task}}})
+	firstKMoves("after the details shrank")
+}

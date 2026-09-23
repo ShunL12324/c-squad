@@ -228,6 +228,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = max(1, v.Width)
 		m.height = max(1, v.Height)
 		m.reveal()
+		// A larger pane or wider wrapping lowers the last page.
+		m.offset = min(m.offset, m.maxOffset())
 	case snapshotMsg:
 		return m.updateSnapshot(v)
 	case tickMsg:
@@ -269,7 +271,8 @@ func (m *model) scroll(direction int) {
 		m.top = max(first, min(max(first, m.count()-m.rows()), max(first, m.top)+direction))
 		return
 	}
-	m.offset = max(0, min(m.offset+3*direction, m.maxOffset()))
+	m.offset = max(0, min(m.offset, m.maxOffset())+3*direction)
+	m.offset = min(m.offset, m.maxOffset())
 }
 
 func clean(s string) string {

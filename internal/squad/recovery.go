@@ -251,8 +251,9 @@ func resumeTeam(st *Store, o options) error {
 		if member.State != MemberStateRemoved {
 			resumed := *member
 			resumed.Env = agentenv.Merge(member.Env)
-			resumed.applyResumeEnvironment(resumeProfileEnv(s.Config, currentConfig, member))
-			if profileDrift(currentConfig, &resumed) {
+			saved, current := resumeProfileEnv(s.Config, currentConfig, member)
+			resumed.applyResumeEnvironment(saved, current)
+			if profileDrift(currentConfig, &resumed, saved) {
 				drifted = append(drifted, member.ID)
 			}
 			command, warning := currentConfig.ProfileCommand(member.Profile, member.Engine)

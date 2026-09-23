@@ -115,8 +115,11 @@ func (r *reprofile) summary(id string) string {
 }
 
 // profileDrift reports whether the current configuration would launch a member
-// differently from its snapshot, so resume can say how to apply the edit.
-func profileDrift(cfg config.Config, m *Member) bool {
+// differently from what resume will launch, so resume can say how to apply the
+// rest of the edit. m is the member after the resume environment update, and
+// saved is its profile's environment as the team last read it: a variable the
+// profile dropped but the member still carries is a difference too.
+func profileDrift(cfg config.Config, m *Member, saved map[string]string) bool {
 	p, ok := cfg.Profiles[m.Profile]
 	if !ok {
 		return false
@@ -129,6 +132,13 @@ func profileDrift(cfg config.Config, m *Member) bool {
 			return true
 		}
 	}
+	for k := range saved {
+		if _, kept := p.Env[k]; !kept {
+			if _, carried := m.Env[k]; carried {
+				return true
+			}
+		}
+	}
 	return false
 }
 
@@ -138,5 +148,5 @@ func profileDriftNotice(names []string) string {
 		return ""
 	}
 	sort.Strings(names)
-	return "Profile notice: the configuration now differs from the saved launch settings of " + strings.Join(names, ", ") + "; resume keeps the saved settings. Apply the current profile with csquad member restart NAME --reprofile, or csquad recover --reprofile for Master."
+	return "Profile notice: the current profile of " + strings.Join(names, ", ") + " differs from what resume launches (engine and model stay as added; only variables inherited from the profile follow its edits). Apply the whole profile with csquad member restart NAME --reprofile, or csquad recover --reprofile for Master."
 }

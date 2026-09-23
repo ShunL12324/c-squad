@@ -140,7 +140,10 @@ applied to Master only if `master_profile` or `start --profile` says so, and a
 member's name or instructions are never matched against a profile name.
 
 Engine, model, and environment are materialised into the member's record when it
-is added, so later configuration edits never change an existing member. The
+is added. Later configuration edits never change an existing member's engine or
+model; its environment follows an edit only where `resume` updates variables it
+inherited from the profile (see [Recovery environment](#recovery-environment-and-missing-directories)),
+and all three follow with `--reprofile` below. The
 command is resolved at launch through the recorded profile name, read from the
 current configuration, so an edited wrapper reaches the next restart. Removing a profile that an existing member was
 added with is not fatal: that member launches the engine by name with a warning,
@@ -161,8 +164,10 @@ The member keeps its name, instructions, tasks and directory. Its engine, model
 and environment are re-read from the current configuration, and the command
 prints what changed, naming environment variables without their values. The
 conversation resumes unless the engine or its account directory changed, in
-which case it starts fresh with the handoff. `resume` keeps the saved settings,
-and prints one line naming the members whose profile now differs.
+which case it starts fresh with the handoff. Without `--reprofile`, `restart`
+keeps the member's engine, model and environment, and `resume` keeps engine and
+model and updates only inherited variables; after updating them it prints one
+line naming the members whose current profile still differs, without values.
 
 An earlier `[templates]` table is migrated to profiles of the same name the first
 time the configuration loads, and so are the former top-level `engine`, `model`,
@@ -228,8 +233,9 @@ engine's CLI, hooks and communication protocol, including helper subcommands.
 Use environment overrides below for account configuration; do not place secrets
 in fixed arguments, which can appear in process listings and configuration output.
 
-New teams snapshot the profile tables. `member restart` and `recover` keep that
-snapshot. After stopping the team, `resume` reloads the profiles from the
+New teams snapshot the profile tables, and every member launch, including
+`member restart` and `recover`, refreshes them from the current configuration
+first. `resume` likewise reloads the profiles from the
 current user/project configuration before starting any member; removing a
 command table restores the native commands. Changing the command alone preserves
 conversation IDs. Use `resume --fresh` when the replacement cannot read the old
@@ -663,6 +669,12 @@ whose profile was deleted, or one added before profiles existed, keeps the
 environment it was launched with. Account changes start a fresh native
 conversation while preserving the team ledger and handoff. No environment values
 are printed by recovery diagnostics.
+
+"Still holds from that profile" is judged against the profile tables the team
+last read. Any member launch reads them again, so an edit made before a
+`member restart` or `member add` is not applied by a later `resume`; resume then
+names that member in its profile notice, and `member restart NAME --reprofile`
+applies it. Engine and model never change on resume.
 
 Recovery checks all member directories before stopping old processes or starting
 any new ones. If a worktree was removed, restore it, or update the saved directory

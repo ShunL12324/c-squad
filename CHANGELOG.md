@@ -32,6 +32,12 @@ release history; earlier releases remain available on
   alias, top-level `reply`, and the `--team`, `--state-dir`, `--member` and
   `--generation` selectors are no longer listed, and every one of them still
   parses and behaves as before. `--team-name` remains the listed selector.
+- The task panel marks a task Completed from the agent workflow alone: a code
+  task once master merges the reviewed and tested candidate, a task without a
+  workspace once master approves it. The **Confirm completion** button, the `c`
+  key and `task confirm` are removed. Unfinished, blocked and externally closed
+  tasks are never marked. An old ledger's user confirmation still loads and is
+  shown in the details as a legacy record.
 
 ### Fixed
 

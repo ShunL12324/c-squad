@@ -15,12 +15,12 @@ func TestCompletionIsDisplayedNotClicked(t *testing.T) {
 		m := briefModel(width, func(a Action) (string, error) { acted = append(acted, a); return "", nil })
 		m.data.Tasks[0].State = "done"
 		m.completed = true
-		lines, hits := m.taskCards()
+		lines, _ := m.taskCards()
 		if strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "Completed") {
 			t.Fatal("unmarked task shows completion")
 		}
 		m.data.Tasks[0].Completion = "✓ Completed · merged abc1234"
-		lines, hits = m.taskCards()
+		lines, hits := m.taskCards()
 		if !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "✓ Completed") {
 			t.Fatalf("width %d: completion missing", width)
 		}

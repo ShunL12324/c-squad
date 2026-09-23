@@ -20,3 +20,8 @@ func tm(s *State, args ...string) (string, error) {
 }
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
 func jsonOut(v any) error        { e := json.NewEncoder(os.Stdout); e.SetIndent("", "  "); return e.Encode(v) }
+
+// runShellQuote quotes a literal for a tmux run-shell command, which expands
+// formats before the shell sees it: a "#S" or "#W" in a project path would
+// otherwise name the current session or window instead of the directory.
+func runShellQuote(s string) string { return shellQuote(strings.ReplaceAll(s, "#", "##")) }

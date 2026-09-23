@@ -100,7 +100,7 @@ func (st *Store) configureNavigation() error {
 	if _, err = tm(s, "source-file", path); err != nil {
 		return err
 	}
-	cmd := shellQuote(s.Executable) + " --team " + shellQuote(st.Dir) + " --member master --generation 0 navigate --client '#{client_name}'"
+	cmd := runShellQuote(s.Executable) + " --team " + runShellQuote(st.Dir) + " --member master --generation 0 navigate --client '#{client_name}'"
 	cfg, err := s.effectiveConfig()
 	if err != nil {
 		return err
@@ -123,7 +123,7 @@ func (st *Store) configureNavigation() error {
 		}
 	}
 
-	panelCmd := shellQuote(s.Executable) + " --team " + shellQuote(st.Dir) + " --member master --generation 0"
+	panelCmd := runShellQuote(s.Executable) + " --team " + runShellQuote(st.Dir) + " --member master --generation 0"
 	// Native mouse motion bypasses after-resize-pane after its first frame.
 	// Save in tmux's release event itself, before a resize can reflow the panes.
 	var remember []string

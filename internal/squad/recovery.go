@@ -74,7 +74,8 @@ func excludeProjectState(root string) error {
 	return e
 }
 func shutdownCommand(st *Store, s *State, reason string) string {
-	return shellQuote(s.Executable) + " --team " + shellQuote(st.Dir) + " --member master --generation 0 shutdown --epoch " + strconv.Itoa(s.Epoch) + " --expected-generation " + strconv.Itoa(s.Members["master"].Generation) + " --reason " + shellQuote(reason)
+	// Only ever run through run-shell, which expands formats.
+	return runShellQuote(s.Executable) + " --team " + runShellQuote(st.Dir) + " --member master --generation 0 shutdown --epoch " + strconv.Itoa(s.Epoch) + " --expected-generation " + strconv.Itoa(s.Members["master"].Generation) + " --reason " + runShellQuote(reason)
 }
 func requestShutdown(st *Store, s *State, reason string) error {
 	_, e := tm(s, "run-shell", "-b", shutdownCommand(st, s, reason))

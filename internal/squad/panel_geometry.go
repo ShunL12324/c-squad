@@ -3,6 +3,8 @@ package squad
 import (
 	"strconv"
 	"strings"
+
+	"github.com/ShunL12324/c-squad/internal/tmux"
 )
 
 type panelGeometry struct {
@@ -51,7 +53,7 @@ func (g panelGeometry) ready(view panelView) bool {
 
 func appendTmCommand(args []string, command ...string) []string {
 	if len(args) > 0 {
-		args = append(args, ";")
+		args = append(args, tmux.Separator)
 	}
 	return append(args, command...)
 }

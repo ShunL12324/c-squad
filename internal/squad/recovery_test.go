@@ -323,3 +323,65 @@ func TestCleanupRefusesOtherTeamSession(t *testing.T) {
 	_, e = tm(s, "has-session", "-t", "=same-name")
 	must(t, e)
 }
+
+// Issue #27: run-shell expands tmux formats, so a project path containing
+// "#S" pointed shutdown at the wrong team directory and Master's exit never
+// closed the team. Both the direct request and the pane-died hook must pass
+// the exact directory through.
+func TestShutdownCommandSurvivesFormatCharactersInPaths(t *testing.T) {
+	if _, e := exec.LookPath("tmux"); e != nil {
+		t.Skip("tmux unavailable")
+	}
+	tmp, e := os.MkdirTemp("", "csq-fmt-")
+	must(t, e)
+	defer os.RemoveAll(tmp)
+	root := filepath.Join(tmp, "proj #S #W ##")
+	st, e := openStore(filepath.Join(root, "state"))
+	must(t, e)
+	defer st.DB.Close()
+	capture := filepath.Join(tmp, "capture")
+	fake := filepath.Join(root, "csquad #{session_name}")
+	must(t, os.WriteFile(fake, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$0.$$\"\nmv \"$0.$$\" "+shellQuote(capture)+"-$(date +%s%N)\n"), 0700))
+	socket := filepath.Join(tmp, "s")
+	_, e = process.Run("", "tmux", "-f", "/dev/null", "-S", socket, "new-session", "-d", "-s", "team-master", "sleep 0.5")
+	must(t, e)
+	defer process.Run("", "tmux", "-S", socket, "kill-server")
+	must(t, st.update(func(s *State) error {
+		*s = State{Version: 1, ID: "fmt", Root: root, Active: true, Socket: socket, Executable: fake, Members: map[string]*Member{"master": {ID: "master", Session: "team-master", Generation: 1}}}
+		return nil
+	}))
+	s, e := st.read()
+	must(t, e)
+	pane, e := tm(s, "display-message", "-p", "-t", "=team-master:", "#{pane_id}")
+	must(t, e)
+	_, e = tm(s, "set-window-option", "-t", "=team-master:", "remain-on-exit", "on")
+	must(t, e)
+	must(t, st.update(func(s *State) error { s.Members["master"].Pane = pane; return nil }))
+	must(t, installMasterHook(st))
+	must(t, requestShutdown(st, s, "reason #S;"))
+	want := map[string]bool{"request": false, "master_exit": false}
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		files, _ := filepath.Glob(capture + "-*")
+		for _, file := range files {
+			b, _ := os.ReadFile(file)
+			args := strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
+			if len(args) < 2 || args[0] != "--team" || args[1] != st.Dir {
+				t.Fatalf("shutdown argv = %q, want --team %q", args, st.Dir)
+			}
+			switch args[len(args)-1] {
+			case "reason #S;":
+				want["request"] = true
+			case "master_exit":
+				want["master_exit"] = true
+			default:
+				t.Fatalf("reason changed: %q", args)
+			}
+		}
+		if want["request"] && want["master_exit"] {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("shutdown not requested with the exact path: %v", want)
+		}
+	}
+}

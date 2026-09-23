@@ -39,3 +39,37 @@ func TestExactTargetPreservesArgumentsAndRejectsPrefix(t *testing.T) {
 		t.Fatalf("missing exact target matched an unrelated session: %v", err)
 	}
 }
+
+// Issue #27: an argument ending in ";" must reach tmux as a literal value, not
+// split the command, while a bare Separator still separates commands.
+func TestTrailingSemicolonStaysLiteral(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux unavailable")
+	}
+	dir, err := os.MkdirTemp("", "csq-tmux-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	client := Client{Socket: filepath.Join(dir, "s")}
+	if _, err = process.Run("", "tmux", "-f", "/dev/null", "-S", client.Socket, "new-session", "-d", "-s", "x", "sleep", "60"); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Run("kill-server")
+	for _, value := range []string{"a;", `a\;`, "mid;dle", "K=v;"} {
+		if _, err = client.Run("set-option", "-t", "=x", "@value", value, Separator, "set-option", "-t", "=x", "@after", "set"); err != nil {
+			t.Fatalf("%q: %v", value, err)
+		}
+		got, err := client.Run("show-options", "-v", "-t", "=x", "@value")
+		if err != nil || got != value {
+			t.Fatalf("value %q arrived as %q (%v)", value, got, err)
+		}
+		after, err := client.Run("show-options", "-v", "-t", "=x", "@after")
+		if err != nil || after != "set" {
+			t.Fatalf("separator after %q lost: %q (%v)", value, after, err)
+		}
+		if _, err = client.Run("set-option", "-u", "-t", "=x", "@after"); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

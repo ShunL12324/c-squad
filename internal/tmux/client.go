@@ -10,11 +10,17 @@ import (
 // Client addresses one tmux server by socket path; it owns no server lifecycle.
 type Client struct{ Socket string }
 
+// Separator is the only argument Run passes to tmux as a command separator.
+const Separator = ";"
+
 // Run executes tmux with exact session resolution for targets prefixed with "=".
 // This avoids tmux prefix matching accidentally targeting another team session.
 // The caller's argument slice is never modified.
 func (c Client) Run(args ...string) (string, error) {
 	args = append([]string(nil), args...)
+	for i, arg := range args {
+		args[i] = literal(arg)
+	}
 	// tmux commands differ in how they interpret '=' and session/window
 	// targets. Resolve exact names ourselves, then use the unambiguous $ID.
 	for i := 0; i+1 < len(args); i++ {
@@ -45,4 +51,15 @@ func (c Client) Run(args ...string) (string, error) {
 		args[i+1] = found
 	}
 	return process.Run("", "tmux", append([]string{"-S", c.Socket}, args...)...)
+}
+
+// literal keeps a trailing semicolon inside its argument. tmux splits argv
+// into commands at any argument ending in ";" and reads a trailing "\;" as
+// one literal ";", so a message, path or value ending in ";" or "\;" lost a
+// character or became a second tmux command. Only a bare Separator splits.
+func literal(arg string) string {
+	if arg == Separator || !strings.HasSuffix(arg, ";") {
+		return arg
+	}
+	return strings.TrimSuffix(arg, ";") + `\;`
 }

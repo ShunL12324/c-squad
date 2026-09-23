@@ -265,7 +265,7 @@ func TestRemovedMemberReceivesNoQueuedMessages(t *testing.T) {
 		s.Questions["Q1"] = &Question{ID: "Q1", Member: "a", Text: "decide?", State: QuestionStateOpen}
 		return nil
 	}))
-	_ = lifecycle(st, "master", "remove", "a", "", "")
+	_ = lifecycle(st, "master", "remove", "a", options{})
 	s, err := st.read()
 	must(t, err)
 	if s.Members["a"].State != MemberStateRemoved {

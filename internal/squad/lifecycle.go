@@ -15,7 +15,11 @@ import (
 	"github.com/ShunL12324/c-squad/internal/process"
 )
 
-func lifecycle(st *Store, actor, op, id, initial, directory string) error {
+// lifecycle restarts, replaces or removes a member. o carries prompt and cwd,
+// and for a relaunch reprofile or profile, which re-read the member's engine,
+// model and environment from the current configuration instead of the snapshot.
+func lifecycle(st *Store, actor, op, id string, o options) error {
+	initial, directory := o["prompt"], o["cwd"]
 	if actor != "master" {
 		return fmt.Errorf("only master manages members: %w", ErrMasterRequired)
 	}
@@ -50,13 +54,29 @@ func lifecycle(st *Store, actor, op, id, initial, directory string) error {
 	if e != nil {
 		return e
 	}
+	var next *reprofile
+	if op != "remove" && (o["reprofile"] == "true" || o["profile"] != "") {
+		if s, e = st.refreshProfiles(); e != nil {
+			return e
+		}
+		if m, e = s.member(id); e != nil {
+			return e
+		}
+		if next, e = resolveReprofile(s, m, o["profile"]); e != nil {
+			return e
+		}
+	}
 	if op != "remove" {
 		cfg, err := s.effectiveConfig()
 		if err != nil {
 			return err
 		}
-		command, _ := cfg.ProfileCommand(m.Profile, m.Engine)
-		if err := preflight.CheckCommand(m.Engine, command, m.Env); err != nil {
+		engine, profile, env := m.Engine, m.Profile, m.Env
+		if next != nil {
+			engine, profile, env = next.Engine, next.Profile, next.Env
+		}
+		command, _ := cfg.ProfileCommand(profile, engine)
+		if err := preflight.CheckCommand(engine, command, env); err != nil {
 			return err
 		}
 	}
@@ -119,6 +139,9 @@ func lifecycle(st *Store, actor, op, id, initial, directory string) error {
 		v := s.Members[id]
 		v.resetRuntime()
 		v.Cwd = cwd
+		if next != nil {
+			next.apply(s, actor, v)
+		}
 		if op == "replace" {
 			v.EngineID = ""
 		}
@@ -162,6 +185,9 @@ func lifecycle(st *Store, actor, op, id, initial, directory string) error {
 		return jsonOut(map[string]string{"member": id, "state": "removed", "handoff": path})
 	}
 
+	if next != nil {
+		fmt.Fprintln(os.Stderr, next.summary(id))
+	}
 	if e = st.launch(id, op == "restart", initial); e != nil {
 		stateErr := st.update(func(s *State) error {
 			s.Members[id].State = MemberStateCrashed

@@ -145,6 +145,22 @@ current configuration, so an edited wrapper reaches the next restart. Removing a
 added with is not fatal: that member launches the engine by name with a warning,
 and keeps the account it was added with.
 
+To apply an edited profile to an existing member, for example after switching
+`CODEX_HOME` or `CLAUDE_CONFIG_DIR` to another account, restart it explicitly:
+
+```sh
+csquad member restart dev --reprofile            # re-read its recorded profile
+csquad member restart dev --profile claude-opus  # move it to another profile
+csquad recover --reprofile                       # Master, from an outside terminal
+```
+
+The member keeps its name, instructions, tasks and directory. Its engine, model
+and environment are re-read from the current configuration, and the command
+prints what changed, naming environment variables without their values. The
+conversation resumes unless the engine or its account directory changed, in
+which case it starts fresh with the handoff. `resume` keeps the saved settings,
+and prints one line naming the members whose profile now differs.
+
 An earlier `[templates]` table is migrated to profiles of the same name the first
 time the configuration loads, and so are the former top-level `engine`, `model`,
 `master_engine`, and `master_model` fields, the shared `[env]` and `[startup_env]`

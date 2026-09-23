@@ -259,7 +259,7 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 		if o["fresh"] == "true" {
 			op = "replace"
 		}
-		return lifecycle(st, actor, op, "master", o["prompt"], "")
+		return lifecycle(st, actor, op, "master", options{"prompt": o["prompt"], "reprofile": o["reprofile"], "profile": o["profile"]})
 	}
 	if p[0] == "sync" {
 		if s.Active {

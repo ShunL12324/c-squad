@@ -176,7 +176,7 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 	if p[0] != "remove" && p[0] != "restart" && p[0] != "replace" {
 		return errors.New("unknown member operation")
 	}
-	return lifecycle(st, actor, p[0], id, o["prompt"], o["cwd"])
+	return lifecycle(st, actor, p[0], id, o)
 }
 
 // memberDirectory resolves explicit paths in the caller's directory. An omitted

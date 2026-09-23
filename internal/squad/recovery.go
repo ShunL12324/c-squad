@@ -246,11 +246,15 @@ func resumeTeam(st *Store, o options) error {
 	if err := validateResumeDirectories(s); err != nil {
 		return err
 	}
+	var drifted []string
 	for _, member := range s.Members {
 		if member.State != MemberStateRemoved {
 			resumed := *member
 			resumed.Env = agentenv.Merge(member.Env)
 			resumed.applyResumeEnvironment(resumeProfileEnv(s.Config, currentConfig, member))
+			if profileDrift(currentConfig, &resumed) {
+				drifted = append(drifted, member.ID)
+			}
 			command, warning := currentConfig.ProfileCommand(member.Profile, member.Engine)
 			if warning != "" {
 				fmt.Fprintln(os.Stderr, warning)
@@ -259,6 +263,9 @@ func resumeTeam(st *Store, o options) error {
 				return err
 			}
 		}
+	}
+	if notice := profileDriftNotice(drifted); notice != "" {
+		fmt.Fprintln(os.Stderr, notice)
 	}
 	// Reap old process identities before changing socket or clearing PID records.
 	if e = cleanupTeam(st, "interrupted"); e != nil {

@@ -6,7 +6,36 @@ release history; earlier releases remain available on
 
 ## Unreleased
 
+### Added
+
+- `member restart NAME --reprofile` and `member replace NAME --reprofile`
+  re-read a member's engine, model and environment from its profile in the
+  current configuration, and `--profile NAME` moves it to another profile;
+  `recover --reprofile` does the same for Master. The member keeps its name,
+  tasks and directory, and its conversation resumes unless the engine or
+  account directory changed. The change is printed with variable names only.
+  Without the flag, restart keeps the member's settings and resume keeps engine
+  and model and updates only variables inherited from the profile, then names
+  the members whose profile still differs.
+
 ### Fixed
+
+- Members start even when a rendered Codex prompt or a long `PATH` (as on WSL)
+  exceeds tmux's 16 KB command limit. The engine arguments and environment now
+  reach the runner through a private file instead of the tmux command line, so
+  `start` and `resume` no longer fail with `command too long`.
+- A message delivered while its sender restarted is recorded as sent instead of
+  staying in `sending` and being delivered again after recovery.
+- Messages to a removed member are closed instead of being retried by the
+  runtime on every pass and delivered as a backlog to a later replacement.
+  `message send` and `message reply` refuse a removed member, and answering its
+  question records the answer without queueing a message.
+- Restarting, replacing or removing the member you are watching moves your
+  terminal to Master instead of detaching it from tmux.
+- An argument ending in `;` or `\;`, including a message that is only `;`,
+  reaches tmux unchanged instead of losing a character or splitting the
+  command. A project path containing `#` characters such as `#S` no longer
+  breaks shutdown and navigation, so Master's exit closes the team again.
 
 - An empty value in a profile's `env` unsets the variable, as documented, for
   every variable. Only `CLAUDE_CONFIG_DIR` used to be removed; `CODEX_HOME = ""`
@@ -26,6 +55,22 @@ release history; earlier releases remain available on
 - Table output aligns columns by display width, and `member list` cuts
   instructions at 48 columns rather than 48 characters, so CJK text and emoji
   no longer push the DIRECTORY column out of line.
+- Release notes are published from the version's changelog section with the
+  source commit, instead of an empty body, and a missing or undated section
+  stops the release before any draft exists.
+- The GitHub Release stays a draft until the npm tests pass on both platforms.
+  Homebrew can still only be tested after publication.
+- Rerunning the release of an older tag no longer rolls APT and Homebrew back;
+  release runs are serialized and the Formula push is fast-forward only.
+- The release workflow's Linux npm tests install Zsh and check both shells'
+  completions, and the packaging timeout tests wait for child startup instead
+  of a fixed deadline. GitHub Actions moved to their Node 24 major versions.
+
+### Not reproduced
+
+- #26, `member restart --cwd` losing a Claude conversation: with Claude Code
+  2.1.280, `--resume` finds a session Claude created from another directory
+  and from another worktree, so no change was made.
 
 ## v0.10.0 — 2026-09-23
 

@@ -161,9 +161,14 @@ func (st *Store) deliver(id string) error {
 		}
 	}
 	deliveryErr := e
-	err := st.update(func(s *State) error {
+	// The outcome is a fact about the transport, not a write on the sender's
+	// behalf: a sender restarted meanwhile must not leave a delivered message in
+	// sending, where recovery would queue it again. The attempt and recipient
+	// generation below still fence every stale write.
+	recorder := &Store{Dir: st.Dir, DB: st.DB}
+	err := recorder.update(func(s *State) error {
 		for _, v := range s.Messages {
-			if v.ID == id && v.State == DeliveryStateSending && v.Attempt == attempt && s.Members[v.To].Generation == recipientGen {
+			if v.ID == id && v.State == DeliveryStateSending && v.Attempt == attempt && s.Members[v.To] != nil && s.Members[v.To].Generation == recipientGen {
 				if deliveryErr != nil {
 					v.State = DeliveryStatePending
 					v.Error = deliveryErr.Error()

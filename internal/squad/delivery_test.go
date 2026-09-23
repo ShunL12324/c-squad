@@ -203,3 +203,44 @@ func TestMemberAddRefusesReservedUserID(t *testing.T) {
 		t.Fatal("reserved user ID must never become a member")
 	}
 }
+
+// Issue #24: the sender's generation may change while transport is under way.
+// The outcome must still be recorded, or recovery re-sends a delivered message.
+func TestDeliveryRecordsOutcomeAfterSenderRestart(t *testing.T) {
+	st := testStore(t)
+	root := t.TempDir()
+	marker := filepath.Join(root, "transport-started")
+	release := filepath.Join(root, "release")
+	bin := filepath.Join(root, "native")
+	must(t, os.WriteFile(bin, []byte("#!/bin/sh\n: > \"$MARKER\"\nwhile [ ! -e \"$RELEASE\" ]; do sleep 0.01; done\n"), 0700))
+	cfg := config.Defaults()
+	cfg.EngineCommands = map[config.Engine]config.Command{config.Codex: {Executable: bin}}
+	var id string
+	must(t, st.update(func(s *State) error {
+		s.Config = &cfg
+		m := s.Members["a"]
+		m.Engine, m.EngineID, m.Cwd = config.Codex, "thread-7", root
+		m.Env = map[string]string{"MARKER": marker, "RELEASE": release}
+		id = s.message("b", "a", "", "sent by b", "").ID
+		return nil
+	}))
+	sender := &Store{Dir: st.Dir, DB: st.DB, Actor: "b", Generation: 1}
+	done := make(chan error, 1)
+	go func() { done <- sender.deliver(id) }()
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(2 * time.Millisecond) {
+		if _, e := os.Stat(marker); e == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("transport never started")
+		}
+	}
+	must(t, st.update(func(s *State) error { s.Members["b"].Generation++; return nil }))
+	must(t, os.WriteFile(release, nil, 0600))
+	must(t, <-done)
+	s, err := st.read()
+	must(t, err)
+	if got := s.Messages[0].State; got != DeliveryStateSent {
+		t.Fatalf("state = %q, want sent: the recipient already has the message", got)
+	}
+}

@@ -4,6 +4,29 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
+## Unreleased
+
+### Fixed
+
+- An empty value in a profile's `env` unsets the variable, as documented, for
+  every variable. Only `CLAUDE_CONFIG_DIR` used to be removed; `CODEX_HOME = ""`
+  reached Codex as an empty string.
+- A profile without `engine` fails when the configuration loads, not at
+  `member add` or `start`. A legacy template that set no engine migrates with
+  the engine its role used to default to, so an old configuration still loads.
+- A member whose profile was edited to another engine launches its own engine by
+  name with a warning, as for a deleted profile, and a resume keeps its
+  environment. It used to run the other engine's command with its own arguments.
+- A legacy configuration with `master_model = ""` and no `master_engine` keeps
+  Master on Claude's native default model instead of moving it to `opus[1m]`.
+- `resume --engine` and `resume --model` name the profile field that replaces
+  them instead of failing with an unknown-flag error.
+- Scrolling a task's details stops at the last page, so scrolling back moves
+  the view at once.
+- Table output aligns columns by display width, and `member list` cuts
+  instructions at 48 columns rather than 48 characters, so CJK text and emoji
+  no longer push the DIRECTORY column out of line.
+
 ## v0.10.0 — 2026-09-23
 
 ### Added

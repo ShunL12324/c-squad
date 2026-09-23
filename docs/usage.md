@@ -111,8 +111,9 @@ csquad start --profile pro
 csquad member add dev --profile std --instructions "Own the refund endpoint..."
 ```
 
-Profile names use letters, digits, `_` and `-`. An unknown name fails with the
-list of names you have defined. `csquad member profiles` lists them for a
+Profile names use letters, digits, `_` and `-`. Every profile names its
+`engine`; one without it fails when the configuration loads. An unknown name
+fails with the list of names you have defined. `csquad member profiles` lists them for a
 running team, with each profile's engine, model, whether it uses a custom
 command, and which pointer selects it. It shows the names of a profile's
 environment variables but never their values, so Master can choose a profile
@@ -143,7 +144,9 @@ is added, so later configuration edits never change an existing member. The
 command is resolved at launch through the recorded profile name, read from the
 current configuration, so an edited wrapper reaches the next restart. Removing a profile that an existing member was
 added with is not fatal: that member launches the engine by name with a warning,
-and keeps the account it was added with.
+and keeps the account it was added with. Changing that profile's `engine` is
+treated the same way, because its command and environment were written for the
+other engine.
 
 An earlier `[templates]` table is migrated to profiles of the same name the first
 time the configuration loads, and so are the former top-level `engine`, `model`,
@@ -156,9 +159,13 @@ team's existing members are pointed at the profile their launch settings became,
 so a configured wrapper keeps launching them. The original file is copied to
 `config.toml.before-profiles` before the migrated version is written. A template's
 `prompt` is discarded, because responsibilities now come from `--instructions`;
-the original text remains in the backup. `member add --template` has been removed.
+the original text remains in the backup. A template that set no engine becomes a
+profile with the engine its role used to default to: `master_engine` or `claude`
+for `templates.master`, otherwise `engine` or `codex`. `member add --template`
+has been removed.
 Migration keeps the values you wrote: a `master_model = "opus"` still launches
-`opus`, and only a configuration that set none uses the built-in `opus[1m]`.
+`opus`, `master_model = ""` still launches the engine's native default model, and
+only a configuration that did not write `master_model` uses the built-in `opus[1m]`.
 
 ### Custom engine executables
 

@@ -57,7 +57,9 @@ func SnapshotSelectors() map[string]string {
 }
 
 // Environ overlays the current process environment for a native engine invocation.
-// Empty CLAUDE_CONFIG_DIR removes the variable; other empty overrides remain present.
+// An empty override removes the variable, as the profile env documentation
+// states: an engine distinguishes an unset selector such as CODEX_HOME from an
+// empty one, and only unset falls back to its native default.
 func Environ(overrides map[string]string) []string {
 	out := []string{}
 	for _, entry := range os.Environ() {
@@ -67,7 +69,7 @@ func Environ(overrides map[string]string) []string {
 		}
 	}
 	for k, v := range overrides {
-		if k == "CLAUDE_CONFIG_DIR" && v == "" {
+		if v == "" {
 			continue
 		}
 		out = append(out, k+"="+v)

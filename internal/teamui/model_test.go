@@ -625,3 +625,70 @@ func cardLines(m model, index int) []string {
 	card, _ := m.taskCard(index)
 	return card
 }
+
+// Scrolling past the end of a task's details stops at the last page, so the
+// first press back up moves the view again (#29). Keys, page keys and the wheel
+// all share the bound.
+func TestDetailScrollStopsAtTheEnd(t *testing.T) {
+	m := model{kind: "tasks", width: 40, height: 30, detail: true, data: Snapshot{Active: true, Tasks: []Task{{ID: "T1", Title: "Research", Detail: strings.Repeat("Evidence\n", 60)}}}}
+	limit := m.maxOffset()
+	if limit == 0 {
+		t.Fatal("fixture does not overflow the panel")
+	}
+	press := func(msg tea.Msg) {
+		next, _ := m.Update(msg)
+		m = next.(model)
+	}
+	for range limit + 20 {
+		press(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	}
+	if m.offset != limit {
+		t.Fatalf("j scrolled to %d, past the last page at %d", m.offset, limit)
+	}
+	last := ansi.Strip(m.View())
+	press(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	if m.offset != limit-1 || ansi.Strip(m.View()) == last {
+		t.Fatalf("one k after overscrolling did not move the view: offset %d", m.offset)
+	}
+	for range 10 {
+		press(tea.KeyMsg{Type: tea.KeyPgDown})
+		press(tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
+	}
+	if m.offset != limit {
+		t.Fatalf("page and wheel scrolled to %d, past %d", m.offset, limit)
+	}
+}
+
+// The last page also moves when the pane grows or the details shrink. The stored
+// offset follows, so the first k after either still moves the view.
+func TestDetailScrollBoundFollowsResizeAndContent(t *testing.T) {
+	task := Task{ID: "T1", Title: "Research", Detail: strings.Repeat("Evidence\n", 60)}
+	m := model{kind: "tasks", width: 40, height: 30, detail: true, selectedID: "T1", data: Snapshot{Active: true, Tasks: []Task{task}}}
+	update := func(msg tea.Msg) {
+		next, _ := m.Update(msg)
+		m = next.(model)
+	}
+	firstKMoves := func(when string) {
+		t.Helper()
+		if m.offset != m.maxOffset() {
+			t.Fatalf("%s: offset %d, last page at %d", when, m.offset, m.maxOffset())
+		}
+		before := ansi.Strip(m.View())
+		update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+		if ansi.Strip(m.View()) == before {
+			t.Fatalf("%s: the first k did not move the view", when)
+		}
+	}
+	for range 100 {
+		update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	}
+	update(tea.WindowSizeMsg{Width: 40, Height: 50})
+	firstKMoves("after enlarging the pane")
+
+	for range 100 {
+		update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	}
+	task.Detail = strings.Repeat("Evidence\n", 40)
+	update(snapshotMsg{data: Snapshot{Active: true, Tasks: []Task{task}}})
+	firstKMoves("after the details shrank")
+}

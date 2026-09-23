@@ -228,6 +228,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = max(1, v.Width)
 		m.height = max(1, v.Height)
 		m.reveal()
+		// A larger pane or wider wrapping lowers the last page.
+		m.offset = min(m.offset, m.maxOffset())
 	case snapshotMsg:
 		return m.updateSnapshot(v)
 	case tickMsg:
@@ -269,15 +271,8 @@ func (m *model) scroll(direction int) {
 		m.top = max(first, min(max(first, m.count()-m.rows()), max(first, m.top)+direction))
 		return
 	}
-	m.offset = max(0, m.offset+3*direction)
-	if !m.detail {
-		total := 0
-		for i := m.top; i < len(m.tasks()); i++ {
-			card, _ := m.taskCard(i)
-			total += len(card)
-		}
-		m.offset = min(m.offset, max(0, total-max(0, m.height-taskHeaderRows-2)))
-	}
+	m.offset = max(0, min(m.offset, m.maxOffset())+3*direction)
+	m.offset = min(m.offset, m.maxOffset())
 }
 
 func clean(s string) string {
@@ -298,12 +293,18 @@ func paint(s, color string, selected bool) string {
 	}
 	return style.Render(s)
 }
+
+// detailLines wraps detail text to the panel, so scrolling bounds and the
+// renderer count the same lines.
+func (m model) detailLines(text string) []string {
+	return strings.Split(lipgloss.NewStyle().Width(max(1, m.width-6)).Render(clean(text)), "\n")
+}
+
 func (m model) details(text string, available int) []string {
 	if available < 1 {
 		return nil
 	}
-	wrapped := lipgloss.NewStyle().Width(max(1, m.width-6)).Render(clean(text))
-	lines := strings.Split(wrapped, "\n")
+	lines := m.detailLines(text)
 	offset := min(m.offset, max(0, len(lines)-available))
 	lines = lines[offset:min(len(lines), offset+available)]
 	for i := range lines {

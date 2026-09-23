@@ -60,8 +60,8 @@ func shellEnvironment(env map[string]string) (string, map[string]string) {
 	for i, key := range keys {
 		saved := fmt.Sprintf("CSQUAD_COMMAND_ENV_%d", i)
 		protected[saved] = env[key]
-		if key == "CLAUDE_CONFIG_DIR" && env[key] == "" {
-			script.WriteString("unset CLAUDE_CONFIG_DIR\n")
+		if env[key] == "" {
+			fmt.Fprintf(&script, "unset %s\n", key)
 		} else {
 			fmt.Fprintf(&script, "export %s=\"${%s}\"\n", key, saved)
 		}

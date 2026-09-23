@@ -37,6 +37,8 @@ func (m model) updateSnapshot(v snapshotMsg) (tea.Model, tea.Cmd) {
 		if !found || first {
 			m.reveal()
 		}
+		// Content that shrank or rewrapped must not leave presses to undo.
+		m.offset = min(m.offset, m.maxOffset())
 	}
 	return m, tick()
 }
@@ -89,20 +91,20 @@ func (m model) updateKey(v tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "down", "j":
 		if m.kind == "tasks" && m.detail {
-			m.offset++
+			m.offset = min(m.offset+1, m.maxOffset())
 		} else {
 			m.move(1)
 		}
 	case "up", "k":
 		if m.kind == "tasks" && m.detail {
-			m.offset = max(0, m.offset-1)
+			m.offset = max(0, min(m.offset, m.maxOffset())-1)
 		} else {
 			m.move(-1)
 		}
 	case "pgdown":
-		m.offset += max(1, m.height/2)
+		m.offset = max(0, min(m.offset+max(1, m.height/2), m.maxOffset()))
 	case "pgup":
-		m.offset = max(0, m.offset-max(1, m.height/2))
+		m.offset = max(0, min(m.offset, m.maxOffset())-max(1, m.height/2))
 
 	}
 	return m, nil

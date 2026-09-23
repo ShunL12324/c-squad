@@ -104,13 +104,15 @@ func TestCustomCommandsAcrossLifecycle(t *testing.T) {
 					}
 				}
 				configPath := filepath.Join(root, "config.toml")
+				// Edited below: a member's model and environment stay as added.
+				workerModel, workerAccount := "worker-model", "worker account"
 				writeConfig := func() {
 					t.Helper()
 					masterCommand, workerCommand := commands[masterEngine], commands[workerEngine]
 					cfg.Profiles = map[string]config.Profile{
 						"master-account": {Engine: masterEngine, Model: "test-model", Env: agentenv.Merge(shared), Command: &masterCommand},
-						"worker-account": {Engine: workerEngine, Model: "worker-model", Command: &workerCommand,
-							Env: agentenv.Merge(shared, map[string]string{"CUSTOM_ACCOUNT": "worker account"})},
+						"worker-account": {Engine: workerEngine, Model: workerModel, Command: &workerCommand,
+							Env: agentenv.Merge(shared, map[string]string{"CUSTOM_ACCOUNT": workerAccount})},
 					}
 					cfg.MasterProfile, cfg.DefaultProfile = "master-account", "worker-account"
 					body, err := config.Document(cfg)
@@ -161,9 +163,12 @@ func TestCustomCommandsAcrossLifecycle(t *testing.T) {
 							if explicitPath && strings.Contains(record.Path, "/missing-client-directory") {
 								t.Fatalf("rc replaced explicit PATH: %+v", record)
 							}
-							wantAccount := "team account"
+							wantAccount, wantModel := "team account", "test-model"
 							if id == "worker" {
-								wantAccount = "worker account"
+								wantAccount, wantModel = "worker account", "worker-model"
+							}
+							if !slices.Contains(record.Args, wantModel) {
+								t.Fatalf("model snapshot changed: %+v", record)
 							}
 							wantToken := "config fake token"
 							if mode != "" {
@@ -217,11 +222,14 @@ func TestCustomCommandsAcrossLifecycle(t *testing.T) {
 					}
 					commands[engine] = command
 				}
+				workerModel, workerAccount = "edited-model", "edited account"
 				writeConfig()
+				// The command follows the current configuration at every launch
+				// (#22); engine, model and environment remain snapshotted.
 				cli("member", "restart", "worker")
-				waitLaunch("worker", 2, workerEngine, prefix, true)
+				waitLaunch("worker", 2, workerEngine, newPrefix, true)
 				cli("recover")
-				waitLaunch("master", 2, masterEngine, prefix, true)
+				waitLaunch("master", 2, masterEngine, newPrefix, true)
 				cli("stop")
 				cli("resume", "custom", "--detach")
 				state, err := st.read()

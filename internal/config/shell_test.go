@@ -60,3 +60,33 @@ func TestShellAliasArgumentsExitAndCancellation(t *testing.T) {
 		})
 	}
 }
+
+// An empty profile env value unsets the variable in alias mode too, even when
+// the rc file exports it, matching the direct-exec launch path.
+func TestShellAliasEmptyOverrideUnsets(t *testing.T) {
+	for _, shell := range []string{"bash", "zsh"} {
+		t.Run(shell, func(t *testing.T) {
+			if _, err := exec.LookPath(shell); err != nil {
+				t.Skip(shell + " unavailable")
+			}
+			home := t.TempDir()
+			client := filepath.Join(home, "probe")
+			capture := filepath.Join(home, "env")
+			must(t, os.WriteFile(client, []byte("#!/bin/sh\nprintf '%s|%s|%s' \"${CODEX_HOME-UNSET}\" \"${CLAUDE_CONFIG_DIR-UNSET}\" \"${KEPT-UNSET}\" > \"$CAPTURE\"\n"), 0700))
+			rc := "export CODEX_HOME=/from-rc\nexport CLAUDE_CONFIG_DIR=/from-rc\nalias probecc='" + client + "'\n"
+			must(t, os.WriteFile(filepath.Join(home, ".bashrc"), []byte(rc), 0600))
+			must(t, os.WriteFile(filepath.Join(home, ".zshrc"), []byte(rc), 0600))
+			command := Command{Shell: shell, Executable: "probecc"}
+			env := map[string]string{"HOME": home, "ZDOTDIR": home, "CAPTURE": capture, "CODEX_HOME": "", "CLAUDE_CONFIG_DIR": "", "KEPT": "yes"}
+			name, args, prepared := command.Invocation(env, "")
+			if _, err := process.RunEnv(home, prepared, name, args...); err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(capture)
+			must(t, err)
+			if got := string(data); got != "UNSET|UNSET|yes" {
+				t.Fatalf("empty overrides must unset variables, got %q", got)
+			}
+		})
+	}
+}

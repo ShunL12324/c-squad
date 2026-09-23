@@ -70,7 +70,7 @@ func MigrateLegacy(c *Config) []string {
 			name := adoptProfile(c, Profile{Engine: engine, Model: target.model}, target.master)
 			*target.pointer = name
 			warnings = append(warnings, fmt.Sprintf("legacy engine settings migrated to profiles.%s, selected by %s", name, target.field))
-		case migrated[target.inherits] && launches(c.Profiles[target.inherits]):
+		case migrated[target.inherits]:
 			// Point at the migrated template instead of copying it, so its env and
 			// command survive the change of ownership.
 			*target.pointer = target.inherits
@@ -231,8 +231,17 @@ func migrateTemplates(c *Config) ([]string, map[string]bool) {
 			warnings = append(warnings, fmt.Sprintf("templates.%s ignored because profiles.%s is defined explicitly", name, name))
 			continue
 		}
-		setProfile(c, name, Profile{Env: t.Env, Engine: t.Engine, Model: t.Model})
-		migrated[name] = true
+		// Only a template that selected an engine or model stood in for a role
+		// default, so the engine filled in below must not make one qualify.
+		migrated[name] = t.Engine != "" || t.Model != ""
+		engine := t.Engine
+		if engine == "" {
+			// A template without an engine launched the role's default engine, and
+			// a profile has no such fallback: it must name one to load.
+			engine = legacyDefaultEngine(c, name == "master")
+			warnings = append(warnings, fmt.Sprintf("templates.%s set no engine; profiles.%s launches %s, the engine it defaulted to", name, name, engine))
+		}
+		setProfile(c, name, Profile{Env: t.Env, Engine: engine, Model: t.Model})
 		warnings = append(warnings, fmt.Sprintf("templates.%s migrated to profiles.%s", name, name))
 		if t.Prompt != "" {
 			warnings = append(warnings, fmt.Sprintf("templates.%s.prompt discarded; supply responsibilities with member add --instructions", name))
@@ -242,10 +251,19 @@ func migrateTemplates(c *Config) ([]string, map[string]bool) {
 	return warnings, migrated
 }
 
-// launches reports whether a profile selects anything, distinguishing a real
-// entry from the zero value returned for a missing key.
-func launches(p Profile) bool {
-	return p.Engine != "" || p.Model != ""
+// legacyDefaultEngine is the engine a role launched before profiles when nothing
+// more specific chose one: the top-level setting, then the built-in default.
+func legacyDefaultEngine(c *Config, master bool) Engine {
+	if master {
+		if c.MasterEngine != "" {
+			return c.MasterEngine
+		}
+		return builtinMasterProfile.Engine
+	}
+	if c.Engine != "" {
+		return c.Engine
+	}
+	return builtinWorkerProfile.Engine
 }
 
 // adoptProfile reuses an equivalent existing profile and otherwise stores the

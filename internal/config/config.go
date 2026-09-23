@@ -239,6 +239,9 @@ func Load(root string) (Config, error) {
 	if err = c.ValidateProfiles(); err != nil {
 		return c, err
 	}
+	if err = c.requireProfileEngines(); err != nil {
+		return c, err
+	}
 	for _, master := range []bool{true, false} {
 		p, _, e := c.ResolveProfile("", master)
 		if e != nil {

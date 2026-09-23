@@ -226,6 +226,7 @@ func TestProfileValidationAtLoad(t *testing.T) {
 		{"shell", "[profiles.std.command]\nexecutable = 'wrapper'\nshell = 'fish'\n", "profiles.std.command"},
 		{"alias name", "[profiles.std.command]\nexecutable = 'two words'\nshell = 'bash'\n", "profiles.std.command"},
 		{"name", "[profiles.\"std profile\"]\nengine = 'claude'\n", "letters, digits"},
+		{"missing engine", "[profiles.std]\nmodel = 'sonnet'\n", "profiles.std: engine is required"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.toml")
@@ -466,5 +467,37 @@ func TestMigrationWriteBackKeepsASymlinkedConfiguration(t *testing.T) {
 	must(t, err)
 	if hasLegacyFields(linked, rewritten) {
 		t.Fatalf("the link target was not migrated: %s", rewritten)
+	}
+}
+
+// A legacy template without an engine used its role's default engine. Migration
+// writes that engine into the profile, so requiring one at load does not stop an
+// old configuration from loading, and the engine it fills in does not make a
+// template that selected nothing a role default.
+func TestLegacyTemplateWithoutEngineGetsItsDefault(t *testing.T) {
+	c, path := loadFrom(t, "engine = 'claude'\n[templates.reviewer]\nmodel = 'sonnet'\n[templates.master]\nmodel = 'opus'\n[templates.developer.env]\nCODEX_HOME = '/dev'\n")
+	if p := c.Profiles["reviewer"]; p.Engine != Claude || p.Model != "sonnet" {
+		t.Fatalf("worker template did not get the top-level engine: %+v", p)
+	}
+	if p := c.Profiles["master"]; p.Engine != Claude || p.Model != "opus" || c.MasterProfile != "master" {
+		t.Fatalf("master template did not get Master's default engine: %+v %q", p, c.MasterProfile)
+	}
+	if p := c.Profiles["developer"]; p.Engine != Claude || c.DefaultProfile == "developer" {
+		t.Fatalf("an env-only developer template must not become the default: %+v %q", p, c.DefaultProfile)
+	}
+	// The rewritten file carries the engine, so it loads again unchanged.
+	again, err := Load("")
+	must(t, err)
+	if !reflect.DeepEqual(again.Profiles, c.Profiles) {
+		t.Fatalf("rewritten file changed on reload: %+v != %+v", again.Profiles, c.Profiles)
+	}
+	body, err := os.ReadFile(path)
+	must(t, err)
+	if strings.Contains(string(body), "templates") {
+		t.Fatalf("legacy table survived the rewrite:\n%s", body)
+	}
+	c, _ = loadFrom(t, "[templates.reviewer]\nmodel = 'sonnet'\n")
+	if p := c.Profiles["reviewer"]; p.Engine != Codex {
+		t.Fatalf("worker template did not get the built-in engine: %+v", p)
 	}
 }

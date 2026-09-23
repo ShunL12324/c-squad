@@ -435,3 +435,15 @@ func TestLegacyModelWithoutEngineKeepsTheDefaultEngine(t *testing.T) {
 		t.Fatalf("model-only settings migrated to %+v and %+v", worker, master)
 	}
 }
+
+// A pre-profile project overlay merged over a user file that already selects a
+// profile cannot take effect; the dropped setting has to be reported.
+func TestIgnoredLegacyEngineSettingsAreReported(t *testing.T) {
+	c := Defaults()
+	c.DefaultProfile, c.Engine = "work", Claude
+	c.Profiles = map[string]Profile{"work": {Engine: Codex}}
+	warnings := MigrateLegacy(&c)
+	if c.Engine != "" || c.DefaultProfile != "work" || len(warnings) != 1 || !strings.Contains(warnings[0], "ignored") {
+		t.Fatalf("ignored setting not reported: %q %+v", warnings, c)
+	}
+}

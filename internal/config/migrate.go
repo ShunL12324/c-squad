@@ -49,6 +49,12 @@ func MigrateLegacy(c *Config) []string {
 		{"master_profile", &c.MasterProfile, c.MasterEngine, c.MasterModel, "master", true},
 	} {
 		if *target.pointer != "" {
+			if target.engine != "" || target.model != "" {
+				// Typically a project overlay predating profiles, merged over a user
+				// file that already selects one. The pointer wins; say so rather than
+				// drop the setting silently.
+				warnings = append(warnings, fmt.Sprintf("legacy engine settings ignored because %s selects profiles.%s; set them in that profile or select another with --profile", target.field, *target.pointer))
+			}
 			continue
 		}
 		switch {

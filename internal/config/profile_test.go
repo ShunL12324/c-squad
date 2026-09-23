@@ -518,3 +518,36 @@ func TestLegacyTemplateWithoutEngineGetsItsDefault(t *testing.T) {
 		t.Fatalf("worker template did not get the built-in engine: %+v", p)
 	}
 }
+
+// Before profiles, master_model = "" without master_engine started Master on
+// claude with the native default model. Writing the value, even empty, has to
+// migrate to a profile saying so rather than to the built-in opus[1m] (#23). A
+// file that never wrote master_model keeps the built-in default.
+func TestLegacyEmptyMasterModelKeepsNativeDefault(t *testing.T) {
+	c, path := loadFrom(t, "version = 1\nmaster_model = ''\n")
+	master, name, err := c.ResolveProfile("", true)
+	must(t, err)
+	if master.Engine != Claude || master.Model != "" || name == "" {
+		t.Fatalf("explicit empty master_model became %+v (profile %q)", master, name)
+	}
+	body, err := os.ReadFile(path)
+	must(t, err)
+	if strings.Contains(string(body), "master_model") {
+		t.Fatalf("the legacy field was not rewritten:\n%s", body)
+	}
+	again, err := Load("")
+	must(t, err)
+	if master, _, err = again.ResolveProfile("", true); err != nil || master.Engine != Claude || master.Model != "" {
+		t.Fatalf("rewritten file changed Master: %+v %v", master, err)
+	}
+	// The template still chooses the engine, as it did when master_model only
+	// overrode its model.
+	c, _ = loadFrom(t, "master_model = ''\n[templates.master]\nengine = 'codex'\nmodel = 'gpt-x'\n")
+	if master, _, err = c.ResolveProfile("", true); err != nil || master.Engine != Codex || master.Model != "" {
+		t.Fatalf("explicit empty master_model with a master template: %+v %v", master, err)
+	}
+	c, _ = loadFrom(t, "version = 1\nmax_members = 4\n")
+	if master, _, err = c.ResolveProfile("", true); err != nil || master.Model != "opus[1m]" {
+		t.Fatalf("an unwritten master_model must keep the built-in default: %+v %v", master, err)
+	}
+}

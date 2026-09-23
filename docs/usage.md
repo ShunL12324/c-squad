@@ -164,7 +164,8 @@ profile with the engine its role used to default to: `master_engine` or `claude`
 for `templates.master`, otherwise `engine` or `codex`. `member add --template`
 has been removed.
 Migration keeps the values you wrote: a `master_model = "opus"` still launches
-`opus`, and only a configuration that set none uses the built-in `opus[1m]`.
+`opus`, `master_model = ""` still launches the engine's native default model, and
+only a configuration that did not write `master_model` uses the built-in `opus[1m]`.
 
 ### Custom engine executables
 

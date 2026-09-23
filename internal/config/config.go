@@ -44,6 +44,11 @@ type Config struct {
 	MaxMembers     int                 `json:"max_members" toml:"max_members" comment:"Maximum team size, including Master. Default: 8; must be an integer of at least 1.\nRemoved members do not count. This does not limit conversation turns or task count."`
 	PreviousKey    string              `json:"previous_member_key" toml:"previous_member_key" comment:"Key that switches to the previous member, in tmux key syntax. Default: M-Up (Alt/Option+Up).\nThe team binds it, so the agent CLI in the engine pane no longer receives it: tmux treats Alt and Meta as one M- namespace.\nSet it to an empty string to leave the key to the agent and navigate with Ctrl-b 0-9 or the sidebar instead."`
 	NextKey        string              `json:"next_member_key" toml:"next_member_key" comment:"Key that switches to the next member, in tmux key syntax. Default: M-Down (Alt/Option+Down).\nSet it to an empty string to leave the key to the agent."`
+
+	// masterModelWritten records that a decoded file wrote master_model, even as
+	// an empty string. Before profiles, master_model = "" replaced the default
+	// Master model with the native one, which the empty value alone cannot say.
+	masterModelWritten bool
 }
 
 // Version is the only supported schema version. A file still declaring 1 is
@@ -129,6 +134,9 @@ func decodeConfig(path string, b []byte, c *Config) error {
 	var base map[string]any
 	if err = json.Unmarshal(original, &base); err != nil {
 		return err
+	}
+	if _, ok := patch["master_model"]; ok {
+		c.masterModelWritten = true
 	}
 	mergeConfigMap(base, patch)
 	merged, err := json.Marshal(base)

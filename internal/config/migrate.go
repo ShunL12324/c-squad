@@ -42,11 +42,14 @@ func MigrateLegacy(c *Config) []string {
 		pointer  *string
 		engine   Engine
 		model    string
+		written  bool
 		inherits string
 		master   bool
 	}{
-		{"default_profile", &c.DefaultProfile, c.Engine, c.Model, "developer", false},
-		{"master_profile", &c.MasterProfile, c.MasterEngine, c.MasterModel, "master", true},
+		{"default_profile", &c.DefaultProfile, c.Engine, c.Model, false, "developer", false},
+		// An explicit master_model = "" chose the native default model over the
+		// built-in one, so it migrates like any other written value.
+		{"master_profile", &c.MasterProfile, c.MasterEngine, c.MasterModel, c.masterModelWritten, "master", true},
 	} {
 		if *target.pointer != "" {
 			if target.engine != "" || target.model != "" {
@@ -58,8 +61,12 @@ func MigrateLegacy(c *Config) []string {
 			continue
 		}
 		switch {
-		case target.engine != "" || target.model != "":
+		case target.engine != "" || target.model != "" || target.written:
 			engine := target.engine
+			if engine == "" && migrated[target.inherits] {
+				// The role's template supplied the engine a written model did not.
+				engine = c.Profiles[target.inherits].Engine
+			}
 			if engine == "" {
 				// Before profiles the engine always had a default, so a file that
 				// set only a model still launched the built-in engine.
@@ -77,7 +84,7 @@ func MigrateLegacy(c *Config) []string {
 			warnings = append(warnings, fmt.Sprintf("profiles.%s now selected by %s, matching the previous templates.%s default", target.inherits, target.field, target.inherits))
 		}
 	}
-	c.Engine, c.Model, c.MasterEngine, c.MasterModel = "", "", "", ""
+	c.Engine, c.Model, c.MasterEngine, c.MasterModel, c.masterModelWritten = "", "", "", "", false
 	warnings = append(warnings, migrateSharedTables(c)...)
 	if c.Version != 0 && c.Version < Version {
 		// Version 0 means the file declared no version at all; Load rejects that
@@ -337,7 +344,7 @@ func hasLegacyFields(path string, b []byte) bool {
 		return false
 	}
 	return probe.Engine != "" || probe.Model != "" || probe.MasterEngine != "" ||
-		probe.MasterModel != "" || len(probe.Templates) > 0 || len(probe.Env) > 0 ||
+		probe.MasterModel != "" || probe.masterModelWritten || len(probe.Templates) > 0 || len(probe.Env) > 0 ||
 		len(probe.StartupEnv) > 0 || len(probe.EngineCommands) > 0 ||
 		(probe.Version != 0 && probe.Version < Version)
 }

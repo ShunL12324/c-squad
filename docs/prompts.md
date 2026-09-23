@@ -9,8 +9,19 @@ template reload. Changes ship with the executable.
 hook context used on session start and recovery. Both use the same `shared`
 fragment: shell/engine guidance, technical constraints, message protocol,
 communication policy, role-specific master/worker guidance, and recovery
-handoff. The command reference belongs to startup. Engine-specific transport
-notes are conditional; the permission and CLI identity rules apply to both.
+handoff. The command reference belongs to startup and is split by role: workers
+see the daily loop (task inspect, progress, milestone, submit, evidence,
+message inbox/reply/send, question request, claim for open tasks), and master
+additionally sees task and member administration. This is guidance only;
+authorization is still enforced by code. Every other flag is one `--help`
+away. Engine-specific transport notes are conditional; the permission and CLI
+identity rules apply to both.
+
+Each rule is stated once. A member with a known task runs `task inspect TASK`
+first and uses `board` only for cross-task coordination, and evidence names the
+current submission with `--submission ID` for code and non-code tasks alike. The
+startup prompt is kept under a whitespace-word budget for a fixed fixture (Codex
+worker 750, master 1100), checked by the template tests.
 
 The renderer requires team, member, positive generation and a supported engine.
 Responsibilities, working directory, handoff and colors are typed data fields. Member instructions are passed as values, never parsed as templates;

@@ -4,5 +4,5 @@
 {{template "messaging" .}}
 {{template "communication" .}}
 {{if eq .Member "master"}}{{template "master" .}}{{else}}{{template "worker" .}}{{end}}
-{{if .Handoff}}RECOVERY: Use ONLY the current injected CLI generation. Before handling the next request read board, inbox and handoff at {{.Handoff}}. Reconcile completed work; do not repeat completed requests.{{end}}
+{{if .Handoff}}RECOVERY: Use ONLY the current injected CLI generation. Before handling the next request read your inbox, the handoff at {{.Handoff}}, and task inspect for each task it names (board for cross-task state). Reconcile completed work; do not repeat completed requests.{{end}}
 {{end}}

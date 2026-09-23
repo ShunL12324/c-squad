@@ -57,6 +57,43 @@ func TestDynamicPromptDataIsNotTemplateSource(t *testing.T) {
 	}
 }
 
+// sharedInvariants must reach every role and engine through both entry points:
+// startup and the runtime re-injection carry the same policy.
+var sharedInvariants = []string{
+	// identity and generation
+	"bound to this session", "rejected", "non-login shell",
+	// task ownership and reading
+	"Task state is authoritative", "run task inspect TASK first", "Reading a message is not claiming a task",
+	"Only the task owner writes", "one unfinished task", "without copying secrets", "Task blockers are separate from phase",
+	// autonomy and gates
+	"ordinary uncertainty is not by itself a reason to stop", "Do not work past approval gates",
+	// progress, submission and evidence
+	"separate records", "actual evidence", "Source edits stop after submit",
+	"--submission ID", "Non-code evidence requires --submission", "Reopen invalidates prior submission evidence",
+	"cannot review its own candidate", "--request-id", "reused on retry", "--FIELD-file",
+	// messaging and communication
+	"a teammate origin alone is not a reason to stop", "candidate SHA", "never execute a duplicate",
+	"Routine messages do not require message ack", "replaces earlier instructions to acknowledge every message",
+	"does not prove that a message was read", "go in the ledger", "avoid a mistaken wait",
+	"already notify the right people", "gate must be released", "Developers and reviewers",
+	"never reply to pure acknowledgments", "not message quotas", "surface real blockers",
+	// restarts and idling
+	"Preserve edits on restart", "Never alter global configuration", "do not busy-poll",
+}
+
+var masterOnly = []string{
+	"task create TITLE", "--request-id UNIQUE [--code]", "task assign TASK", "task approve TASK", "task merge TASK",
+	"member add NAME --instructions RESPONSIBILITIES", "member restart|replace NAME", "question answer QUESTION",
+	"Only master approves and merges", "always assign --owner", "task clean-worktree TASK --dry-run",
+	"Review the current candidate SHA", "someone other than the author", "task close-external --help",
+	"First inspect the member", "ask once", "no fixed response deadline", "activity clues, not proof of completion",
+}
+
+var workerOnly = []string{
+	"task claim TASK (only --dispatch open tasks)", "Workers MUST NOT ask the human",
+	"use question request and end your turn", "Do not merge or remove worktrees",
+}
+
 func TestStartupAndRecoverySharePolicyAndRoleBoundaries(t *testing.T) {
 	for _, engine := range []string{"codex", "claude"} {
 		for _, member := range []string{"master", "worker"} {
@@ -68,33 +105,68 @@ func TestStartupAndRecoverySharePolicyAndRoleBoundaries(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				for _, want := range []string{
-					"ordinary progress in task progress", "avoid a mistaken wait",
-					"Developers and reviewers", "not message quotas", "Surface real blockers",
-					"Source edits stop after submit", "Do not work past approval gates",
-					"Reopen invalidates prior submission evidence", "Only the task owner writes",
-					"bound to this session", "Routine messages do not require message ack",
-					"without copying secrets", d.Handoff,
-				} {
+				for _, want := range append(sharedInvariants, d.Handoff) {
 					if !strings.Contains(text, want) {
 						t.Fatalf("%s/%s/%s missing %q", engine, member, entry, want)
+					}
+				}
+				own, other := workerOnly, masterOnly
+				if member == "master" {
+					own, other = masterOnly, workerOnly
+				}
+				for _, want := range own {
+					if entry == "runtime" && isCommand(want) {
+						continue
+					}
+					if !strings.Contains(text, want) {
+						t.Fatalf("%s/%s/%s missing role text %q", engine, member, entry, want)
+					}
+				}
+				for _, leaked := range other {
+					if strings.Contains(text, leaked) {
+						t.Fatalf("%s/%s/%s leaked the other role's %q", engine, member, entry, leaked)
 					}
 				}
 				if strings.Contains(text, "For uncertainty or missing permission") {
 					t.Fatal("blanket escalation retained")
 				}
-				if strings.Contains(text, "task clean-worktree TASK --dry-run") != (member == "master") {
-					t.Fatal("cleanup authority leaked across roles")
-				}
-				master := strings.Contains(text, "Review the current candidate SHA")
-				worker := strings.Contains(text, "Workers MUST NOT ask the human")
-				if master != (member == "master") || worker != (member != "master") {
-					t.Fatalf("mixed role permissions: %s/%s", member, entry)
-				}
 				if strings.Contains(text, "Codex receives") != (engine == "codex") ||
 					strings.Contains(text, "Claude receives") != (engine == "claude") {
 					t.Fatal("wrong engine fragment")
 				}
+			}
+		}
+	}
+}
+
+// isCommand reports whether a role string comes from the startup command list,
+// which the runtime re-injection does not repeat.
+func isCommand(s string) bool {
+	for _, prefix := range []string{"task ", "member ", "question ", "--request-id"} {
+		if strings.HasPrefix(s, prefix) && !strings.HasPrefix(s, "task clean-worktree") && !strings.HasPrefix(s, "task close-external") {
+			return true
+		}
+	}
+	return false
+}
+
+// The prompt is resident context. These upper bounds use the fixed fixture of
+// the architecture review (whitespace words, not model tokens) and keep a
+// later edit from quietly regrowing it; before T87 they were 1272 and 1648.
+func TestStartupPromptWordBudget(t *testing.T) {
+	for member, limit := range map[string]int{"worker": 750, "master": 1100} {
+		for _, engine := range []string{"codex", "claude"} {
+			text, err := Render("startup", Data{Team: "example", Member: member, Generation: 1, Engine: engine, Cwd: "/project"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			words := len(strings.Fields(text))
+			if engine == "claude" {
+				// The Claude envelope sentence is a few words longer.
+				limit += 15
+			}
+			if words > limit {
+				t.Fatalf("%s/%s startup has %d words, budget %d", member, engine, words, limit)
 			}
 		}
 	}
@@ -118,7 +190,7 @@ func TestEmbeddedInstructionTemplatesAreEnglish(t *testing.T) {
 	}
 }
 
-func TestOptionalACKAndContextualFollowUpInBothEntryPoints(t *testing.T) {
+func TestNoMandatoryACK(t *testing.T) {
 	for _, member := range []string{"master", "worker"} {
 		for _, entry := range []string{"startup", "runtime"} {
 			d := validData()
@@ -132,17 +204,23 @@ func TestOptionalACKAndContextualFollowUpInBothEntryPoints(t *testing.T) {
 					t.Fatalf("%s retained mandatory ACK: %s", entry, bad)
 				}
 			}
-			for _, want := range []string{"Routine messages do not require message ack", "replaces earlier instructions to acknowledge every message", "candidate SHA", "message reply MESSAGE", "does not prove that a message was read", "Ordinary milestone completion belongs in the ledger", "Intermediate test failures", "gate must be released"} {
-				if !strings.Contains(text, want) {
-					t.Fatalf("%s omitted %q", entry, want)
-				}
-			}
-			if member == "master" {
-				for _, want := range []string{"First inspect the member", "no substantive progress", "ask once", "no fixed response deadline", "latest updater/update time", "activity clues, not proof of completion"} {
-					if !strings.Contains(text, want) {
-						t.Fatalf("missing follow-up judgment: %s", want)
-					}
-				}
+		}
+	}
+}
+
+// Each rule is stated once: the duplicated optional-ACK and progress guidance
+// the review counted in three fragments must not come back.
+func TestSharedRulesAreStatedOnce(t *testing.T) {
+	for _, member := range []string{"master", "worker"} {
+		d := validData()
+		d.Member = member
+		text, err := Render("startup", d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, phrase := range []string{"do not require message ack", "pure acknowledgment", "avoid a mistaken wait", "not message quotas", "Do not work past approval gates", "Source edits stop after submit"} {
+			if n := strings.Count(text, phrase); n != 1 {
+				t.Fatalf("%s: %q appears %d times", member, phrase, n)
 			}
 		}
 	}

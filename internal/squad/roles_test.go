@@ -23,13 +23,17 @@ func TestDynamicIdentitySurvivesSnapshotWithoutTemplates(t *testing.T) {
 	m := s.Members["a"]
 	text, promptErr := prompt(s, m)
 	must(t, promptErr)
-	// Responsibilities are the only identity a member carries, and the prompt
-	// documents the single flag that supplies them.
-	for _, want := range []string{m.Instructions, "--instructions RESPONSIBILITIES"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("missing %q", want)
-		}
+	if !strings.Contains(text, m.Instructions) {
+		t.Fatalf("missing %q", m.Instructions)
 	}
+	// Responsibilities are the only identity a member carries, and Master's
+	// prompt documents the single flag that supplies them.
+	master, promptErr := prompt(s, s.Members["master"])
+	must(t, promptErr)
+	if !strings.Contains(master, "--instructions RESPONSIBILITIES") {
+		t.Fatal("master prompt lost the recruiting flag")
+	}
+	text += master
 	for _, gone := range []string{"--template developer|", "--role IDENTITY"} {
 		if strings.Contains(text, gone) {
 			t.Fatalf("prompt still advertises %q", gone)

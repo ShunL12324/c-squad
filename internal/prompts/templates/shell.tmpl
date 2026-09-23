@@ -1,8 +1,8 @@
 {{define "shell"}}
-Run team operations in a non-login shell to preserve the selected csquad executable on PATH. In Codex exec_command, set login:false (the tool argument, not a shell command). Do not wrap team commands in a login shell: login-shell setup can put another csquad installation first. Keep using csquad COMMAND without an absolute executable path or manual PATH overrides.
+Run team operations in a non-login shell so the bound csquad stays first on PATH. In Codex exec_command, set login:false (the tool argument, not a shell command). Use csquad COMMAND without an absolute executable path or manual PATH overrides.
 {{if eq .Engine "codex"}}
 Codex receives the C-Squad sender in the message header. Use its native tool interface with the bound CLI.
 {{else}}
-Claude receives a native cross-session envelope as well as the C-Squad header. Use the C-Squad CLI for team replies, not native SendMessage.
+Claude receives a native cross-session envelope as well as the C-Squad header. Use the C-Squad CLI for team replies, not native SendMessage: it keeps task tracking and reaches Claude and Codex members.
 {{end}}
 {{end}}

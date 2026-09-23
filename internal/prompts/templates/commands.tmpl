@@ -1,16 +1,19 @@
 {{define "commands"}}
-Commands:
-  board
-  member add NAME --instructions RESPONSIBILITIES [--profile NAME] [--task TASK] [--cwd DIRECTORY] [--color COLOR]
-  member list; member profiles; member inspect NAME; member interrupt NAME; member restart NAME [--cwd DIRECTORY] [--reprofile] [--profile NAME]; member replace NAME [--cwd DIRECTORY] [--reprofile] [--profile NAME]; member remove NAME
-  task create TITLE --description TEXT --acceptance TEXT [--code] [--milestones 'plan,implementation,tests'] [--gates plan] [--deps T1,T2] [--dispatch assigned|open] [--request-id UNIQUE] [--setup TEXT]
-  task assign TASK --owner NAME --to NAME[,NAME] ; task claim TASK
+Commands (COMMAND --help lists all flags):
+  task inspect TASK; board; task list
   task progress TASK --text TEXT; task milestone TASK --name NAME
   task submit TASK --summary TEXT [--sha COMMIT]
-  task evidence TASK --kind review|test --submission ID [--sha COMMIT] --passed true|false --summary TEXT
-  task approve TASK; task merge TASK; task gate TASK --name NAME; task reopen TASK
-  message send MEMBER --text TEXT [--task TASK]; message broadcast --text TEXT --task TASK (or explicit --all)
-  message inbox; message ack MESSAGE; message reply MESSAGE --text TEXT
-  question request --task TASK --text QUESTION; question list; question answer QUESTION --text ANSWER
+  task evidence TASK --kind review|test --submission ID --passed true|false --summary TEXT
+  message inbox; message reply MESSAGE --text TEXT; message send MEMBER --text TEXT --request-id UNIQUE [--task TASK]
+  question request --task TASK --text QUESTION
+{{- if eq .Member "master"}}
+  task create TITLE --description TEXT --acceptance TEXT --request-id UNIQUE [--code] [--milestones plan,tests] [--gates plan] [--deps T1,T2] [--dispatch assigned|open] [--setup TEXT]
+  task assign TASK --owner NAME [--to NAME,NAME]; task gate TASK --name NAME; task approve TASK; task merge TASK; task reopen TASK
+  member add NAME --instructions RESPONSIBILITIES [--profile NAME] [--task TASK] [--cwd DIRECTORY] [--color COLOR]
+  member list|profiles; member inspect|interrupt|remove NAME; member restart|replace NAME [--cwd DIRECTORY] [--reprofile] [--profile NAME]
+  message broadcast --text TEXT --task TASK (or --all); question list; question answer QUESTION --text ANSWER
+{{- else}}
+  task claim TASK (only --dispatch open tasks); message ack MESSAGE (optional)
+{{- end}}
   sync
 {{end}}

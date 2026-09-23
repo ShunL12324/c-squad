@@ -142,12 +142,18 @@ func TestPromptUsesCanonicalCLIAndSubmissionIdentity(t *testing.T) {
 	must(t, err)
 	text, promptErr := prompt(s, s.Members["a"])
 	must(t, promptErr)
-	for _, want := range []string{"csquad COMMAND", "message reply MESSAGE", "question request", "question answer", "--submission ID", "Non-code evidence requires --submission", "Routine messages do not require message ack"} {
+	for _, want := range []string{"csquad COMMAND", "message reply MESSAGE", "question request", "--submission ID", "Non-code evidence requires --submission", "Routine messages do not require message ack"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("prompt missing %q", want)
 		}
 	}
-	if strings.Contains(text, "help request") {
+	// Answering escalations is master's command; a worker is not shown it.
+	master, promptErr := prompt(s, s.Members["master"])
+	must(t, promptErr)
+	if !strings.Contains(master, "question answer") || strings.Contains(text, "question answer") {
+		t.Fatal("question answer must be listed for master only")
+	}
+	if strings.Contains(text, "help request") || strings.Contains(master, "help request") {
 		t.Fatal("prompt retained old escalation spelling")
 	}
 }

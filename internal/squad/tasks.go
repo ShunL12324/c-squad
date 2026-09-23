@@ -22,16 +22,6 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 	if len(p) > 1 && p[0] == "brief" {
 		return briefCommand(st, actor, p[1])
 	}
-	if len(p) > 1 && p[0] == "confirm" {
-		if actor != "master" || st.Generation != 0 {
-			return errors.New("user confirmation requires a human terminal or the task card")
-		}
-		note, err := st.confirmTask(p[1])
-		if err != nil {
-			return err
-		}
-		return queryOut(o, note)
-	}
 	if len(p) > 1 && p[0] == "clean-worktree" {
 		plan, err := cleanTaskWorkspace(st, actor, p[1], o["dry-run"] == "true")
 		if err != nil {

@@ -23,11 +23,11 @@ type Member struct {
 
 // Task is a presentation snapshot of a task and its delivery evidence.
 // Note carries a terse qualifier for a done task that was not merged, so the card
-// never reads identically to a merged one.
+// never reads identically to a merged one. Completion is set only for work the
+// agent workflow accepted; the panel never marks completion itself.
 type Task struct {
-	CanConfirm                                             bool
-	Confirmation                                           string
 	ID, Title, State, Owner, Color, Progress, Detail, Note string
+	Completion                                             string
 	Milestones                                             []Milestone
 }
 
@@ -342,12 +342,4 @@ func (m model) View() string {
 		lines[i] = base.Render(s + strings.Repeat(" ", max(0, m.width-ansi.StringWidth(s))))
 	}
 	return strings.Join(lines[:min(len(lines), m.height)], "\n")
-}
-
-// Confirmation is deliberately separate from requesting a brief report.
-func (m model) confirm() (tea.Model, tea.Cmd) {
-	if m.kind != "tasks" || m.count() == 0 || !m.tasks()[m.selected].CanConfirm {
-		return m, nil
-	}
-	return m, m.action(Action{Kind: "confirm", Task: m.tasks()[m.selected].ID})
 }

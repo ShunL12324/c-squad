@@ -136,22 +136,23 @@ Old Brief messages remain available for audit but no longer drive panel status,
 automatic delivery/recovery, or explicit message retry. Input already accepted
 by an engine cannot be withdrawn.
 
-## User confirmation
+## Completion
 
-After technical delivery, task cards show **Awaiting user confirmation**.
-The user can request a **Brief report**, then click **Confirm completion** (or press
-`c` on the selected task). A human terminal can also run `csquad task confirm TASK`.
-This also works after the team has stopped, without restarting its runtime.
-Agent generations cannot invoke that command to impersonate user acceptance.
+The task panel marks a task **✓ Completed** only when the agent workflow has
+accepted it; the user never has to click anything. A code task is marked once
+master merged the candidate that carries passing independent review and test
+evidence (`✓ Completed · merged SHA`). A task without a workspace is marked once
+master approved it with no failing evidence (`✓ Completed · accepted by master`).
+Ready, in-progress, blocked, in-review, awaiting-merge and merging tasks are
+never marked, whatever the author reports and whether or not the member has
+stopped. A task closed on an external commit stays in Done without the mark and
+keeps its "Closed externally · not merged" note.
 
-Confirmation is optional: technically finished tasks remain in Done and release
-the owner's execution slot even before user acceptance. The separate
-`user_confirmation` record retains the user, timestamp, submission, candidate and
-technical phase. Repeated clicks are idempotent. Confirmation never creates test
-or review evidence, changes approval, merges code, or advances the technical phase.
-A task whose technical ledger is still unfinished must first be reconciled by
-master (for example, using the documented external closure workflow); confirmation
-is not a substitute for that evidence.
+Earlier versions showed **Awaiting user confirmation** with a **Confirm
+completion** button, the `c` key and `csquad task confirm`. These are removed; the
+command is no longer recognized. A ledger that holds a `user_confirmation`
+record still loads, keeps the record, and shows it in the task details as a
+legacy record. It has no effect on completion.
 
 Member navigation also keeps the current client's panel widths and header height
 when switching between existing or newly created members. Responsive visibility

@@ -133,8 +133,8 @@ func (m model) taskCard(index int) ([]string, []cardButton) {
 	if task.Note != "" {
 		content = append(content, textStyle(line(task.Note, width), "222", true))
 	}
-	if task.Confirmation != "" {
-		content = append(content, textStyle(line(task.Confirmation, width), "222", true))
+	if task.Completion != "" {
+		content = append(content, textStyle(line(task.Completion, width), "115", true))
 	}
 	progress := task.Progress
 	content = append(content, "", textStyle(strings.Repeat("─", width), "240", false))
@@ -147,11 +147,6 @@ func (m model) taskCard(index int) ([]string, []cardButton) {
 	}
 	content = append(content, "")
 	rows, buttons := taskCardButtons(width)
-	if task.CanConfirm {
-		label := " Confirm completion "
-		buttons = append(buttons, cardButton{action: "confirm", row: len(rows), start: cardContentX, end: cardContentX + min(width, ansi.StringWidth(label))})
-		rows = append(rows, paint(line(label, width), accent, true))
-	}
 	base := len(content)
 	content = append(content, rows...)
 	if status := m.briefLine(task, width); status != "" {

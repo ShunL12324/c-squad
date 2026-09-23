@@ -48,12 +48,8 @@ func (st *Store) runPanel(owner, view string, popup bool) error {
 			}
 			return "", st.setPanelView(view, true)
 		}
-		// Confirmation records user acceptance without changing the technical phase,
-		// evidence, or approval. Brief sends native user input to master
-		// without changing the task or writing a team message.
-		if a.Kind == "confirm" {
-			return st.confirmTask(a.Task)
-		}
+		// Brief sends native user input to master without changing the task or
+		// writing a team message.
 		if a.Kind == "brief" {
 			return briefRequest(st, "master", a.Task)
 		}

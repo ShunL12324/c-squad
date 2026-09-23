@@ -95,8 +95,8 @@ func (m model) detailBody(task Task) string {
 	if status := m.briefLine(task, max(1, m.width-6)); status != "" {
 		body += status + "\n\n"
 	}
-	if task.Confirmation != "" {
-		body += task.Confirmation + "\n\n"
+	if task.Completion != "" {
+		body += task.Completion + "\n\n"
 	}
 	if task.Note != "" {
 		body += task.Note + "\n\n"

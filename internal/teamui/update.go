@@ -75,8 +75,6 @@ func (m model) updateKey(v tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.kind == "tasks" {
 			return m, m.open()
 		}
-	case "c":
-		return m.confirm()
 	case "b", "r":
 		// One key for both: a retry is the same request, and the ledger
 		// reuses the message rather than queueing a second one.
@@ -174,9 +172,6 @@ func (m model) updateMouse(v tea.MouseMsg) (tea.Model, tea.Cmd) {
 						for _, button := range hit.buttons {
 							if v.Y != button.row+taskHeaderRows || v.X < button.start || v.X >= button.end {
 								continue
-							}
-							if button.action == "confirm" {
-								return m.confirm()
 							}
 							if button.action == "brief" {
 								return m.brief()

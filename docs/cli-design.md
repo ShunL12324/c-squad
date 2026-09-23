@@ -40,6 +40,12 @@ parameters, not team selection or session-switching shortcuts. A conflicting
 bound identity is rejected. JSON defaults and existing script commands remain
 unchanged, with no deprecation in this increment.
 
+`--help` recommends one spelling per operation: `new`, `question` and
+`message reply`. The compatible `start`, `help request|list|answer` and
+top-level `reply`, and the `--team`, `--state-dir`, `--member` and
+`--generation` selectors, are hidden from help and completion but parse and
+behave exactly as before.
+
 Implementation is additive: document the lifecycle, add `new` and the creation
 shorthand, then test shared dispatch, errors, help and generated shell
 completion. `--help` and `usage COMMAND` describe commands without starting

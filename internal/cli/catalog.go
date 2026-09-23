@@ -15,6 +15,10 @@ type definition struct {
 	min, max                               int
 	flags, required                        []string
 	hidden                                 bool
+	// compat keeps a second spelling parseable for existing scripts while help
+	// recommends only one: start for new, the help group for question, and
+	// reply for message reply.
+	compat bool
 }
 
 var startupFlags = append([]string{"name", "profile", "detach", "color"}, removedLaunchFlags...)
@@ -99,6 +103,9 @@ func removed(flag string) bool {
 	return false
 }
 
+// compatGroups are command groups kept only as alternative spellings.
+var compatGroups = []string{"help"}
+
 func groupDescription(name string) string {
 	return map[string]string{"team": "Manage saved teams", "member": "Recruit, inspect, and manage team members", "task": "Publish, assign, review, and merge tasks", "message": "Send, receive, and acknowledge peer messages", "question": "Escalate a question to master or answer an escalation", "_internal": "Internal runtime operations (compatibility aliases)", "help": "Escalate a question to master or answer an escalation"}[name]
 }
@@ -107,7 +114,7 @@ func definitions() []definition {
 		{path: "member set-cwd", args: " NAME", min: 1, max: 1, complete: "member", summary: "Repair a stopped team member directory before resume", flags: []string{"cwd"}, required: []string{"cwd"}},
 		{path: "team remove", args: " NAME", min: 1, max: 1, complete: "team", summary: "Remove a stopped saved team after safety checks", flags: []string{"dry-run", "discard-ignored"}},
 		{path: "new", args: " [NAME]", max: 1, summary: "Create a new team (tmux-style new -s NAME)", flags: startupFlags, example: "  csquad new -s research --profile codex\n  csquad new --detach"},
-		{path: "start", args: " [NAME]", max: 1, summary: "Create a new team; existing names require attach or resume", flags: startupFlags, example: "  csquad start my-team --profile claude-opus\n  csquad start --detach"},
+		{path: "start", args: " [NAME]", max: 1, compat: true, summary: "Create a new team; existing names require attach or resume", flags: startupFlags, example: "  csquad start my-team --profile claude-opus\n  csquad start --detach"},
 		{path: "resume", args: " [TEAM]", max: 1, complete: "team", summary: "Resume a stopped/interrupted team and its conversations from the ledger", flags: []string{"name", "fresh", "detach", "env", "engine", "model"}, example: "  csquad resume my-team\n  csquad resume --fresh --detach"},
 		{path: "attach", args: " [TEAM_OR_MEMBER]", summary: "Enter a running team without restarting; select a member with --name TEAM", max: 1, complete: "team-or-member", flags: []string{"name"}, example: "  csquad attach research\n  csquad attach --name research reviewer"},
 		{path: "ui", summary: "Show team members and task panels", flags: []string{"view", "client", "name"}, example: "  csquad ui\n  csquad ui --view tasks\n  csquad ui --view hide"},
@@ -168,8 +175,15 @@ func definitions() []definition {
 			defs[i].flags = append(append([]string(nil), defs[i].flags...), "output")
 		}
 	}
+	for i := range defs {
+		if strings.HasPrefix(defs[i].path, "help ") || defs[i].path == "reply" {
+			defs[i].compat = true
+		}
+	}
 	original := append([]definition(nil), defs...)
 	for _, d := range original {
+		// The recommended spelling copied below is not itself a compatibility alias.
+		d.compat = false
 		switch {
 		case strings.HasPrefix(d.path, "help "):
 			d.path = strings.Replace(d.path, "help ", "question ", 1)

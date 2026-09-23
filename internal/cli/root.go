@@ -87,6 +87,14 @@ func newCommand(run runner) *cobra.Command {
 	if err := root.MarkPersistentFlagDirname("team"); err != nil {
 		panic(err)
 	}
+	// A member session is bound to its team, member and generation, and humans
+	// select a team by name. These selectors stay accepted for scripts and the
+	// runtime, but everyday help shows only --team-name.
+	for _, name := range []string{"team", "state-dir", "member", "generation"} {
+		if err := root.PersistentFlags().MarkHidden(name); err != nil {
+			panic(err)
+		}
+	}
 	if err := root.RegisterFlagCompletionFunc("member", completeResource("member")); err != nil {
 		panic(err)
 	}
@@ -107,12 +115,12 @@ func newCommand(run runner) *cobra.Command {
 				}
 			}
 			if next == nil {
-				next = &cobra.Command{Use: name, Hidden: name == "_internal", Short: groupDescription(name), Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error { return c.Help() }}
+				next = &cobra.Command{Use: name, Hidden: name == "_internal" || slices.Contains(compatGroups, name), Short: groupDescription(name), Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error { return c.Help() }}
 				parent.AddCommand(next)
 			}
 			parent = next
 		}
-		cmd := &cobra.Command{Use: parts[len(parts)-1] + def.args, Short: def.summary, Example: def.example, Hidden: def.hidden, Args: cobra.RangeArgs(def.min, def.max), RunE: execute(run, parts), ValidArgsFunction: cobra.NoFileCompletions}
+		cmd := &cobra.Command{Use: parts[len(parts)-1] + def.args, Short: def.summary, Example: def.example, Hidden: def.hidden || def.compat, Args: cobra.RangeArgs(def.min, def.max), RunE: execute(run, parts), ValidArgsFunction: cobra.NoFileCompletions}
 		if def.max < 0 {
 			cmd.Args = cobra.MinimumNArgs(def.min)
 		}
@@ -135,6 +143,14 @@ func newCommand(run runner) *cobra.Command {
 		}
 		parent.AddCommand(cmd)
 	}
+	// Cobra's usage template lists any command named help even when hidden, which
+	// here is the escalation alias of question, not Cobra's help command.
+	template := root.UsageTemplate()
+	listed := strings.ReplaceAll(template, `(or .IsAvailableCommand (eq .Name "help"))`, `.IsAvailableCommand`)
+	if listed == template {
+		panic("cobra usage template changed; the hidden help alias would be listed")
+	}
+	root.SetUsageTemplate(listed)
 	root.AddCommand(&cobra.Command{Use: "help-cli", Hidden: true, Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error { return root.Help() }})
 	// Owning 'completion' replaces Cobra's default command, whose help documents
 	// persistence through Homebrew only.

@@ -175,3 +175,81 @@ func TestRemovedLaunchFlagsAreExplainedFirst(t *testing.T) {
 		t.Fatalf("doctor --engine was rejected: %v", err)
 	}
 }
+
+// Help recommends one spelling per operation and leaves the runtime's bound
+// identity selectors out, without starting anything. The hidden spellings and
+// selectors still parse, so existing scripts and the runtime keep working.
+func TestHelpRecommendsOneSpellingAndHidesIdentity(t *testing.T) {
+	help := func(args ...string) string {
+		t.Helper()
+		root := newCommand(func([]string, map[string]string, []string) error {
+			t.Fatal("help invoked runtime")
+			return nil
+		})
+		var out bytes.Buffer
+		root.SetOut(&out)
+		root.SetErr(&bytes.Buffer{})
+		root.SetArgs(append(args, "--help"))
+		if err := root.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		return out.String()
+	}
+	top := help()
+	for _, hidden := range []string{"\n  start ", "\n  reply ", "\n  help ", "--member", "--generation", "--state-dir", "--team "} {
+		if strings.Contains(top, hidden) {
+			t.Fatalf("root help lists %q:\n%s", hidden, top)
+		}
+	}
+	for _, shown := range []string{"\n  new ", "\n  question ", "\n  resume ", "--team-name"} {
+		if !strings.Contains(top, shown) {
+			t.Fatalf("root help lost %q:\n%s", shown, top)
+		}
+	}
+	evidence := help("task", "evidence")
+	for _, hidden := range []string{"--member", "--generation", "--state-dir", "--team "} {
+		if strings.Contains(evidence, hidden) {
+			t.Fatalf("task evidence help lists %q:\n%s", hidden, evidence)
+		}
+	}
+	if !strings.Contains(evidence, "--submission") || !strings.Contains(evidence, "--team-name") {
+		t.Fatalf("task evidence help lost its own flags:\n%s", evidence)
+	}
+	if message := help("message"); !strings.Contains(message, "\n  reply ") {
+		t.Fatalf("message help lost reply:\n%s", message)
+	}
+
+	// Each hidden spelling reaches the backend exactly as the recommended one does.
+	invocation := func(args ...string) string {
+		t.Helper()
+		var got string
+		root := newCommand(func(path []string, values map[string]string, _ []string) error {
+			got = fmt.Sprintf("%q %v", path, values)
+			return nil
+		})
+		root.SetArgs(args)
+		root.SetOut(&bytes.Buffer{})
+		root.SetErr(&bytes.Buffer{})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+		if got == "" {
+			t.Fatalf("%v did not reach the backend", args)
+		}
+		return got
+	}
+	for _, pair := range [][2][]string{
+		{{"start", "demo"}, {"new", "demo"}},
+		{{"reply", "M1", "--text", "ok"}, {"message", "reply", "M1", "--text", "ok"}},
+		{{"help", "request", "--text", "why"}, {"question", "request", "--text", "why"}},
+		{{"help", "answer", "Q1", "--text", "yes"}, {"question", "answer", "Q1", "--text", "yes"}},
+		{{"--state-dir", "/tmp/team", "--member", "a", "--generation", "2", "board"}, {"--team", "/tmp/team", "--member", "a", "--generation", "2", "board"}},
+	} {
+		if hidden, shown := invocation(pair[0]...), invocation(pair[1]...); hidden != shown {
+			t.Fatalf("%v reached %s, but %v reached %s", pair[0], hidden, pair[1], shown)
+		}
+	}
+	if got := invocation("--state-dir", "/tmp/team", "--member", "a", "--generation", "2", "board"); !strings.Contains(got, "generation:2") || !strings.Contains(got, "member:a") || !strings.Contains(got, "team:/tmp/team") {
+		t.Fatalf("hidden selectors were not passed on: %s", got)
+	}
+}

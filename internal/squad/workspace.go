@@ -63,7 +63,7 @@ func (st *Store) prepareWorkspace(id string) error {
 		if t.Dispatch == DispatchModeOpen {
 			for id, m := range s.Members {
 				if id != "master" && m.State != MemberStateRemoved {
-					s.message("master", id, t.ID, "Task available: "+t.ID+" "+t.Title+". Read board and claim if suitable.", "")
+					s.message("master", id, t.ID, "Task available: "+t.ID+" "+t.Title+". Run task inspect "+t.ID+" and claim if suitable.", "")
 				}
 			}
 		}

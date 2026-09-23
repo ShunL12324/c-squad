@@ -15,7 +15,7 @@ The legacy `start NAME`, `start --name NAME`, and bare `csquad` remain
 supported. See the [CLI design](cli-design.md) for the command mapping and
 intentional differences from tmux.
 
-Start a team in your project with `csquad start`, or `csquad start --profile pro`
+Start a team in your project with `csquad new`, or `csquad new --profile pro`
 to launch Master from a configured [launch profile](#launch-profiles). This opens
 the Master session. Tell it what you want built and how you want work divided; it
 recruits and coordinates members.
@@ -31,15 +31,16 @@ or inspect the underlying state with `csquad board`.
 | Return to Master | `Ctrl-b 0` |
 | Open a numbered member | `Ctrl-b 1` … `Ctrl-b 9` |
 | Detach and leave the team running | `Ctrl-b d` |
-| Start without taking over your terminal | `csquad start --detach` |
+| Start without taking over your terminal | `csquad new --detach` |
 | Inspect progress | `csquad board` |
 | Restart a member | `csquad member restart alice` |
 | Stop the team | `csquad stop` |
 | Recover an interrupted team | `csquad resume` |
 
-Outside a team session, use `csquad --team-name research COMMAND` or
-`csquad --state-dir /path/to/team COMMAND`. The existing `--team DIR` still means
-a state directory. Supply only one selector: positional team name, `--name`,
+Outside a team session, use `csquad --team-name research COMMAND`. The
+compatible `--state-dir DIR` and `--team DIR` select a state directory instead;
+they still work but are left out of `--help`, like the runtime's `--member` and
+`--generation`. Supply only one selector: positional team name, `--name`,
 `--team-name`, `--state-dir`, or `--team`. `new` and `start` accept only a new positional
 name or `-s` / `--name`; neither selects existing state. With no selector, existing-team
 operations use the bound session, then the current project's last team, then the
@@ -72,8 +73,8 @@ inspect the effective values and configuration path. An optional project
 `.csquad.toml` overrides user settings by field.
 
 ```sh
-csquad start                # Master uses master_profile
-csquad start --profile pro  # or a profile you name
+csquad new                # Master uses master_profile
+csquad new --profile pro  # or a profile you name
 ```
 
 The Master recruits members through `csquad member add`, supplying their name,
@@ -107,7 +108,7 @@ model = "opus"
 ```
 
 ```sh
-csquad start --profile pro
+csquad new --profile pro
 csquad member add dev --profile std --instructions "Own the refund endpoint..."
 ```
 
@@ -337,13 +338,13 @@ csquad member add --help
 ```
 
 Homebrew and APT install Bash, Zsh, and Fish completions automatically. In a new
-terminal, type `csquad sta` and press **Tab** to complete `csquad start`. No
+terminal, type `csquad resu` and press **Tab** to complete `csquad resume`. No
 `csquad completion` setup command is needed. Your shell must have its normal
 completion system enabled (for example, Oh My Zsh already enables Zsh completion).
 
 Completion includes commands, flags, and IDs from the current team. It reads the
 ledger without waking agents. `csquad question request` is a team escalation command
-(the old `help request` alias remains available);
+(the old `help request` alias remains available but is not listed in `--help`);
 use `--help` or `csquad usage` for command documentation.
 
 ### npm, npx, and manual installs
@@ -467,7 +468,7 @@ csquad member add reviewer --profile pro --instructions "Review the refund work"
 Colors are visual labels, not task assignments or status indicators. Master is
 prompted to use matching colors for collaborators, but this is optional. Without
 `--color`, a random color is selected and retained across restarts and recovery;
-duplicates are allowed. Use `csquad start --color blue` to color Master as well.
+duplicates are allowed. Use `csquad new --color blue` to color Master as well.
 
 Available colors: `red`, `orange`, `amber`, `yellow`, `lime`, `green`, `mint`,
 `teal`, `cyan`, `sky`, `blue`, `indigo`, `violet`, `purple`, `pink`, and `rose`.
@@ -589,8 +590,8 @@ remains pinned while the member list scrolls.
 ## Text inputs, query output, and compatibility
 
 Use `question request|list|answer` for escalation and `message reply MESSAGE` for
-replies. Existing `help request|list|answer` and top-level `reply` retain their
-behavior, including question blockers and reply deduplication. `sync` starts an
+replies. Existing `help request|list|answer`, top-level `reply` and `start` retain their
+behavior but are left out of `--help`, including question blockers and reply deduplication. `sync` starts an
 active team's runtime when needed and retries delivery; `reconcile` separately
 reconciles durable merge intents.
 

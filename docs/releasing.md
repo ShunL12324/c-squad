@@ -76,10 +76,12 @@ checkout check identify the candidate. Any source change requires a new run.
 Do not infer macOS success from a Linux fixture or from cross-compilation alone.
 
 The stable-tag Release workflow also calls this same validation and makes its
-release job depend on success. A failure therefore blocks creation/publication
-of GitHub release assets and all downstream npm, Homebrew, and APT jobs. Existing
-post-build channel checks remain in place. This gate builds disposable packages;
-the release job still builds and verifies the final distribution assets.
+release job depend on success. A failure therefore blocks creation of the
+GitHub draft and every channel. It does not cover the later checks: a failure in
+the release job's own tests or in npm-test after the draft exists leaves an
+unpublished draft and no channel changed, while a failure after publication
+(see below) leaves the channels out of step. This gate builds disposable
+packages; the release job still builds and verifies the final distribution assets.
 
 ## Publish
 
@@ -127,13 +129,21 @@ APT repository. Check installation and reported version/source where supported.
 Never overwrite or move a published tag.
 
 The Release workflow checks the source, builds a draft, and tests APT
-installation, upgrade, and removal before publishing GitHub assets. It then
-tests the Formula on a macOS runner and commits it to the default branch.
-A separate job deploys the signed APT metadata. Only stable `vX.Y.Z` versions are accepted. The APT source
+installation, upgrade, and removal. The npm package is then installed and tested
+on Linux and macOS from the uploaded artifact. Only after all of that passes
+does the `publish` job make the GitHub Release public. From there the channels
+run in parallel: the Formula is tested on a macOS runner against the public
+archives and committed to the default branch, a separate job deploys the signed
+APT metadata, and npm publishes. Only stable `vX.Y.Z` versions are accepted. The APT source
 contains the current release for amd64 and arm64; it is not a historical archive.
 Releases are serialized so simultaneous tags cannot overwrite each other's output.
 
-The Release, formula commit, and Pages deployment are not one transaction.
+The Release, npm publication, formula commit, and Pages deployment are not one
+transaction, and nothing is rolled back. Homebrew can only be tested after the
+Release is public, because the Formula downloads the public archives, so a
+Homebrew test failure leaves GitHub, APT and npm on the new version with the
+Formula unchanged. A failed npm publish, Pages deployment or formula push has
+the same effect on its own channel.
 The formula commit is an ordinary branch push and does not trigger another build.
 If a formula push or Pages deployment fails after publication, rerun the failed jobs in Actions rather than
 rebuilding or overwriting an already published release. Users can still install

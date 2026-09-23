@@ -48,6 +48,11 @@ release history; earlier releases remain available on
   environment. It used to run the other engine's command with its own arguments.
 - A legacy configuration with `master_model = ""` and no `master_engine` keeps
   Master on Claude's native default model instead of moving it to `opus[1m]`.
+- A legacy `engine`, `model`, `master_engine` or `master_model` set next to the
+  matching `[templates.developer]` or `[templates.master]` overrides only the
+  fields it writes. The migrated profile keeps the template's `env`, such as
+  the account directory, and its other settings, instead of starting from an
+  empty profile.
 - `resume --engine` and `resume --model` name the profile field that replaces
   them instead of failing with an unknown-flag error.
 - Scrolling a task's details stops at the last page, so scrolling back moves

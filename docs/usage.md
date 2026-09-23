@@ -186,7 +186,10 @@ for `templates.master`, otherwise `engine` or `codex`. `member add --template`
 has been removed.
 Migration keeps the values you wrote: a `master_model = "opus"` still launches
 `opus`, `master_model = ""` still launches the engine's native default model, and
-only a configuration that did not write `master_model` uses the built-in `opus[1m]`.
+only a configuration that did not write `master_model` uses the built-in `opus[1m]`. When
+`templates.master` or `templates.developer` exists, the top-level fields for that
+role replace only the template's engine or model; the migrated profile keeps the
+template's environment.
 
 ### Custom engine executables
 

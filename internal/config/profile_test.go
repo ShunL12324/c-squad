@@ -551,3 +551,61 @@ func TestLegacyEmptyMasterModelKeepsNativeDefault(t *testing.T) {
 		t.Fatalf("an unwritten master_model must keep the built-in default: %+v %v", master, err)
 	}
 }
+
+// A legacy role template carries an account in its env. Top-level engine and
+// model fields override only what they write, so the profile they migrate to
+// keeps the template's env and its other launch settings. The user's file is
+// backed up, rewritten, and loads back to the same profiles.
+func TestLegacyRoleFieldsKeepTemplateEnvironment(t *testing.T) {
+	const template = "[templates.master]\nengine = 'codex'\nmodel = 'gpt-x'\n[templates.master.env]\nCODEX_HOME = '/acct'\n"
+	for _, test := range []struct {
+		name, fields  string
+		engine        Engine
+		model         string
+		keepsTemplate bool
+	}{
+		{"empty model", "master_model = ''\n", Codex, "", false},
+		{"model", "master_model = 'm2'\n", Codex, "m2", false},
+		{"engine", "master_engine = 'claude'\n", Claude, "gpt-x", false},
+		{"engine and empty model", "master_engine = 'claude'\nmaster_model = ''\n", Claude, "", false},
+		{"same as template", "master_model = 'gpt-x'\n", Codex, "gpt-x", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			original := "version = 1\n" + test.fields + template
+			c, path := loadFrom(t, original)
+			master, name, err := c.ResolveProfile("", true)
+			must(t, err)
+			if master.Engine != test.engine || master.Model != test.model || master.Env["CODEX_HOME"] != "/acct" {
+				t.Fatalf("Master migrated to profiles.%s %+v", name, master)
+			}
+			if test.keepsTemplate != (name == "master") {
+				t.Fatalf("Master selects profiles.%s", name)
+			}
+			// The template's own profile is left as the template wrote it.
+			if p := c.Profiles["master"]; p.Engine != Codex || p.Model != "gpt-x" || p.Env["CODEX_HOME"] != "/acct" {
+				t.Fatalf("templates.master profile changed: %+v", p)
+			}
+			backup, err := os.ReadFile(path + backupSuffix)
+			must(t, err)
+			if string(backup) != original {
+				t.Fatalf("backup differs from the original file:\n%s", backup)
+			}
+			again, err := Load("")
+			must(t, err)
+			if !reflect.DeepEqual(again.Profiles, c.Profiles) || again.MasterProfile != c.MasterProfile {
+				t.Fatalf("rewritten file changed on reload: %+v %q", again.Profiles, again.MasterProfile)
+			}
+		})
+	}
+	// A user-defined profile is never rewritten, even when it has the name the
+	// derived profile would take.
+	c, _ := loadFrom(t, "master_model = ''\n"+template+"[profiles.codex]\nengine = 'codex'\nmodel = 'mine'\n")
+	if p := c.Profiles["codex"]; p.Model != "mine" || len(p.Env) != 0 {
+		t.Fatalf("user profile rewritten: %+v", p)
+	}
+	master, _, err := c.ResolveProfile("", true)
+	must(t, err)
+	if master.Env["CODEX_HOME"] != "/acct" || master.Model != "" {
+		t.Fatalf("Master lost the template env next to a user profile: %+v", master)
+	}
+}

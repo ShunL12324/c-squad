@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -62,21 +63,41 @@ func MigrateLegacy(c *Config) []string {
 		}
 		switch {
 		case target.engine != "" || target.model != "" || target.written:
-			engine := target.engine
-			if engine == "" && migrated[target.inherits] {
-				// The role's template supplied the engine a written model did not.
-				engine = c.Profiles[target.inherits].Engine
-			}
-			if engine == "" {
-				// Before profiles the engine always had a default, so a file that
-				// set only a model still launched the built-in engine.
-				if engine = builtinWorkerProfile.Engine; target.master {
-					engine = builtinMasterProfile.Engine
+			// The role's template supplied whatever the top-level fields left
+			// out, its environment included, so the profile starts from it and
+			// only the fields the file wrote replace the template's values.
+			p := Profile{}
+			if migrated[target.inherits] {
+				p = c.Profiles[target.inherits]
+				if p.Env != nil {
+					// Copy, so the template's own profile is never changed.
+					p.Env = agentenv.Merge(p.Env)
 				}
 			}
-			name := adoptProfile(c, Profile{Engine: engine, Model: target.model}, target.master)
+			if target.engine != "" {
+				p.Engine = target.engine
+			}
+			if target.model != "" || target.written {
+				p.Model = target.model
+			}
+			if p.Engine == "" {
+				// Before profiles the engine always had a default, so a file that
+				// set only a model still launched the built-in engine.
+				if p.Engine = builtinWorkerProfile.Engine; target.master {
+					p.Engine = builtinMasterProfile.Engine
+				}
+			}
+			if migrated[target.inherits] && reflect.DeepEqual(p, c.Profiles[target.inherits]) {
+				*target.pointer = target.inherits
+				warnings = append(warnings, fmt.Sprintf("profiles.%s now selected by %s, matching the previous templates.%s default", target.inherits, target.field, target.inherits))
+				continue
+			}
+			name := adoptProfile(c, p, target.master)
 			*target.pointer = name
 			warnings = append(warnings, fmt.Sprintf("legacy engine settings migrated to profiles.%s, selected by %s", name, target.field))
+			if migrated[target.inherits] && len(p.Env) > 0 {
+				warnings = append(warnings, fmt.Sprintf("profiles.%s keeps the env of templates.%s, which the legacy settings only partly overrode", name, target.inherits))
+			}
 		case migrated[target.inherits]:
 			// Point at the migrated template instead of copying it, so its env and
 			// command survive the change of ownership.

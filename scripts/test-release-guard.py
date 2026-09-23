@@ -64,5 +64,66 @@ class ReleaseGuardTests(unittest.TestCase):
             self.assertEqual(output.read_text(), "deploy=true\n")
 
 
+class ReadAptIndexTests(unittest.TestCase):
+    """read-apt-index.sh against stub gh and curl; no network is used."""
+
+    SITE = '{"html_url":"https://owner.github.io/repo/"}'
+
+    def run_script(self, pages, status=None, curl_exit=0):
+        # pages: JSON body for gh, or "404"/"403" for a gh HTTP failure.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            (bin_dir / "gh").write_text(
+                "#!/bin/sh\n"
+                f"case '{pages}' in 404|403) echo 'gh: Failure (HTTP {pages})' >&2; exit 1;; esac\n"
+                # Honour the --jq filter the script passes.
+                f"printf '%s' '{pages}' | python3 -c 'import json,sys; v=json.load(sys.stdin).get(\"html_url\"); print(v or \"\")'\n")
+            curl = "#!/bin/sh\n"
+            if curl_exit:
+                curl += f"echo 'curl: (6) Could not resolve host' >&2; exit {curl_exit}\n"
+            else:
+                curl += ('while [ "$1" != -o ]; do shift; done; '
+                         f"printf 'Package: csquad\\nVersion: 0.10.0\\n' > \"$2\"; printf {status}\n")
+            (bin_dir / "curl").write_text(curl)
+            for tool in ("gh", "curl"):
+                (bin_dir / tool).chmod(0o755)
+            output = root / "Packages"
+            output.write_text("stale file from an earlier step")
+            result = subprocess.run(["bash", Path(__file__).with_name("read-apt-index.sh"), "owner/repo", output],
+                                    env=dict(os.environ, PATH=f"{bin_dir}{os.pathsep}{os.environ['PATH']}"),
+                                    capture_output=True, text=True, timeout=30)
+            content = output.read_text() if output.exists() else None
+            return result, content
+
+    def test_deployed_index_is_kept(self):
+        result, content = self.run_script(self.SITE, status=200)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Version: 0.10.0", content)
+
+    def test_first_deployment_has_no_index(self):
+        # Pages is enabled but nothing is deployed: the guard then compares
+        # only with published Releases.
+        result, content = self.run_script(self.SITE, status=404)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIsNone(content)
+
+    def test_unknown_state_fails_closed(self):
+        cases = {
+            "pages disabled": (("404",), {}, "GitHub Pages is not enabled"),
+            "no permission": (("403",), {}, "Cannot read the GitHub Pages configuration"),
+            "no site url": (("{}",), {"status": 200}, "reports no site URL"),
+            "server error": ((self.SITE,), {"status": 503}, "HTTP 503"),
+            "network error": ((self.SITE,), {"curl_exit": 6}, "Cannot read the deployed APT index"),
+        }
+        for name, (args, kwargs, message) in cases.items():
+            with self.subTest(name):
+                result, content = self.run_script(*args, **kwargs)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+                self.assertIsNone(content)
+
+
 if __name__ == "__main__":
     unittest.main()

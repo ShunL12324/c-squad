@@ -57,6 +57,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
             guard = [step for step in steps if step.get("id") == "guard"]
             self.assertEqual(len(guard), 1, name)
             self.assertIn("scripts/release-guard.py", guard[0]["run"])
+            if name == "apt":
+                self.assertIn("scripts/read-apt-index.sh", guard[0]["run"])
             position = steps.index(guard[0])
             guarded = [step for step in steps if step.get("uses", "").startswith(uses)
                        or (script and step.get("name") == script)]

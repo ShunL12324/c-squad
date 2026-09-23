@@ -200,14 +200,8 @@ jobs:
           gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
             --limit 1000 --json tagName --jq '.[].tagName' > "$RUNNER_TEMP/published"
           mapfile -t published < "$RUNNER_TEMP/published"
-          site=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .html_url)
           packages="$RUNNER_TEMP/Packages"
-          status=$(curl -sS -o "$packages" -w '%{http_code}' "${site%/}/apt/dists/stable/main/binary-amd64/Packages")
-          case "$status" in
-            200) ;;
-            404) rm -f "$packages" ;;
-            *) echo "Cannot read the deployed APT index (HTTP $status)." >&2; exit 1 ;;
-          esac
+          bash scripts/read-apt-index.sh "$GITHUB_REPOSITORY" "$packages"
           python3 scripts/release-guard.py --version "$TAG" --packages "$packages" \
             --published "${published[@]}" --github-output
       - name: Deploy APT repository

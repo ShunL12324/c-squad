@@ -333,9 +333,10 @@ func writeBackMigration(path string, original []byte) error {
 	f, err := os.OpenFile(backup, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		// An existing backup is an earlier migration's copy of the original file.
-		// Never replace it with content that has already been migrated.
+		// Never replace it with content that has already been migrated, and do not
+		// rewrite without a backup; report it so the caller does not claim success.
 		if os.IsExist(err) {
-			return nil
+			return fmt.Errorf("%s already exists from an earlier migration; move it aside to allow the rewrite", backup)
 		}
 		return err
 	}
@@ -357,7 +358,13 @@ func writeBackMigration(path string, original []byte) error {
 	if err != nil {
 		return err
 	}
-	return writeFileAtomic(path, encoded)
+	// Replace the file a symlinked configuration points at, so the link (often
+	// into a dotfiles repository) stays in place and receives the migration.
+	target := path
+	if resolved, e := filepath.EvalSymlinks(path); e == nil {
+		target = resolved
+	}
+	return writeFileAtomic(target, encoded)
 }
 
 // writeFileAtomic replaces a file through a same-directory temporary file so an

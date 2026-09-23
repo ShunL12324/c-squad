@@ -447,3 +447,24 @@ func TestIgnoredLegacyEngineSettingsAreReported(t *testing.T) {
 		t.Fatalf("ignored setting not reported: %q %+v", warnings, c)
 	}
 }
+
+// A symlinked user configuration keeps its link: the migration is written to the
+// file it points at, not over the link.
+func TestMigrationWriteBackKeepsASymlinkedConfiguration(t *testing.T) {
+	dir := t.TempDir()
+	linked := filepath.Join(dir, "dotfiles-config.toml")
+	must(t, os.WriteFile(linked, []byte("engine = 'claude'\n"), 0600))
+	path := filepath.Join(dir, "config.toml")
+	must(t, os.Symlink(linked, path))
+	t.Setenv("CSQUAD_CONFIG", path)
+	_, err := Load("")
+	must(t, err)
+	if info, err := os.Lstat(path); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the configuration symlink was replaced: %v", err)
+	}
+	rewritten, err := os.ReadFile(linked)
+	must(t, err)
+	if hasLegacyFields(linked, rewritten) {
+		t.Fatalf("the link target was not migrated: %s", rewritten)
+	}
+}

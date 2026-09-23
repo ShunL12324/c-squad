@@ -4,6 +4,36 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
+## Unreleased
+
+### Fixed
+
+- Upgrading while a team is running no longer strips profiles from its ledger.
+  The runtime protocol now changes with the ledger schema, so the first command
+  after an upgrade replaces a runtime left by v0.8.
+- A legacy `config.json` is rewritten as JSON after migration. It used to be
+  rewritten as TOML, after which every load failed.
+- A legacy configuration that sets only `model` or `master_model` keeps the
+  engine that role used to default to, instead of migrating to a profile with
+  no engine that the load then rejected.
+- A Claude worker launched with an opening prompt and no model receives that
+  prompt. The tool denial list used to consume it as a tool name.
+- A member added with the built-in default is no longer bound later to
+  whichever profile launches the same engine. Only members saved before
+  profiles existed are backfilled.
+- `team remove` refuses a workspace with assume-unchanged or skip-worktree
+  entries, whose edits `git status` cannot see, as workspace cleanup already
+  did.
+- A removed launch flag is explained before any other check, whatever its
+  value. `--engine gpt`, `member add` outside a team and an empty `--model`
+  used to report something else or pass silently.
+- Migration reports engine or model settings it ignores because a profile
+  pointer is already set, typically in a project `.csquad.toml` written before
+  profiles.
+- When a `.before-profiles` backup already exists, the configuration is
+  reported as migrated in memory only, not as rewritten. A symlinked
+  configuration keeps its link and the migration is written to its target.
+
 ## v0.9.0 — 2026-09-23
 
 ### Removed

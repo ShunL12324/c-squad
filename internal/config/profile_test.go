@@ -401,3 +401,23 @@ func TestLegacyTemplateDefaultsBecomePointers(t *testing.T) {
 		t.Fatalf("top-level engine lost to a template: %+v", p)
 	}
 }
+
+// A JSON user configuration is rewritten as JSON; writing the TOML document to a
+// .json path made every later load fail to parse the file.
+func TestLegacyJSONConfigurationWritesBackAsJSON(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("CSQUAD_CONFIG", path)
+	must(t, os.WriteFile(path, []byte(`{"engine":"claude","model":"sonnet"}`), 0600))
+	first, err := Load("")
+	must(t, err)
+	rewritten, err := os.ReadFile(path)
+	must(t, err)
+	if hasLegacyFields(path, rewritten) || !strings.HasPrefix(strings.TrimSpace(string(rewritten)), "{") {
+		t.Fatalf("write-back is not migrated JSON: %s", rewritten)
+	}
+	again, err := Load("")
+	must(t, err)
+	if again.DefaultProfile != first.DefaultProfile || again.Profiles[again.DefaultProfile].Model != "sonnet" {
+		t.Fatalf("reload changed the resolved profiles: %+v", again)
+	}
+}

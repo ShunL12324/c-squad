@@ -91,6 +91,15 @@ func Path() string {
 	}
 	return filepath.Join(d, "csquad", "config.toml")
 }
+
+// encodeConfig is the counterpart of decodeConfig: the file extension selects
+// the format, so every writer produces what the next load expects.
+func encodeConfig(path string, c Config) ([]byte, error) {
+	if strings.HasSuffix(path, ".json") {
+		return json.MarshalIndent(c, "", "  ")
+	}
+	return Document(c)
+}
 func decodeConfig(path string, b []byte, c *Config) error {
 	// Decode into the schema first so typoed keys cannot disappear in the map overlay.
 	// The second decode retains field presence for partial updates and legacy migration.
@@ -172,12 +181,7 @@ func Load(root string) (Config, error) {
 		if err = os.MkdirAll(filepath.Dir(p), 0700); err != nil {
 			return c, err
 		}
-		if strings.HasSuffix(p, ".json") {
-			b, err = json.MarshalIndent(c, "", "  ")
-		} else {
-			b, err = Document(c)
-		}
-		if err != nil {
+		if b, err = encodeConfig(p, c); err != nil {
 			return c, err
 		}
 		f, e := os.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)

@@ -339,7 +339,7 @@ func writeBackMigration(path string, original []byte) error {
 		return err
 	}
 	MigrateLegacy(&single)
-	encoded, err := Document(single)
+	encoded, err := encodeConfig(path, single)
 	if err != nil {
 		return err
 	}

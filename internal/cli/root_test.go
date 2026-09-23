@@ -150,6 +150,8 @@ func TestRemovedLaunchFlagsAreExplainedFirst(t *testing.T) {
 		{"member", "add", "x", "--engine", "codex"},
 		{"member", "add", "x", "--model", ""},
 		{"resume", "--env", "A=B"},
+		{"resume", "--engine", "codex"},
+		{"resume", "--model", "gpt-x"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			root := newCommand(func([]string, map[string]string, []string) error {

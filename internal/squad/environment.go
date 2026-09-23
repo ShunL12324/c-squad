@@ -40,6 +40,11 @@ func RejectRemovedLaunchFlags(operation string, set map[string]string) error {
 			continue
 		}
 		if _, ok := set[flag]; ok {
+			if operation == "resume" && (flag == "engine" || flag == "model") {
+				// resume has no --profile to point at: members keep the launch
+				// settings they were added with, and Master's come from its profile.
+				return fmt.Errorf("--%s was removed; set %s in a [profiles.NAME] table and select it with start --profile or member add --profile", flag, flag)
+			}
 			return removedLaunchFlagError(flag)
 		}
 	}

@@ -82,23 +82,47 @@ func (m model) boardView() []string {
 		task := m.tasks()[m.selected]
 		header, _ := detailRow(m.width)
 		lines := []string{"", m.boardHeading("TASK DETAILS"), "", header, "", ""}
-		body := task.ID + " · " + label(task.State) + "\n\n" + task.Title + "\n\nOwner: " + task.Owner + "\n\n"
-		if status := m.briefLine(task, max(1, m.width-6)); status != "" {
-			body += status + "\n\n"
-		}
-		if task.Confirmation != "" {
-			body += task.Confirmation + "\n\n"
-		}
-		if task.Note != "" {
-			body += task.Note + "\n\n"
-		}
-		body += strings.Join(milestoneLines(task.Milestones, max(1, m.width-4), -1), "\n")
-		body += "\n\n" + task.Detail
-		return append(lines, m.details(body, m.height-taskHeaderRows-2)...)
+		return append(lines, m.details(m.detailBody(task), m.height-taskHeaderRows-2)...)
 	}
 	lines := []string{"", m.boardHeading("TASKS"), "", m.taskFilters(), "", ""}
 	cards, _ := m.taskCards()
 	return append(lines, cards...)
+}
+
+// detailBody is the scrollable text of a task's detail view.
+func (m model) detailBody(task Task) string {
+	body := task.ID + " · " + label(task.State) + "\n\n" + task.Title + "\n\nOwner: " + task.Owner + "\n\n"
+	if status := m.briefLine(task, max(1, m.width-6)); status != "" {
+		body += status + "\n\n"
+	}
+	if task.Confirmation != "" {
+		body += task.Confirmation + "\n\n"
+	}
+	if task.Note != "" {
+		body += task.Note + "\n\n"
+	}
+	body += strings.Join(milestoneLines(task.Milestones, max(1, m.width-4), -1), "\n")
+	body += "\n\n" + task.Detail
+	return body
+}
+
+// maxOffset is the furthest the tasks panel can scroll. The renderer clamps a
+// larger offset anyway, so storing one only means the extra presses have to be
+// undone before the view moves back.
+func (m model) maxOffset() int {
+	if m.kind != "tasks" {
+		return 0
+	}
+	available := max(0, m.height-taskHeaderRows-2)
+	if m.detail && m.count() > 0 {
+		return max(0, len(m.detailLines(m.detailBody(m.tasks()[m.selected])))-available)
+	}
+	total := 0
+	for i := m.top; i < len(m.tasks()); i++ {
+		card, _ := m.taskCard(i)
+		total += len(card)
+	}
+	return max(0, total-available)
 }
 
 func (m model) boardHeading(title string) string {

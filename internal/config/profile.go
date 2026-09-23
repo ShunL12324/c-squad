@@ -17,7 +17,7 @@ import (
 type Profile struct {
 	Env     map[string]string `json:"env,omitempty" toml:"env,omitempty" comment:"Environment overrides for members launched with this profile, and the only place they are configured.\nPrecedence, lowest to highest: inherited environment -> this table.\nUse absolute paths. Paths do not expand ~, $HOME, or command substitutions. CODEX_HOME selects the Codex configuration directory.\nCLAUDE_CONFIG_DIR selects the Claude configuration directory. An empty value unsets the variable.\nCSQUAD_*, TMUX, and TMUX_PANE are managed by C Squad and cannot be overridden."`
 	Command *Command          `json:"command,omitempty" toml:"command,omitempty" comment:"Optional executable and literal prefix arguments used to launch this profile's engine, including probes and helper subcommands.\nOmit the table to run the engine by name from PATH.\nUse an absolute path or a PATH command name; shell is bash or zsh for a persistent alias; no shell parsing or expansion."`
-	Engine  Engine            `json:"engine,omitempty" toml:"engine,omitempty" comment:"Engine started by this profile: claude or codex. Select the profile with member add --profile or start --profile."`
+	Engine  Engine            `json:"engine,omitempty" toml:"engine,omitempty" comment:"Engine started by this profile: claude or codex. Required. Select the profile with member add --profile or start --profile."`
 	Model   string            `json:"model,omitempty" toml:"model,omitempty" comment:"Model started by this profile. An empty string uses the native engine default.\nUse a model supported by the selected engine."`
 }
 
@@ -96,7 +96,9 @@ func (c Config) profileChoices() string {
 // command is read from the profile at launch, so an edited launcher reaches the
 // next restart. A profile deleted after the member was added falls back to the
 // built-in default, which runs the engine by name, and warns instead of failing:
-// editing a configuration must not stop an existing team from starting.
+// editing a configuration must not stop an existing team from starting. A
+// profile whose engine was changed since is treated the same way: its command
+// was written for the other engine, and would receive this engine's arguments.
 func (c Config) ProfileCommand(name string, engine Engine) (Command, string) {
 	if name == "" {
 		return EngineCommand(engine), ""
@@ -105,7 +107,17 @@ func (c Config) ProfileCommand(name string, engine Engine) (Command, string) {
 	if !ok {
 		return EngineCommand(engine), fmt.Sprintf("profile %q is no longer defined; launching %s from the built-in default profile", name, engine)
 	}
+	if !p.Launches(engine) {
+		return EngineCommand(engine), fmt.Sprintf("profile %q now launches %s, not %s; launching %s from the built-in default profile", name, p.Engine, engine, engine)
+	}
 	return p.LaunchCommand(engine), ""
+}
+
+// Launches reports whether a member recorded with engine can still use this
+// profile's launch settings. A profile saved before engines were required names
+// none and matches any engine, as it did when that member was added.
+func (p Profile) Launches(engine Engine) bool {
+	return p.Engine == "" || p.Engine == engine
 }
 
 // LaunchCommand fills in the engine name for a profile that defines no command
@@ -187,6 +199,21 @@ func (c Config) ValidateProfiles() error {
 		}
 		if _, ok := c.Profiles[pointer.name]; !ok {
 			return fmt.Errorf("%s: unknown profile %q; %s", pointer.field, pointer.name, c.profileChoices())
+		}
+	}
+	return nil
+}
+
+// requireProfileEngines rejects a profile that names no engine when the file
+// loads, instead of at member add or start with an unsupported engine "". Legacy
+// templates without one are given their default engine by migration first. It is
+// kept out of ValidateProfiles, which also checks a running team's saved
+// snapshot: a snapshot taken before this check may hold such a profile unused,
+// and it must not stop that team's members from launching.
+func (c Config) requireProfileEngines() error {
+	for _, name := range sortedProfileNames(c.Profiles) {
+		if c.Profiles[name].Engine == "" {
+			return fmt.Errorf("profiles.%s: engine is required; set engine = %q or %q", name, Claude, Codex)
 		}
 	}
 	return nil

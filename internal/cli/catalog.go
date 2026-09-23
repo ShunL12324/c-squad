@@ -108,7 +108,7 @@ func definitions() []definition {
 		{path: "team remove", args: " NAME", min: 1, max: 1, complete: "team", summary: "Remove a stopped saved team after safety checks", flags: []string{"dry-run", "discard-ignored"}},
 		{path: "new", args: " [NAME]", max: 1, summary: "Create a new team (tmux-style new -s NAME)", flags: startupFlags, example: "  csquad new -s research --profile codex\n  csquad new --detach"},
 		{path: "start", args: " [NAME]", max: 1, summary: "Create a new team; existing names require attach or resume", flags: startupFlags, example: "  csquad start my-team --profile claude-opus\n  csquad start --detach"},
-		{path: "resume", args: " [TEAM]", max: 1, complete: "team", summary: "Resume a stopped/interrupted team and its conversations from the ledger", flags: []string{"name", "fresh", "detach", "env"}, example: "  csquad resume my-team\n  csquad resume --fresh --detach"},
+		{path: "resume", args: " [TEAM]", max: 1, complete: "team", summary: "Resume a stopped/interrupted team and its conversations from the ledger", flags: []string{"name", "fresh", "detach", "env", "engine", "model"}, example: "  csquad resume my-team\n  csquad resume --fresh --detach"},
 		{path: "attach", args: " [TEAM_OR_MEMBER]", summary: "Enter a running team without restarting; select a member with --name TEAM", max: 1, complete: "team-or-member", flags: []string{"name"}, example: "  csquad attach research\n  csquad attach --name research reviewer"},
 		{path: "ui", summary: "Show team members and task panels", flags: []string{"view", "client", "name"}, example: "  csquad ui\n  csquad ui --view tasks\n  csquad ui --view hide"},
 		{path: "ui-layout", hidden: true, flags: []string{"owner"}},

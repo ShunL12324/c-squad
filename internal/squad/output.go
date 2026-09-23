@@ -9,9 +9,12 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // instructionsSummaryWidth keeps the member table readable on a narrow terminal.
+// It counts terminal columns, not characters: a CJK character takes two.
 const instructionsSummaryWidth = 48
 
 // queryOut keeps JSON as the established query default. Tables are concise
@@ -131,11 +134,7 @@ func writeTable(out io.Writer, value any) error {
 func instructionsSummary(text string) string {
 	line, _, _ := strings.Cut(text, "\n")
 	summary := strings.Join(strings.Fields(line), " ")
-	runes := []rune(summary)
-	if len(runes) <= instructionsSummaryWidth {
-		return summary
-	}
-	return string(runes[:instructionsSummaryWidth-1]) + "\u2026"
+	return ansi.Truncate(summary, instructionsSummaryWidth, "\u2026")
 }
 
 func sortedKeys[V any](items map[string]V) []string {
@@ -147,11 +146,11 @@ func sortedKeys[V any](items map[string]V) []string {
 	return keys
 }
 
+// writeRows aligns columns by display width, two spaces apart, the last column
+// unpadded. text/tabwriter counts characters, so a cell holding CJK text or
+// emoji, two columns per character, pushed every later column out of line.
 func writeRows(out io.Writer, header []string, rows [][]string) error {
-	w := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
-	if _, err := fmt.Fprintln(w, strings.Join(header, "\t")); err != nil {
-		return err
-	}
+	lines := [][]string{header}
 	for _, row := range rows {
 		cells := make([]string, len(row))
 		for i, value := range row {
@@ -159,11 +158,29 @@ func writeRows(out io.Writer, header []string, rows [][]string) error {
 			escaped := strconv.Quote(value)
 			cells[i] = escaped[1 : len(escaped)-1]
 		}
-		if _, err := fmt.Fprintln(w, strings.Join(cells, "\t")); err != nil {
-			return err
+		lines = append(lines, cells)
+	}
+	widths := []int{}
+	for _, cells := range lines {
+		for i, cell := range cells[:max(0, len(cells)-1)] {
+			if i == len(widths) {
+				widths = append(widths, 0)
+			}
+			widths[i] = max(widths[i], ansi.StringWidth(cell))
 		}
 	}
-	return w.Flush()
+	var b strings.Builder
+	for _, cells := range lines {
+		for i, cell := range cells {
+			b.WriteString(cell)
+			if i < len(cells)-1 {
+				b.WriteString(strings.Repeat(" ", widths[i]-ansi.StringWidth(cell)+2))
+			}
+		}
+		b.WriteByte('\n')
+	}
+	_, err := io.WriteString(out, b.String())
+	return err
 }
 
 func writeBoardTable(out io.Writer, board map[string]any) error {

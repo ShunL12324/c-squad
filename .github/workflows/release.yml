@@ -34,6 +34,12 @@ jobs:
           test -s LICENSE
           test -n "$APT_KEY" || { echo 'Set APT_SIGNING_KEY.' >&2; exit 1; }
           test -n "$APT_FINGERPRINT" || { echo 'Set APT_SIGNING_FINGERPRINT.' >&2; exit 1; }
+          # The Release body comes from the tag's changelog section; stop before
+          # creating a draft if that section is missing or unfinished.
+          python3 scripts/test-release-notes.py
+          python3 scripts/release-notes.py --version "$TAG" --sha "$(git rev-parse HEAD)" \
+            --output "$RUNNER_TEMP/release-notes.md"
+          cat "$RUNNER_TEMP/release-notes.md" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.0'
@@ -84,7 +90,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
-        run: gh release edit "$TAG" --draft=false
+        run: gh release edit "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md" --draft=false
 
   homebrew-test:
     needs: release

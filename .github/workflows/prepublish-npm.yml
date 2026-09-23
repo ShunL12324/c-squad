@@ -46,6 +46,9 @@ jobs:
           version="${RELEASE_VERSION#v}"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          # Catch a missing or unfinished changelog section before tagging.
+          python3 scripts/release-notes.py --version "v$version" --sha "$SOURCE_SHA" \
+            --output "$RUNNER_TEMP/release-notes.md"
           export SNAPSHOT_VERSION="$version"
           python3 - <<'PY'
           import os

@@ -97,10 +97,12 @@ Ordinary pushes and pull requests run only `make check`. Before every release:
    commit is on the remote default branch and that the version is unused in
    Git tags, GitHub Releases, and npm. Tag that explicit commit, not an
    intermediate or moving branch tip.
-4. Prepare English GitHub Release notes from the matching changelog section.
-   Include the exact source SHA, check the tag/version and changes agree, and
-   omit preparation markers. GoReleaser changelog generation is disabled, so
-   these notes must be supplied explicitly.
+4. Check the matching changelog section reads as English Release notes. The
+   Release workflow extracts that section with `scripts/release-notes.py`,
+   appends the exact source SHA, and applies it when it publishes the draft.
+   It stops before building if the section is missing, empty, undated, or still
+   marked Unreleased or Pending integration. Preview the body locally with
+   `python3 scripts/release-notes.py --version vX.Y.Z --sha FULL_SHA --output /tmp/notes.md`.
 
 For example, after filling in the approved values:
 
@@ -111,11 +113,11 @@ git tag -a "$RELEASE_TAG" "$RELEASE_SHA" -m "C Squad $RELEASE_TAG"
 git push origin "$RELEASE_TAG"
 ```
 
-The stable tag triggers checks, compilation, and publication. When the workflow
-creates its draft, apply the prepared notes with
-`gh release edit "$RELEASE_TAG" --notes-file /path/to/release-notes.md`.
-Recheck the public Release body against that tag's changelog after publication;
-do not assume an empty or automatically generated body is sufficient. If the
+The stable tag triggers checks, compilation, and publication. GoReleaser
+changelog generation stays disabled; the workflow sets the Release body from the
+changelog section when it publishes the draft, and shows it in the release job
+summary. Recheck the public Release body against that tag's changelog after
+publication. If the
 actual publication crosses a UTC date boundary, correct the changelog date on
 the default branch in a follow-up commit; never move the published tag.
 

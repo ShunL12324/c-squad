@@ -4,7 +4,7 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
-## Unreleased
+## v0.11.0 — 2026-09-23
 
 ### Added
 
@@ -18,9 +18,10 @@ release history; earlier releases remain available on
   recorded when the member was added unless the profile sets them, so running
   the command from another terminal does not move the member to that
   terminal's account. A configuration that does not load stops the command
-  before the member is touched. Without the flag, restart keeps the member's settings and resume keeps engine
-  and model and updates only variables inherited from the profile, then names
-  the members whose profile still differs.
+  before the member is touched. Without the flag, restart keeps the member's
+  settings, and resume keeps engine and model, updates only variables
+  inherited from the profile, and names the members whose profile still
+  differs.
 
 ### Changed
 
@@ -41,10 +42,15 @@ release history; earlier releases remain available on
   parses and behaves as before. `--team-name` remains the listed selector.
 - The task panel marks a task Completed from the agent workflow alone: a code
   task once master merges the reviewed and tested candidate, a task without a
-  workspace once master approves it. The **Confirm completion** button, the `c`
-  key and `task confirm` are removed. Unfinished, blocked and externally closed
+  workspace once master approves it. Unfinished, blocked and externally closed
   tasks are never marked. An old ledger's user confirmation still loads and is
   shown in the details as a legacy record.
+
+### Removed
+
+- **Breaking.** `task confirm`, the task panel's **Confirm completion** button
+  and its `c` key are removed; completion now follows the agent workflow as
+  described above. A script that ran `task confirm` must drop that step.
 
 ### Fixed
 
@@ -64,7 +70,6 @@ release history; earlier releases remain available on
   reaches tmux unchanged instead of losing a character or splitting the
   command. A project path containing `#` characters such as `#S` no longer
   breaks shutdown and navigation, so Master's exit closes the team again.
-
 - An empty value in a profile's `env` unsets the variable, as documented, for
   every variable. Only `CLAUDE_CONFIG_DIR` used to be removed; `CODEX_HOME = ""`
   reached Codex as an empty string.

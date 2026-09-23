@@ -97,7 +97,9 @@ func (st *Store) launch(id string, resume bool, initial string) (launchErr error
 			args = append(args, "--dangerously-skip-permissions")
 		}
 		if id != "master" {
-			args = append(args, "--disallowedTools", workerDisallowedTools)
+			// One argument: the flag is variadic, so a separate value would also
+			// swallow every later bare argument, including the initial prompt.
+			args = append(args, "--disallowedTools="+workerDisallowedTools)
 		}
 		if resume && m.EngineID != "" {
 			args = append(args, "--resume", m.EngineID)

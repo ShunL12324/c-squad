@@ -178,6 +178,9 @@ func TestCustomCommandsAcrossLifecycle(t *testing.T) {
 							if !slices.Contains(record.Args, "--model") || engine == config.Claude && !slices.Contains(record.Args, "--dangerously-skip-permissions") || engine == config.Codex && !slices.Contains(record.Args, "--dangerously-bypass-approvals-and-sandbox") {
 								t.Fatalf("generated flags lost: %+v", record)
 							}
+							if engine == config.Claude && id != "master" && !slices.Contains(record.Args, "--disallowedTools="+workerDisallowedTools) {
+								t.Fatalf("worker tool denial must be a single argument: %+v", record)
+							}
 							if resumed && !slices.Contains(record.Args, "session-"+id) {
 								t.Fatalf("resume identity lost: %+v", record)
 							}

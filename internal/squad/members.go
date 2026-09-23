@@ -25,6 +25,20 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 		}
 		return queryOut(o, s.Members)
 	}
+	if p[0] == "profiles" {
+		s, e := st.read()
+		if e != nil {
+			return e
+		}
+		cfg, warning, e := s.liveConfig()
+		if e != nil {
+			return e
+		}
+		if warning != "" {
+			fmt.Fprintln(os.Stderr, "Profile warning:", warning)
+		}
+		return queryOut(o, newProfileListing(cfg))
+	}
 	if len(p) < 2 {
 		return errors.New("member ID required")
 	}

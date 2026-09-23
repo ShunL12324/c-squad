@@ -152,3 +152,29 @@ func (s *State) engineHelper(m *Member, args ...string) (string, error) {
 	name, argv, env := command.Invocation(m.Env, "", args...)
 	return process.RunEnv(m.Cwd, env, name, argv...)
 }
+
+// profileListing is what an agent needs to choose a profile for member add. The
+// environment is reduced to its variable names: a profile commonly carries an
+// account directory or a token, and none of that belongs in an agent's context.
+type profileListing struct {
+	DefaultProfile string           `json:"default_profile"`
+	MasterProfile  string           `json:"master_profile"`
+	Profiles       []profileSummary `json:"profiles"`
+}
+
+type profileSummary struct {
+	Name          string        `json:"name"`
+	Engine        config.Engine `json:"engine"`
+	Model         string        `json:"model,omitempty"`
+	CustomCommand bool          `json:"custom_command"`
+	EnvKeys       []string      `json:"env_keys,omitempty"`
+}
+
+func newProfileListing(cfg config.Config) profileListing {
+	listing := profileListing{DefaultProfile: cfg.DefaultProfile, MasterProfile: cfg.MasterProfile, Profiles: []profileSummary{}}
+	for _, name := range sortedKeys(cfg.Profiles) {
+		p := cfg.Profiles[name]
+		listing.Profiles = append(listing.Profiles, profileSummary{Name: name, Engine: p.Engine, Model: p.Model, CustomCommand: p.Command != nil, EnvKeys: sortedKeys(p.Env)})
+	}
+	return listing
+}

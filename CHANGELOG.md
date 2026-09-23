@@ -6,6 +6,13 @@ release history; earlier releases remain available on
 
 ## Unreleased
 
+### Added
+
+- `member profiles` lists the launch profiles `member add` can use, with each
+  profile's engine, model, custom-command flag and selecting pointer. It names
+  environment variables without their values. Master's command reference now
+  points to it before `member add --profile`.
+
 ### Changed
 
 - A running team reads its profiles from the current configuration at every

@@ -1,6 +1,8 @@
 package squad
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -402,5 +404,24 @@ func TestBrokenConfigurationKeepsTheSavedProfiles(t *testing.T) {
 	}
 	if s, err = st.refreshProfiles(); err != nil || s.Config.DefaultProfile != "std" {
 		t.Fatalf("refresh replaced the saved profiles: %v", err)
+	}
+}
+
+// The listing names the environment variables a profile sets but never their
+// values, which commonly include account paths and tokens.
+func TestProfileListingWithholdsEnvironmentValues(t *testing.T) {
+	writeLiveConfig(t, lateProfileConfig)
+	live, err := config.Load("")
+	must(t, err)
+	listing := newProfileListing(live)
+	raw, err := json.Marshal(listing)
+	must(t, err)
+	if strings.Contains(string(raw), "sk-secret-value") {
+		t.Fatalf("an environment value reached the listing: %s", raw)
+	}
+	var table bytes.Buffer
+	must(t, writeTable(&table, listing))
+	if strings.Contains(table.String(), "sk-secret-value") || !strings.Contains(table.String(), "OPENAI_API_KEY") || !strings.Contains(table.String(), "member default") {
+		t.Fatalf("table: %s", table.String())
 	}
 }

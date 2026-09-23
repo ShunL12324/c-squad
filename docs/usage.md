@@ -112,7 +112,11 @@ csquad member add dev --profile std --instructions "Own the refund endpoint..."
 ```
 
 Profile names use letters, digits, `_` and `-`. An unknown name fails with the
-list of names you have defined.
+list of names you have defined. `csquad member profiles` lists them for a
+running team, with each profile's engine, model, whether it uses a custom
+command, and which pointer selects it. It shows the names of a profile's
+environment variables but never their values, so Master can choose a profile
+without seeing account paths or tokens.
 
 Profiles follow the configuration file while a team runs. A profile you add or
 edit is usable by the next `member add`, and reaches an existing member at its

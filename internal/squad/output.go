@@ -52,6 +52,23 @@ func writeTable(out io.Writer, value any) error {
 			rows = append(rows, []string{m.ID, string(m.State), m.From, m.To, m.Task, m.Text})
 		}
 		return writeRows(out, []string{"MESSAGE", "STATE", "FROM", "TO", "TASK", "TEXT"}, rows)
+	case profileListing:
+		rows := [][]string{}
+		for _, p := range data.Profiles {
+			selected := []string{}
+			if p.Name == data.DefaultProfile {
+				selected = append(selected, "member default")
+			}
+			if p.Name == data.MasterProfile {
+				selected = append(selected, "master")
+			}
+			command := "engine name"
+			if p.CustomCommand {
+				command = "custom"
+			}
+			rows = append(rows, []string{p.Name, string(p.Engine), p.Model, command, strings.Join(p.EnvKeys, ", "), strings.Join(selected, ", ")})
+		}
+		return writeRows(out, []string{"PROFILE", "ENGINE", "MODEL", "COMMAND", "ENV", "SELECTED"}, rows)
 	case *State:
 		return writeBoardTable(out, map[string]any{"team": data.ID, "phase": data.Phase, "active": data.Active, "root": data.Root, "members": data.Members, "tasks": data.Tasks, "questions": data.Questions})
 	case map[string]any:

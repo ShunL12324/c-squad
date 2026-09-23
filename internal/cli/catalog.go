@@ -126,6 +126,7 @@ func definitions() []definition {
 		{path: "recover", args: " [TEAM]", max: 1, complete: "team", summary: "Restart only master in an active team, from an outside terminal", flags: []string{"name", "fresh", "prompt"}},
 		{path: "member add", args: " NAME", summary: "Recruit a member with a task-specific identity", min: 1, max: 1, flags: append([]string{"instructions", "profile", "task", "prompt", "color", "cwd"}, removedLaunchFlags...), example: "  csquad member add reviewer --profile claude-opus --instructions 'Review the candidate commit'"},
 		{path: "member list", summary: "List team members"},
+		{path: "member profiles", summary: "List launch profiles member add can use, without environment values"},
 		{path: "task create", args: " TITLE...", summary: "Publish a task with acceptance criteria", min: 1, max: -1, flags: []string{"acceptance", "description", "code", "milestones", "gates", "deps", "dispatch", "request-id", "setup"}, required: []string{"acceptance"}, example: "  csquad task create 'Fix login' --code --acceptance 'Regression test passes' --request-id fix-login"},
 		{path: "task list", summary: "List tasks"},
 		{path: "task assign", args: " TASK", summary: "Assign the task owner and collaborators", min: 1, max: 1, complete: "task", flags: []string{"owner", "to"}, required: []string{"owner"}},
@@ -164,7 +165,7 @@ func definitions() []definition {
 	defs = append(defs, definition{path: "navigate", hidden: true, flags: []string{"client", "direction", "index"}}, definition{path: "shutdown", hidden: true, flags: []string{"epoch", "expected-generation", "reason"}, required: []string{"epoch", "expected-generation"}}, definition{path: "run-engine", hidden: true, min: 1, max: -1})
 	defs = append(defs, definition{path: "member attach", args: " MEMBER", summary: "Attach to an existing member terminal", min: 1, max: 1, complete: "member"})
 	for i := range defs {
-		if slices.Contains([]string{"list", "board", "member list", "member inspect", "task list", "task inspect", "message inbox", "help list"}, defs[i].path) {
+		if slices.Contains([]string{"list", "board", "member list", "member profiles", "member inspect", "task list", "task inspect", "message inbox", "help list"}, defs[i].path) {
 			defs[i].flags = append(append([]string(nil), defs[i].flags...), "output")
 		}
 	}

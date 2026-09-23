@@ -27,6 +27,11 @@ release history; earlier releases remain available on
 - A task assignment or availability notice tells the member to run
   `task inspect TASK`, which shows that task's workspace, acceptance and
   milestones, instead of reading the whole team board.
+- `--help` and completion recommend one spelling per operation: `new`,
+  `question` and `message reply`. `start`, the `help request|list|answer`
+  alias, top-level `reply`, and the `--team`, `--state-dir`, `--member` and
+  `--generation` selectors are no longer listed, and every one of them still
+  parses and behaves as before. `--team-name` remains the listed selector.
 
 ### Fixed
 

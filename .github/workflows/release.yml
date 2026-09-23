@@ -159,6 +159,11 @@ jobs:
         with:
           name: npm-package
           path: dist/npm
+      # ubuntu-latest has no Zsh; without it the npm tests skip Zsh completion.
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y zsh
+      - name: Require shells for completion tests
+        run: command -v zsh && command -v bash
       - run: python3 scripts/test-packaging-process.py
       - run: python3 scripts/test-npm.py dist/npm/*.tgz
 

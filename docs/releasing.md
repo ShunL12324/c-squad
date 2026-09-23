@@ -186,7 +186,9 @@ Native Windows is intentionally unsupported; use WSL 2.
 `test-npm.py` also runs `csquad completion install` against a throwaway `HOME`
 and then checks, with a real Tab key in an isolated Zsh, that the file it wrote
 is the one the shell loads. That last step needs `zsh`; without it the test
-prints a `SKIP` line and the rest still runs.
+prints a `SKIP` line and the rest still runs. The release workflow installs Zsh
+on Linux and fails before testing if either runner lacks it, so CI never skips
+these checks.
 
 npm versions are immutable. If npm publication fails, fix the authentication or
 trusted-publisher configuration and rerun the failed job. Check the registry

@@ -201,3 +201,53 @@ func TestMemberCycleWrapsAcrossManyMembers(t *testing.T) {
 		t.Fatalf("previous wrapped to %s, want layout-f", got)
 	}
 }
+
+// Issue #15: destroying a member session used to detach every client viewing
+// it, dropping the user out of the team. Viewers now move to Master first.
+func TestKillMemberMovesViewersToMaster(t *testing.T) {
+	if _, e := exec.LookPath("tmux"); e != nil {
+		t.Skip("tmux unavailable")
+	}
+	dir, e := os.MkdirTemp("", "csq-view-")
+	must(t, e)
+	defer os.RemoveAll(dir)
+	socket := filepath.Join(dir, "s")
+	_, e = process.Run("", "tmux", "-f", "/dev/null", "-S", socket, "new-session", "-d", "-s", "unrelated", "sleep", "60")
+	must(t, e)
+	defer process.Run("", "tmux", "-S", socket, "kill-server")
+	st := testStore(t)
+	must(t, st.update(func(s *State) error {
+		s.Socket = socket
+		for id, m := range s.Members {
+			m.Session = "team-" + id
+		}
+		s.Members["a"].State = MemberStateStopping
+		return nil
+	}))
+	s, _ := st.read()
+	for _, m := range s.Members {
+		_, e = tm(s, "new-session", "-d", "-s", m.Session, "sleep", "60")
+		must(t, e)
+		_, e = tm(s, "set-option", "-t", "="+m.Session, "@csquad_team", st.Dir)
+		must(t, e)
+	}
+	// A control-mode client is a real attached client without needing a pty.
+	viewer := exec.Command("tmux", "-S", socket, "-C", "attach-session", "-t", "=team-a")
+	stdin, e := viewer.StdinPipe()
+	must(t, e)
+	must(t, viewer.Start())
+	defer func() { _ = stdin.Close(); _ = viewer.Wait() }()
+	sessions := func() string {
+		out, _ := tm(s, "list-clients", "-F", "#{session_name}")
+		return out
+	}
+	for deadline := time.Now().Add(5 * time.Second); sessions() != "team-a"; time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("viewer never attached: %q", sessions())
+		}
+	}
+	must(t, killMember(st, "a"))
+	if got := sessions(); got != "team-master" {
+		t.Fatalf("viewer sessions after kill = %q, want the client moved to team-master", got)
+	}
+}

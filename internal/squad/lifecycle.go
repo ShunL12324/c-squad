@@ -190,6 +190,9 @@ func killMember(st *Store, id string) error {
 		if tagErr != nil && m.Pane == "" && m.RunnerPID == 0 {
 			return fmt.Errorf("refusing to stop unowned tmux session: %s", m.Session)
 		}
+		// Before the process tree stops: a pane without remain-on-exit takes
+		// its session, and every viewer with it, down as soon as it exits.
+		moveViewers(s, m)
 	}
 	root := m.RunnerPID
 	start := m.ProcessStart
@@ -241,4 +244,30 @@ func killMember(st *Store, id string) error {
 		return e
 	}
 	return nil
+}
+
+// moveViewers switches clients watching a member's session to another live
+// member, Master first, before the session is destroyed. tmux otherwise
+// detaches them (detach-on-destroy defaults to on) and the user drops back to
+// a plain shell whenever a member restarts. The runtime session is never a
+// target, and with no live member left the clients detach as before.
+func moveViewers(s *State, m *Member) {
+	clients, err := tm(s, "list-clients", "-t", "="+m.Session, "-F", "#{client_name}")
+	if err != nil || strings.TrimSpace(clients) == "" {
+		return
+	}
+	for _, other := range navigationMembers(s) {
+		if other.ID == m.ID || other.Session == "" || other.Session == m.Session {
+			continue
+		}
+		if _, err = tm(s, "has-session", "-t", "="+other.Session); err != nil {
+			continue
+		}
+		for _, client := range strings.Split(clients, "\n") {
+			if client = strings.TrimSpace(client); client != "" {
+				_, _ = tm(s, "switch-client", "-c", client, "-t", "="+other.Session)
+			}
+		}
+		return
+	}
 }

@@ -150,6 +150,14 @@ func TestDeliveryRecordsUnavailableRecipient(t *testing.T) {
 				t.Fatal(e)
 			}
 			msg := s.Messages[0]
+			if state == MemberStateRemoved {
+				// Issue #25: a removed recipient never returns as the same
+				// incarnation, so the message is closed instead of retried.
+				if msg.State != DeliveryStateSuperseded || msg.Error == "" {
+					t.Fatalf("message to removed recipient = %+v, want superseded with a reason", msg)
+				}
+				return
+			}
 			if msg.State != DeliveryStatePending {
 				t.Fatalf("state = %q, want pending so the runtime retries when the recipient returns", msg.State)
 			}
@@ -242,5 +250,46 @@ func TestDeliveryRecordsOutcomeAfterSenderRestart(t *testing.T) {
 	must(t, err)
 	if got := s.Messages[0].State; got != DeliveryStateSent {
 		t.Fatalf("state = %q, want sent: the recipient already has the message", got)
+	}
+}
+
+// Issue #25: removal closes the recipient's unfinished messages, and new sends,
+// replies and answers never queue work for a removed member.
+func TestRemovedMemberReceivesNoQueuedMessages(t *testing.T) {
+	st := testStore(t)
+	must(t, st.update(func(s *State) error {
+		// An unreachable private socket keeps tmux away from any real server.
+		s.Socket = filepath.Join(t.TempDir(), "tmux.sock")
+		s.message("master", "a", "", "queued before removal", "")
+		s.message("a", "master", "", "question from a", "")
+		s.Questions["Q1"] = &Question{ID: "Q1", Member: "a", Text: "decide?", State: QuestionStateOpen}
+		return nil
+	}))
+	_ = lifecycle(st, "master", "remove", "a", "", "")
+	s, err := st.read()
+	must(t, err)
+	if s.Members["a"].State != MemberStateRemoved {
+		t.Fatalf("member state = %q, want removed", s.Members["a"].State)
+	}
+	if m := s.Messages[0]; m.State != DeliveryStateSuperseded {
+		t.Fatalf("queued message = %+v, want superseded on removal", m)
+	}
+	if e := messageCommand(st, "master", []string{"message", "send", "a"}, options{"text": "hello"}); e == nil || !strings.Contains(e.Error(), "removed") {
+		t.Fatalf("send to removed member: %v, want refusal", e)
+	}
+	if e := messageCommand(st, "master", []string{"reply", "M2"}, options{"text": "answer"}); e == nil || !strings.Contains(e.Error(), "removed") {
+		t.Fatalf("reply to removed member: %v, want refusal", e)
+	}
+	must(t, helpCommand(st, "master", []string{"answer", "Q1"}, options{"text": "yes"}))
+	s, err = st.read()
+	must(t, err)
+	if s.Questions["Q1"].State != QuestionStateAnswered {
+		t.Fatal("answer was not recorded on the question")
+	}
+	if len(s.Messages) != 2 {
+		t.Fatalf("messages = %d, want nothing new queued for the removed member", len(s.Messages))
+	}
+	if s.Messages[1].State == DeliveryStateAcknowledged {
+		t.Fatal("refused reply acknowledged the original message")
 	}
 }

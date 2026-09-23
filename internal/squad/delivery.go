@@ -36,7 +36,13 @@ func (st *Store) deliver(id string) error {
 				if e != nil {
 					return e
 				}
-				if member.State == MemberStateRemoved || member.State == MemberStateStopped || member.State == MemberStateStopping || member.State == MemberStateNeedsAttention || member.State == MemberStateCrashed {
+				if member.State == MemberStateRemoved {
+					// Messages queued before removal, or by internal notices,
+					// would otherwise be retried on every runtime pass.
+					v.abandonDelivery()
+					return nil
+				}
+				if member.State == MemberStateStopped || member.State == MemberStateStopping || member.State == MemberStateNeedsAttention || member.State == MemberStateCrashed {
 					// Returning without a reason left the sender no signal at all.
 					// Record why delivery paused, exactly as the branch below does,
 					// and keep the message pending so the runtime retries once the

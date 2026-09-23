@@ -28,6 +28,18 @@ func (m *Message) resetDelivery() {
 	m.Error = ""
 }
 
+// abandonDelivery closes a message whose recipient was removed. Leaving it
+// pending retried it on every runtime pass and flooded a later replacement
+// with a backlog addressed to the previous incarnation.
+func (m *Message) abandonDelivery() {
+	switch m.State {
+	case DeliveryStateSent, DeliveryStateAcknowledged, DeliveryStateSuperseded:
+		return
+	}
+	m.State = DeliveryStateSuperseded
+	m.Error = "recipient was removed before delivery"
+}
+
 // recoverDelivery resets failed or interrupted transport, never successful
 // delivery merely because the recipient did not send an optional ACK.
 func (m *Message) recoverDelivery() {

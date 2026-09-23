@@ -221,6 +221,18 @@ func (s *State) member(id string) (*Member, error) {
 	return m, nil
 }
 
+// recipient resolves a member that can still be sent a message.
+func (s *State) recipient(id string) (*Member, error) {
+	m, e := s.member(id)
+	if e != nil {
+		return nil, e
+	}
+	if m.State == MemberStateRemoved {
+		return nil, fmt.Errorf("member %q was removed; use member replace before messaging it", id)
+	}
+	return m, nil
+}
+
 // Store holds the ledger connection and the caller identity used to fence writes.
 type Store struct {
 	Dir        string

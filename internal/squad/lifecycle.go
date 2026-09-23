@@ -142,7 +142,11 @@ func lifecycle(st *Store, actor, op, id, initial, directory string) error {
 		}
 		for _, msg := range s.Messages {
 			if msg.To == id && msg.State != DeliveryStateAcknowledged {
-				msg.recoverDelivery()
+				if op == "remove" {
+					msg.abandonDelivery()
+				} else {
+					msg.recoverDelivery()
+				}
 			}
 		}
 		s.event(actor, op, id)

@@ -65,7 +65,11 @@ func helpCommand(st *Store, actor string, p []string, o options) error {
 					}
 				}
 			}
-			message = s.message(actor, q.Member, q.Task, "Answer to "+q.ID+": "+q.Answer, "").ID
+			// The answer stays on the question record; a removed asker has no
+			// inbox, so queueing a message would only be retried forever.
+			if _, e := s.recipient(q.Member); e == nil {
+				message = s.message(actor, q.Member, q.Task, "Answer to "+q.ID+": "+q.Answer, "").ID
+			}
 			result = q
 		default:
 			return errors.New("unknown help operation")

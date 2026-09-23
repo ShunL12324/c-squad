@@ -51,6 +51,9 @@ func messageCommand(st *Store, actor string, p []string, o options) error {
 							return nil
 						}
 					}
+					if _, e := s.recipient(m.From); e != nil {
+						return e
+					}
 					m.State = DeliveryStateAcknowledged
 					ids = append(ids, s.message(actor, m.From, m.Task, o["text"], m.ID).ID)
 					return nil
@@ -132,7 +135,7 @@ func messageCommand(st *Store, actor string, p []string, o options) error {
 				}
 			}
 			for _, id := range recipients {
-				if _, e := s.member(id); e != nil {
+				if _, e := s.recipient(id); e != nil {
 					return e
 				}
 				key := ""

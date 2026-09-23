@@ -75,18 +75,31 @@ func (st *Store) panelSnapshot() (teamui.Snapshot, error) {
 			note = "Closed externally · not merged · " + short(t.ExternalClosure.SHA)
 			detail += "\n\n" + strings.Join(describeExternalClosure(t.ExternalClosure), "\n")
 		}
-		confirmation := ""
-		canConfirm := t.State == TaskPhaseDone && t.UserConfirmation == nil
-		if canConfirm {
-			confirmation = "Awaiting user confirmation"
-		}
+		// Ledgers from before completion was derived may carry a user click.
+		// It is shown for audit only and never decides completion.
 		if t.UserConfirmation != nil {
-			confirmation = "User confirmed"
-			detail += "\n\nUser confirmation: " + t.UserConfirmation.At + " (" + t.UserConfirmation.Actor + ")"
+			detail += "\n\nUser confirmation (legacy record): " + t.UserConfirmation.At + " (" + t.UserConfirmation.Actor + ")"
 		}
-		out.Tasks = append(out.Tasks, teamui.Task{ID: t.ID, Title: t.Title, State: strings.ReplaceAll(string(t.State), "_", " "), Owner: t.Owner, Color: color, Progress: t.Progress, Detail: detail, Note: note, Confirmation: confirmation, CanConfirm: canConfirm, Milestones: milestones})
+		out.Tasks = append(out.Tasks, teamui.Task{ID: t.ID, Title: t.Title, State: strings.ReplaceAll(string(t.State), "_", " "), Owner: t.Owner, Color: color, Progress: t.Progress, Detail: detail, Note: note, Completion: completion(t), Milestones: milestones})
 	}
 	return out, nil
+}
+
+// completion marks work the agent workflow accepted: a code task master merged
+// after passing review and test evidence for its candidate, or a task without a
+// workspace that master approved. Other done tasks (closed on an external
+// commit) and every unfinished phase stay unmarked; no click can mark one.
+func completion(t *Task) string {
+	if t.State != TaskPhaseDone || t.ExternalClosure != nil {
+		return ""
+	}
+	if t.MergeCommit != "" {
+		return "✓ Completed · merged " + short(t.MergeCommit)
+	}
+	if t.Workspace == "" {
+		return "✓ Completed · accepted by master"
+	}
+	return ""
 }
 
 func sortedTaskIDs(s *State) []string {

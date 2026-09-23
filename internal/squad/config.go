@@ -39,7 +39,13 @@ func migrateSnapshotConfig(s *State) []string {
 	if s.Config == nil {
 		return nil
 	}
-	return append(config.MigrateLegacy(s.Config), backfillMemberProfiles(s)...)
+	warnings := config.MigrateLegacy(s.Config)
+	if len(warnings) == 0 {
+		// The snapshot already used profiles, so an empty member profile is a
+		// deliberate "built-in default", not a pre-profile record to repair.
+		return nil
+	}
+	return append(warnings, backfillMemberProfiles(s)...)
 }
 
 // backfillMemberProfiles points members saved before profiles existed at the
@@ -53,9 +59,10 @@ func migrateSnapshotConfig(s *State) []string {
 // A one-time step at a stateVersion boundary would be the usual home for this,
 // but migrateLedger runs inside normalizeState, before the configuration is
 // migrated: at that point no profile exists yet to point a member at. So it runs
-// after the configuration migration instead, on every normalisation rather than
-// once. That is affordable because it is idempotent and teams hold a handful of
-// members; do not "move it to the right place" without moving the profiles first.
+// after the configuration migration instead, and only while that migration still
+// changes the snapshot: the same update persists both, so once the snapshot uses
+// profiles every empty member profile is one added with the built-in default. Do
+// not "move it to the right place" without moving the profiles first.
 func backfillMemberProfiles(s *State) []string {
 	var warnings []string
 	for _, id := range sortedKeys(s.Members) {

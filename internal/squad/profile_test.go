@@ -310,3 +310,25 @@ func TestProfileNameMatchingAMemberInjectsNothing(t *testing.T) {
 		t.Fatalf("a profile was selected by the member's name: %q %+v", name, p)
 	}
 }
+
+// A member added with the built-in default records no profile. Once the snapshot
+// uses profiles that empty name is deliberate, so the pre-profile backfill must
+// not bind it to whichever profile happens to launch the same engine.
+func TestBuiltinDefaultMembersAreNotBoundToAProfile(t *testing.T) {
+	st := testStore(t)
+	cfg := config.Defaults()
+	cfg.DefaultProfile, cfg.MasterProfile = "", ""
+	cfg.Profiles = map[string]config.Profile{
+		"work": {Engine: config.Codex, Command: &config.Command{Executable: "/opt/work/codex-wrapper"}},
+	}
+	must(t, st.update(func(s *State) error {
+		s.Config = &cfg
+		s.Members["b"].Engine, s.Members["b"].Profile = config.Codex, ""
+		return nil
+	}))
+	s, err := st.read()
+	must(t, err)
+	if profile := s.Members["b"].Profile; profile != "" {
+		t.Fatalf("a built-in default member was bound to profiles.%s", profile)
+	}
+}

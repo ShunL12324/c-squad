@@ -23,6 +23,10 @@ type reprofileTeam struct {
 	// write replaces the one profile both members use.
 	write func(model string, env map[string]string)
 	st    *Store
+	// callerEnv is appended to the environment of later CLI calls, as if they
+	// ran from another terminal.
+	callerEnv []string
+	root      string
 }
 
 func startReprofileTeam(t *testing.T, model string, env map[string]string) *reprofileTeam {
@@ -54,7 +58,7 @@ func startReprofileTeam(t *testing.T, model string, env map[string]string) *repr
 	engine := filepath.Join(root, "fake codex")
 	must(t, os.WriteFile(engine, append([]byte("#!"+python+"\n"), body...), 0700))
 	configPath := filepath.Join(root, "config.toml")
-	h := &reprofileTeam{}
+	h := &reprofileTeam{root: root}
 	h.write = func(model string, env map[string]string) {
 		t.Helper()
 		cfg := config.Defaults()
@@ -71,7 +75,7 @@ func startReprofileTeam(t *testing.T, model string, env map[string]string) *repr
 	h.cli = func(args ...string) string {
 		t.Helper()
 		cmd := exec.Command(binary, args...)
-		cmd.Dir, cmd.Env = root, environ
+		cmd.Dir, cmd.Env = root, append(environ, h.callerEnv...)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("%v: %v %s", args, err, out)
@@ -182,7 +186,6 @@ func TestReprofileSwitchingEngineStartsFreshAndHidesValues(t *testing.T) {
 	}
 	next, err := resolveReprofile(s, s.Members["a"], "other")
 	must(t, err)
-	// Added keys also include the inherited account selectors, as at member add.
 	summary := next.summary("a")
 	for _, want := range []string{`profile "old" -> "other"`, "engine claude -> codex", `model "a" -> "b"`, "EXTRA; env changed: TOKEN", "env removed: GONE", "starts fresh"} {
 		if !strings.Contains(summary, want) {
@@ -253,5 +256,119 @@ func TestProfileDriftReportsDroppedVariablesStillCarried(t *testing.T) {
 	}
 	if profileDrift(cfg, &Member{Profile: "gone", Engine: config.Codex}, nil) {
 		t.Fatal("a deleted profile keeps the saved settings without a notice")
+	}
+}
+
+// Review F1: a reprofile run from another terminal must not replace the account
+// selectors a member inherited when it was added with that terminal's values.
+// Only a selector the profile sets, including an empty value, changes them.
+func TestReprofileKeepsInheritedAccountSelectors(t *testing.T) {
+	t.Setenv("CODEX_HOME", "/caller/codex")
+	t.Setenv("CLAUDE_CONFIG_DIR", "/caller/claude")
+	member := func() *Member {
+		return &Member{ID: "a", Profile: "p", Engine: config.Codex, Model: "m", EngineID: "thread",
+			Env: map[string]string{"CODEX_HOME": "/team/codex2", "CLAUDE_CONFIG_DIR": "/team/claude", "OTHER": "1"}}
+	}
+	resolve := func(p config.Profile) *reprofile {
+		t.Helper()
+		cfg := config.Defaults()
+		cfg.Profiles = map[string]config.Profile{"p": p}
+		next, err := resolveReprofile(&State{Config: &cfg}, member(), "p")
+		must(t, err)
+		return next
+	}
+	for _, unset := range []bool{false, true} {
+		if unset {
+			must(t, os.Unsetenv("CODEX_HOME"))
+			must(t, os.Unsetenv("CLAUDE_CONFIG_DIR"))
+		}
+		next := resolve(config.Profile{Engine: config.Codex, Model: "m2"})
+		if next.Env["CODEX_HOME"] != "/team/codex2" || next.Env["CLAUDE_CONFIG_DIR"] != "/team/claude" || next.fresh {
+			t.Fatalf("caller unset=%v replaced the member's account: %v fresh=%v", unset, next.Env, next.fresh)
+		}
+		if _, ok := next.Env["OTHER"]; ok {
+			t.Fatal("a variable the profile does not set must not survive a reprofile")
+		}
+		if summary := next.summary("a"); strings.Contains(summary, "CODEX_HOME") || !strings.Contains(summary, "conversation resumes") {
+			t.Fatalf("summary: %s", summary)
+		}
+	}
+	next := resolve(config.Profile{Engine: config.Codex, Env: map[string]string{"CODEX_HOME": "/new"}})
+	if next.Env["CODEX_HOME"] != "/new" || !next.fresh {
+		t.Fatalf("explicit selector: %v fresh=%v", next.Env, next.fresh)
+	}
+	next = resolve(config.Profile{Engine: config.Codex, Env: map[string]string{"CODEX_HOME": ""}})
+	if v, ok := next.Env["CODEX_HOME"]; !ok || v != "" || !next.fresh {
+		t.Fatalf("an empty profile value must unset the selector: %v fresh=%v", next.Env, next.fresh)
+	}
+	// An engine switch uses the other selector recorded at add, never the caller's.
+	next = resolve(config.Profile{Engine: config.Claude})
+	if next.Env["CLAUDE_CONFIG_DIR"] != "/team/claude" || !next.fresh || next.Engine != config.Claude {
+		t.Fatalf("engine switch: %v engine=%s fresh=%v", next.Env, next.Engine, next.fresh)
+	}
+}
+
+// Review F3: an explicit reprofile that cannot load the configuration fails
+// before anything stops, instead of restarting on the old snapshot.
+func TestReprofileRefusesUnloadableConfiguration(t *testing.T) {
+	bad := filepath.Join(t.TempDir(), "config.toml")
+	must(t, os.WriteFile(bad, []byte("[profiles.p]\nmodel = \"no engine\"\n"), 0600))
+	t.Setenv("CSQUAD_CONFIG", bad)
+	st := testStore(t)
+	must(t, st.update(func(s *State) error {
+		// A valid saved snapshot, which the lenient path would fall back to,
+		// and a private socket in case anything got as far as tmux.
+		cfg := config.Defaults()
+		cfg.Profiles = map[string]config.Profile{"p": {Engine: config.Claude, Model: "saved"}}
+		s.Config, s.Socket = &cfg, filepath.Join(t.TempDir(), "tmux.sock")
+		s.Members["a"].Profile, s.Members["a"].Env = "p", map[string]string{"CODEX_HOME": "/team"}
+		return nil
+	}))
+	before, err := st.read()
+	must(t, err)
+	for _, o := range []options{{"reprofile": "true"}, {"profile": "p"}} {
+		err = lifecycle(st, "master", "restart", "a", o)
+		if err == nil || !strings.Contains(err.Error(), "nothing was stopped") {
+			t.Fatalf("%v: err = %v, want a load failure before stopping", o, err)
+		}
+	}
+	after, err := st.read()
+	must(t, err)
+	a, b := before.Members["a"], after.Members["a"]
+	if a.Generation != b.Generation || a.State != b.State || b.Env["CODEX_HOME"] != "/team" {
+		t.Fatalf("failed reprofile changed the member: before %+v after %+v", a, b)
+	}
+	if _, err = os.Stat(filepath.Join(st.Dir, "handoffs")); !os.IsNotExist(err) {
+		t.Fatal("failed reprofile wrote a handoff, so it got past the check")
+	}
+	// A plain launch keeps its fallback to the saved profiles.
+	if _, err = st.refreshProfiles(); err != nil {
+		t.Fatalf("plain refresh must fall back with a warning: %v", err)
+	}
+}
+
+// Review F1 end to end: Master added while the team's terminal selected one
+// Codex account, then recover --reprofile from a terminal without CODEX_HOME.
+func TestRecoverReprofileFromAnotherTerminalKeepsAccount(t *testing.T) {
+	root := t.TempDir()
+	account := filepath.Join(root, "team account")
+	t.Setenv("CODEX_HOME", account)
+	h := startReprofileTeam(t, "first-model", map[string]string{})
+	s, err := h.st.read()
+	must(t, err)
+	gen := s.Members["master"].Generation
+	if r := h.launched("master", gen); r.CodexHome != account {
+		t.Fatalf("team did not start on the terminal's account: %+v", r)
+	}
+	h.write("second-model", map[string]string{})
+	h.callerEnv = []string{"CODEX_HOME="}
+	must(t, os.Unsetenv("CODEX_HOME"))
+	out := h.cli("recover", "--reprofile")
+	r := h.launched("master", gen+1)
+	if r.CodexHome != account || !slices.Contains(r.Args, "second-model") || !slices.Contains(r.Args, "session-master") {
+		t.Fatalf("recover --reprofile from another terminal: %+v\n%s", r, out)
+	}
+	if strings.Contains(out, account) {
+		t.Fatalf("printed an account path: %s", out)
 	}
 }

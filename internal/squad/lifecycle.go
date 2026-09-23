@@ -56,7 +56,7 @@ func lifecycle(st *Store, actor, op, id string, o options) error {
 	}
 	var next *reprofile
 	if op != "remove" && (o["reprofile"] == "true" || o["profile"] != "") {
-		if s, e = st.refreshProfiles(); e != nil {
+		if s, e = st.requireProfiles(); e != nil {
 			return e
 		}
 		if m, e = s.member(id); e != nil {
@@ -79,6 +79,10 @@ func lifecycle(st *Store, actor, op, id string, o options) error {
 		if err := preflight.CheckCommand(engine, command, env); err != nil {
 			return err
 		}
+	}
+	if next != nil {
+		// Printed before the member stops, not after it has restarted.
+		fmt.Fprintln(os.Stderr, next.summary(id))
 	}
 	// Save an auditable handoff before stopping anything. Never reset Git state.
 	handoff := map[string]any{"member": m, "tasks": map[string]any{}, "questions": s.Questions}
@@ -185,9 +189,6 @@ func lifecycle(st *Store, actor, op, id string, o options) error {
 		return jsonOut(map[string]string{"member": id, "state": "removed", "handoff": path})
 	}
 
-	if next != nil {
-		fmt.Fprintln(os.Stderr, next.summary(id))
-	}
 	if e = st.launch(id, op == "restart", initial); e != nil {
 		stateErr := st.update(func(s *State) error {
 			s.Members[id].State = MemberStateCrashed

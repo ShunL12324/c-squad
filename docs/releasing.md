@@ -1,8 +1,9 @@
 # Releasing
 
-Stable version tags trigger publication CI. Ordinary pushes and pull requests do
-not start a build. The read-only Prepublish npm workflow can also be triggered
-manually to validate an exact candidate before tagging.
+Stable version tags trigger publication CI. Ordinary pushes and pull requests run
+only the CI workflow, which runs `make check` and publishes nothing. The
+read-only Prepublish npm workflow can also be triggered manually to validate an
+exact candidate before tagging.
 
 The repository builds archives, a source tarball, and Debian packages with a pinned
 GoReleaser version. Homebrew installs precompiled release archives; APT uses signed static
@@ -82,7 +83,7 @@ the release job still builds and verifies the final distribution assets.
 
 ## Publish
 
-Ordinary pushes and pull requests run no workflows. Before every release:
+Ordinary pushes and pull requests run only `make check`. Before every release:
 
 1. Update [CHANGELOG.md](../CHANGELOG.md) in the release commit. Check each entry
    against the integrated code and acceptance evidence; resolve all pending

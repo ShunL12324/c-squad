@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // Test 18: the member table lost its role column, so the line each member is
@@ -44,6 +46,36 @@ func TestMemberTableSummarisesInstructions(t *testing.T) {
 	}
 	if summary := instructionsSummary(long); summary != "Own the payments API" {
 		t.Fatalf("first line only: %q", summary)
+	}
+}
+
+// Instructions in CJK text take two terminal columns per character. The summary
+// is cut to 48 columns rather than 48 characters, and the DIRECTORY column
+// starts at the same column on every row (#30).
+func TestMemberTableAlignsWideInstructions(t *testing.T) {
+	members := map[string]*Member{
+		"a": {ID: "a", State: MemberStateIdle, Engine: "codex", Instructions: strings.Repeat("负责支付接口的实现与测试", 10), Cwd: "/work/a"},
+		"b": {ID: "b", State: MemberStateIdle, Engine: "codex", Instructions: "审查 the candidate 👩‍💻", Cwd: "/work/b"},
+		"c": {ID: "c", State: MemberStateIdle, Engine: "codex", Instructions: "Review the candidate", Cwd: "/work/c"},
+	}
+	if width := ansi.StringWidth(instructionsSummary(members["a"].Instructions)); width > instructionsSummaryWidth {
+		t.Fatalf("summary is %d columns wide, over %d", width, instructionsSummaryWidth)
+	}
+	var out bytes.Buffer
+	must(t, writeTable(&out, members))
+	lines := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
+	column := func(line, text string) int {
+		before, _, found := strings.Cut(line, text)
+		if !found {
+			t.Fatalf("%q missing from %q", text, line)
+		}
+		return ansi.StringWidth(before)
+	}
+	want := column(lines[0], "DIRECTORY")
+	for i, id := range []string{"a", "b", "c"} {
+		if got := column(lines[i+1], "/work/"+id); got != want {
+			t.Fatalf("DIRECTORY of %s starts at column %d, header at %d:\n%s", id, got, want, out.String())
+		}
 	}
 }
 

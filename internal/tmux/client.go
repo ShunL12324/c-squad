@@ -10,8 +10,10 @@ import (
 // Client addresses one tmux server by socket path; it owns no server lifecycle.
 type Client struct{ Socket string }
 
-// Separator is the only argument Run passes to tmux as a command separator.
-const Separator = ";"
+// Separator is the only argument Run passes to tmux as a command separator. It
+// is not a literal ";": NUL cannot occur in an argv string, so no message,
+// path or value can collide with it, and a literal ";" stays a literal.
+const Separator = "\x00;"
 
 // Run executes tmux with exact session resolution for targets prefixed with "=".
 // This avoids tmux prefix matching accidentally targeting another team session.
@@ -54,11 +56,15 @@ func (c Client) Run(args ...string) (string, error) {
 }
 
 // literal keeps a trailing semicolon inside its argument. tmux splits argv
-// into commands at any argument ending in ";" and reads a trailing "\;" as
-// one literal ";", so a message, path or value ending in ";" or "\;" lost a
-// character or became a second tmux command. Only a bare Separator splits.
+// into commands at any argument ending in ";", including ";" itself, and reads
+// a trailing "\;" as one literal ";", so a message, path or value ending in
+// ";" or "\;" lost a character or became a second tmux command. Separator is
+// the only argument that becomes a real separator.
 func literal(arg string) string {
-	if arg == Separator || !strings.HasSuffix(arg, ";") {
+	if arg == Separator {
+		return ";"
+	}
+	if !strings.HasSuffix(arg, ";") {
 		return arg
 	}
 	return strings.TrimSuffix(arg, ";") + `\;`

@@ -56,7 +56,7 @@ func TestTrailingSemicolonStaysLiteral(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Run("kill-server")
-	for _, value := range []string{"a;", `a\;`, "mid;dle", "K=v;"} {
+	for _, value := range []string{";", `\;`, ";;", "a;", `a\;`, `a\\;`, "mid;dle", "K=v;", "x ; y"} {
 		if _, err = client.Run("set-option", "-t", "=x", "@value", value, Separator, "set-option", "-t", "=x", "@after", "set"); err != nil {
 			t.Fatalf("%q: %v", value, err)
 		}
@@ -71,5 +71,27 @@ func TestTrailingSemicolonStaysLiteral(t *testing.T) {
 		if _, err = client.Run("set-option", "-u", "-t", "=x", "@after"); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// A real composite command: two commands joined by Separator both run, and a
+// literal ";" argument inside the first stays a value.
+func TestSeparatorJoinsCommandsWithLiteralSemicolonValues(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux unavailable")
+	}
+	dir, err := os.MkdirTemp("", "csq-tmux-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	client := Client{Socket: filepath.Join(dir, "s")}
+	if _, err = process.Run("", "tmux", "-f", "/dev/null", "-S", client.Socket, "new-session", "-d", "-s", "x", "sleep", "60"); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Run("kill-server")
+	out, err := client.Run("set-option", "-t", "=x", "@one", ";", Separator, "set-option", "-t", "=x", "@two", `\;`, Separator, "display-message", "-p", "-t", "=x", "#{@one}|#{@two}")
+	if err != nil || out != `;|\;` {
+		t.Fatalf("composite command = %q, %v; want both options set literally", out, err)
 	}
 }

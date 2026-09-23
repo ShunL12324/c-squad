@@ -19,7 +19,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.ref }}
           fetch-depth: 0
@@ -40,13 +40,13 @@ jobs:
           python3 scripts/release-notes.py --version "$TAG" --sha "$(git rev-parse HEAD)" \
             --output "$RUNNER_TEMP/release-notes.md"
           cat "$RUNNER_TEMP/release-notes.md" >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.26.0'
           cache: true
       - run: sudo apt-get update && sudo apt-get install -y tmux apt-utils
       - run: make check
-      - uses: goreleaser/goreleaser-action@v6
+      - uses: goreleaser/goreleaser-action@v7
         with:
           version: v2.18.2
           args: release --clean
@@ -54,7 +54,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSQUAD_PUBLISH: 'true'
       - run: make test-packaging
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - name: Package npm distribution
@@ -63,7 +63,7 @@ jobs:
         run: |
           python3 scripts/build-npm.py --version "${TAG#v}"
           npm pack ./dist/npm/package --pack-destination dist/npm
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: npm-package
           path: dist/npm/*.tgz
@@ -79,11 +79,11 @@ jobs:
           trap 'gpgconf --kill gpg-agent; rm -rf "$GNUPGHOME"' EXIT
           printf '%s' "$APT_KEY" | gpg --batch --import
           bash scripts/build-apt-repo.sh dist/release dist/site/apt "$APT_FINGERPRINT"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: homebrew-formula
           path: dist/tap/Formula/csquad.rb
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist/site
 
@@ -95,7 +95,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.ref }}
       - name: Publish verified release
@@ -113,7 +113,7 @@ jobs:
     needs: publish
     runs-on: macos-14
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: homebrew-formula
           path: formula
@@ -132,7 +132,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Release runs on a tag; publish the formula to the default branch.
           ref: ${{ github.event.repository.default_branch }}
@@ -154,7 +154,7 @@ jobs:
           mapfile -t published < "$RUNNER_TEMP/published"
           python3 scripts/release-guard.py --version "$TAG" --formula "$current" \
             --published "${published[@]}" --github-output
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         if: steps.guard.outputs.deploy == 'true'
         with:
           name: homebrew-formula
@@ -184,7 +184,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.ref }}
           sparse-checkout: scripts
@@ -213,7 +213,7 @@ jobs:
       - name: Deploy APT repository
         id: deployment
         if: steps.guard.outputs.deploy == 'true'
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   npm-test:
     needs: release
@@ -222,11 +222,11 @@ jobs:
         os: [ubuntu-latest, macos-14]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: npm-package
           path: dist/npm
@@ -245,12 +245,12 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           registry-url: https://registry.npmjs.org
       - run: npm install --global npm@11.6.2
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: npm-package
           path: dist/npm

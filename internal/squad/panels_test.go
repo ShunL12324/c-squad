@@ -348,3 +348,21 @@ func TestNativeBorderDragAndSwitchLatency(t *testing.T) {
 		t.Fatalf("native drag/latency: %v", err)
 	}
 }
+
+// The member sidebar stays visible whenever panels are shown: closing Tasks from
+// the tasks view, which includes the sidebar, must not hide everything.
+func TestTasksToggleKeepsTheMemberSidebar(t *testing.T) {
+	for _, tt := range []struct{ current, toggled, want panelView }{
+		{panelBoth, panelTasks, panelMembers},
+		{panelTasks, panelTasks, panelMembers},
+		{panelMembers, panelTasks, panelBoth},
+		{panelHidden, panelTasks, panelTasks},
+		{panelBoth, panelMembers, panelTasks},
+		{panelMembers, panelMembers, panelHidden},
+		{panelHidden, panelMembers, panelMembers},
+	} {
+		if got := togglePanelView(tt.current, tt.toggled); got != tt.want {
+			t.Fatalf("toggle %s from %s: got %s, want %s", tt.toggled, tt.current, got, tt.want)
+		}
+	}
+}

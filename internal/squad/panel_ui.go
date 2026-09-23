@@ -17,30 +17,7 @@ func (st *Store) setPanelView(view string, toggle bool) error {
 			current = panelBoth
 		}
 		if toggle {
-			switch panelView(view) {
-			case panelTasks:
-				switch current {
-				case panelBoth:
-					view = "members"
-				case panelTasks:
-					view = "hide"
-				case panelHidden:
-					view = "tasks"
-				default:
-					view = "both"
-				}
-			case panelMembers:
-				switch current {
-				case panelBoth:
-					view = "tasks"
-				case panelMembers:
-					view = "hide"
-				case panelHidden:
-					view = "members"
-				default:
-					view = "both"
-				}
-			}
+			view = string(togglePanelView(current, panelView(view)))
 		}
 		switch panelView(view) {
 		case panelMembers, panelTasks, panelBoth, panelHidden:
@@ -175,4 +152,33 @@ func (st *Store) compactPanelPopup(s *State, view, client string) (bool, error) 
 		}
 	}
 	return false, nil
+}
+
+// togglePanelView is the view a Tasks or Members toggle leads to. The member
+// sidebar stays visible whenever panels are shown, so closing Tasks from either
+// view that includes the board leaves the sidebar rather than hiding everything.
+func togglePanelView(current, toggled panelView) panelView {
+	switch toggled {
+	case panelTasks:
+		switch current {
+		case panelBoth, panelTasks:
+			return panelMembers
+		case panelHidden:
+			return panelTasks
+		default:
+			return panelBoth
+		}
+	case panelMembers:
+		switch current {
+		case panelBoth:
+			return panelTasks
+		case panelMembers:
+			return panelHidden
+		case panelHidden:
+			return panelMembers
+		default:
+			return panelBoth
+		}
+	}
+	return toggled
 }

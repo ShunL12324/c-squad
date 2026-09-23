@@ -8,7 +8,10 @@ import (
 	"github.com/ShunL12324/c-squad/internal/filelock"
 )
 
-const runtimeProtocol = "3"
+// runtimeProtocol must change whenever the persisted ledger schema changes. A
+// runtime left from an older binary rewrites the whole ledger with its own
+// structs, so keeping it alive after an upgrade silently drops new fields.
+const runtimeProtocol = "4"
 
 func runtimeName(s *State) string { return "csq-" + s.ID + "-runtime" }
 func (st *Store) startRuntime() error {

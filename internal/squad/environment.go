@@ -36,7 +36,10 @@ func rejectRemovedLaunchFlags(o options) error {
 // cannot hide the explanation. doctor still takes --engine and is exempt.
 func RejectRemovedLaunchFlags(operation string, set map[string]string) error {
 	for _, flag := range removedLaunchFlags {
-		if _, ok := set[flag]; ok && !(operation == "doctor" && flag == "engine") {
+		if operation == "doctor" && flag == "engine" {
+			continue
+		}
+		if _, ok := set[flag]; ok {
 			return removedLaunchFlagError(flag)
 		}
 	}

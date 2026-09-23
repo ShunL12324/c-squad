@@ -162,7 +162,12 @@ csquad recover --reprofile                       # Master, from an outside termi
 
 The member keeps its name, instructions, tasks and directory. Its engine, model
 and environment are re-read from the current configuration, and the command
-prints what changed, naming environment variables without their values. The
+prints what changed, naming environment variables without their values, before
+the member stops. The account selectors `CODEX_HOME` and `CLAUDE_CONFIG_DIR`
+keep the values recorded when the member was added, whatever the terminal
+running the command has set; only a profile that sets one (an empty value unsets
+it) changes it, including after a switch to the other engine. If the
+configuration does not load, the command fails before stopping the member. The
 conversation resumes unless the engine or its account directory changed, in
 which case it starts fresh with the handoff. Without `--reprofile`, `restart`
 keeps the member's engine, model and environment, and `resume` keeps engine and

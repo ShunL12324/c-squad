@@ -13,8 +13,12 @@ release history; earlier releases remain available on
   current configuration, and `--profile NAME` moves it to another profile;
   `recover --reprofile` does the same for Master. The member keeps its name,
   tasks and directory, and its conversation resumes unless the engine or
-  account directory changed. The change is printed with variable names only.
-  Without the flag, restart keeps the member's settings and resume keeps engine
+  account directory changed. The change is printed with variable names only,
+  before the member stops. `CODEX_HOME` and `CLAUDE_CONFIG_DIR` keep the values
+  recorded when the member was added unless the profile sets them, so running
+  the command from another terminal does not move the member to that
+  terminal's account. A configuration that does not load stops the command
+  before the member is touched. Without the flag, restart keeps the member's settings and resume keeps engine
   and model and updates only variables inherited from the profile, then names
   the members whose profile still differs.
 

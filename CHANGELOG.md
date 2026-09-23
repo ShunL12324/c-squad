@@ -4,7 +4,7 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
-## Unreleased
+## v0.10.0 — 2026-09-23
 
 ### Added
 

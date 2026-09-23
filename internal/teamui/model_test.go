@@ -625,3 +625,36 @@ func cardLines(m model, index int) []string {
 	card, _ := m.taskCard(index)
 	return card
 }
+
+// Scrolling past the end of a task's details stops at the last page, so the
+// first press back up moves the view again (#29). Keys, page keys and the wheel
+// all share the bound.
+func TestDetailScrollStopsAtTheEnd(t *testing.T) {
+	m := model{kind: "tasks", width: 40, height: 30, detail: true, data: Snapshot{Active: true, Tasks: []Task{{ID: "T1", Title: "Research", Detail: strings.Repeat("Evidence\n", 60)}}}}
+	limit := m.maxOffset()
+	if limit == 0 {
+		t.Fatal("fixture does not overflow the panel")
+	}
+	press := func(msg tea.Msg) {
+		next, _ := m.Update(msg)
+		m = next.(model)
+	}
+	for range limit + 20 {
+		press(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	}
+	if m.offset != limit {
+		t.Fatalf("j scrolled to %d, past the last page at %d", m.offset, limit)
+	}
+	last := ansi.Strip(m.View())
+	press(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	if m.offset != limit-1 || ansi.Strip(m.View()) == last {
+		t.Fatalf("one k after overscrolling did not move the view: offset %d", m.offset)
+	}
+	for range 10 {
+		press(tea.KeyMsg{Type: tea.KeyPgDown})
+		press(tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
+	}
+	if m.offset != limit {
+		t.Fatalf("page and wheel scrolled to %d, past %d", m.offset, limit)
+	}
+}

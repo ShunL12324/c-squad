@@ -89,7 +89,7 @@ func (m model) updateKey(v tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "down", "j":
 		if m.kind == "tasks" && m.detail {
-			m.offset++
+			m.offset = min(m.offset+1, m.maxOffset())
 		} else {
 			m.move(1)
 		}
@@ -100,7 +100,7 @@ func (m model) updateKey(v tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.move(-1)
 		}
 	case "pgdown":
-		m.offset += max(1, m.height/2)
+		m.offset = max(0, min(m.offset+max(1, m.height/2), m.maxOffset()))
 	case "pgup":
 		m.offset = max(0, m.offset-max(1, m.height/2))
 

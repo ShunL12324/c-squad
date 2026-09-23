@@ -123,7 +123,7 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 				}
 				crossRepo := noticeCrossRepo(s, actor, t, m)
 				if newlyAssigned {
-					text := "Assigned to task " + t.ID + ". Read board for workspace, ownership, acceptance and milestones."
+					text := "Assigned to task " + t.ID + ". Run task inspect " + t.ID + " for workspace, ownership, acceptance and milestones; use board for cross-task coordination."
 					if crossRepo != "" {
 						text += " WARNING: " + crossRepo
 					}

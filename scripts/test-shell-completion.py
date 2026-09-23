@@ -93,8 +93,8 @@ def main():
             wait_for(b"\r\nCSQ_BOUND\r\n")
             os.write(terminal, b"csqua\t\x18")
             wait_for(b"CSQ_BUFFER=csquad ")
-            os.write(terminal, b"csquad sta\t\x18")
-            wait_for(b"CSQ_BUFFER=csquad start ")
+            os.write(terminal, b"csquad resu\t\x18")
+            wait_for(b"CSQ_BUFFER=csquad resume ")
             os.write(terminal, b"csquad ne\t\x18")
             wait_for(b"CSQ_BUFFER=csquad new ")
             os.write(terminal, b"csquad new --prof\t\x18")
@@ -123,7 +123,7 @@ def main():
         loaded = origin.read_text().strip()
         if args.fpath:
             check_origin(loaded, args.fpath)
-        print(f"PASS: Zsh loaded {loaded} and completes csquad, start, new and new --profile")
+        print(f"PASS: Zsh loaded {loaded} and completes csquad, resume, new and new --profile")
 
 
 if __name__ == "__main__":

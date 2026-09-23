@@ -75,7 +75,8 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 		if !validID.MatchString(id) || id == "master" || id == UserSender {
 			return errors.New("invalid/reserved member ID")
 		}
-		s, e := st.read()
+		// A profile added to the configuration while the team runs is usable now.
+		s, e := st.refreshProfiles()
 		if e != nil {
 			return e
 		}

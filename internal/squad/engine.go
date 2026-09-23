@@ -19,7 +19,7 @@ import (
 const workerDisallowedTools = "AskUserQuestion,EnterPlanMode,ExitPlanMode"
 
 func (st *Store) launch(id string, resume bool, initial string) (launchErr error) {
-	s, e := st.read()
+	s, e := st.refreshProfiles()
 	if e != nil {
 		return e
 	}
@@ -39,8 +39,9 @@ func (st *Store) launch(id string, resume bool, initial string) (launchErr error
 	if e != nil {
 		return e
 	}
-	// Profiles resolve at launch so an edited command reaches a restart, unlike
-	// engine, model and environment, which are snapshotted when the member is added.
+	// Profiles resolve at launch, refreshed from the configuration above, so an
+	// edited command reaches a restart, unlike engine, model and environment,
+	// which are snapshotted when the member is added.
 	command, warning := cfg.ProfileCommand(m.Profile, m.Engine)
 	if warning != "" {
 		fmt.Fprintln(os.Stderr, "Profile warning:", warning)

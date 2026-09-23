@@ -68,7 +68,7 @@ func TestResumeRefreshesProfileConfiguration(t *testing.T) {
 	m := Member{ID: "a", Engine: config.Codex, Profile: "pro", EngineID: "old-session",
 		Env: map[string]string{"CODEX_HOME": "/old", "REMOVED": "old", "CUSTOM": "member"}}
 	old, current := resumeProfileEnv(s.Config, edited, &m)
-	refreshResumeDefaults(s, edited)
+	refreshProfileTables(s, edited)
 	m.applyResumeEnvironment(old, current)
 	if m.Env["CODEX_HOME"] != "/new" || m.EngineID != "" || m.Env["CUSTOM"] != "member" {
 		t.Fatalf("refresh: %+v", m)

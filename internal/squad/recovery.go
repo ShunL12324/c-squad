@@ -301,7 +301,7 @@ func resumeTeam(st *Store, o options) error {
 			previous := *cur.Config
 			saved = &previous
 		}
-		refreshResumeDefaults(cur, currentConfig)
+		refreshProfileTables(cur, currentConfig)
 
 		cur.Epoch++
 		cur.Active = true

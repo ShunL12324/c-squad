@@ -1,6 +1,8 @@
 package squad
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -117,7 +119,7 @@ func TestRemovedProfileStillLaunches(t *testing.T) {
 	delete(edited.Profiles, "pro")
 	edited.MasterProfile = ""
 	must(t, st.update(func(s *State) error {
-		refreshResumeDefaults(s, edited)
+		refreshProfileTables(s, edited)
 		return nil
 	}))
 	s, err = st.read()
@@ -153,7 +155,7 @@ func TestSnapshotKeepsMembersOnTheirLaunchSettings(t *testing.T) {
 	edited := profileConfig()
 	edited.Profiles["std"] = config.Profile{Engine: config.Codex, Model: "changed", Env: map[string]string{"CLAUDE_CONFIG_DIR": "/changed"}}
 	must(t, st.update(func(s *State) error {
-		refreshResumeDefaults(s, edited)
+		refreshProfileTables(s, edited)
 		return nil
 	}))
 	s, err := st.read()
@@ -330,5 +332,75 @@ func TestBuiltinDefaultMembersAreNotBoundToAProfile(t *testing.T) {
 	must(t, err)
 	if profile := s.Members["b"].Profile; profile != "" {
 		t.Fatalf("a built-in default member was bound to profiles.%s", profile)
+	}
+}
+
+// writeLiveConfig points this test at its own user configuration, so a profile
+// can be added "while the team runs" without touching other tests' file.
+func writeLiveConfig(t *testing.T, body string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.toml")
+	t.Setenv("CSQUAD_CONFIG", path)
+	must(t, os.WriteFile(path, []byte(body), 0600))
+}
+
+const lateProfileConfig = `default_profile = "late"
+
+[profiles.late]
+engine = "codex"
+model = "gpt-5"
+command = { executable = "/opt/late/codex", args = [] }
+env = { OPENAI_API_KEY = "sk-secret-value" }
+`
+
+// A profile added to the configuration after the team started is usable at
+// once: member add resolves it, and the snapshot a launch resolves the command
+// through is refreshed to match. The member's own launch settings stay put.
+func TestProfileAddedWhileTheTeamRunsIsUsableAtOnce(t *testing.T) {
+	st := testStore(t)
+	cfg := profileConfig()
+	must(t, st.update(func(s *State) error { s.Config = &cfg; return nil }))
+	writeLiveConfig(t, lateProfileConfig)
+	s, err := st.read()
+	must(t, err)
+	live, warning, err := s.liveConfig()
+	must(t, err)
+	if warning != "" {
+		t.Fatalf("unexpected warning: %s", warning)
+	}
+	p, name, err := live.ResolveProfile("", false)
+	must(t, err)
+	if name != "late" || p.Model != "gpt-5" {
+		t.Fatalf("the new profile is not the default yet: %q %+v", name, p)
+	}
+	if saved, _ := st.read(); saved.Config.Profiles["late"].Engine != "" {
+		t.Fatal("reading the live profiles must not write the snapshot")
+	}
+	s, err = st.refreshProfiles()
+	must(t, err)
+	command, warning := s.Config.ProfileCommand("late", config.Codex)
+	if command.Executable != "/opt/late/codex" || warning != "" {
+		t.Fatalf("a launch would not find the new profile's command: %+v %q", command, warning)
+	}
+	if s.Config.MaxMembers != cfg.MaxMembers || s.Members["a"].Engine != config.Claude {
+		t.Fatal("refreshing profiles changed more than the profile tables")
+	}
+}
+
+// A configuration that no longer loads must not stop a running team.
+func TestBrokenConfigurationKeepsTheSavedProfiles(t *testing.T) {
+	st := testStore(t)
+	cfg := profileConfig()
+	must(t, st.update(func(s *State) error { s.Config = &cfg; return nil }))
+	writeLiveConfig(t, "this is not toml = = =\n")
+	s, err := st.read()
+	must(t, err)
+	live, warning, err := s.liveConfig()
+	must(t, err)
+	if warning == "" || live.DefaultProfile != "std" {
+		t.Fatalf("broken configuration: %q %+v", warning, live.DefaultProfile)
+	}
+	if s, err = st.refreshProfiles(); err != nil || s.Config.DefaultProfile != "std" {
+		t.Fatalf("refresh replaced the saved profiles: %v", err)
 	}
 }

@@ -80,6 +80,60 @@ func backfillMemberProfiles(s *State) []string {
 	return warnings
 }
 
+// refreshProfileTables adopts the current profile tables into the team snapshot.
+// Only the profiles and the two pointers follow the configuration file: the
+// engine, model and environment a member was added with stay snapshotted, and
+// its command is resolved through its profile at every launch, so an edited or
+// newly added profile reaches the next add, restart or resume.
+func refreshProfileTables(s *State, current config.Config) {
+	if s.Config == nil {
+		s.Config = &current
+		return
+	}
+	s.Config.Profiles = current.Profiles
+	s.Config.DefaultProfile, s.Config.MasterProfile = current.DefaultProfile, current.MasterProfile
+}
+
+// liveConfig is the team snapshot with its profile tables taken from the current
+// configuration, so a profile added while the team runs can be used at once. A
+// configuration that no longer loads must not stop a running team: the saved
+// profiles are kept and the reason is returned as a warning.
+func (s *State) liveConfig() (config.Config, string, error) {
+	cfg, err := s.effectiveConfig()
+	if err != nil {
+		return cfg, "", err
+	}
+	current, err := config.Load(s.Root)
+	if err != nil {
+		return cfg, profileLoadWarning(err), nil
+	}
+	refreshProfileTables(&State{Config: &cfg}, current)
+	return cfg, "", nil
+}
+
+func profileLoadWarning(err error) string {
+	return fmt.Sprintf("keeping the team's saved profiles because the configuration did not load: %v", err)
+}
+
+// refreshProfiles persists the live profile tables into the snapshot before a
+// member is added or launched, so the launch, and the helper commands that later
+// resolve through the same snapshot, all use the profile the member was given.
+func (st *Store) refreshProfiles() (*State, error) {
+	s, err := st.read()
+	if err != nil {
+		return nil, err
+	}
+	current, err := config.Load(s.Root)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Profile warning:", profileLoadWarning(err))
+		return s, nil
+	}
+	if err = st.update(func(s *State) error { refreshProfileTables(s, current); return nil }); err != nil {
+		return nil, err
+	}
+	return st.read()
+}
+
 // effectiveConfig keeps running teams on their startup snapshot, including env overrides.
 func (s *State) effectiveConfig() (config.Config, error) {
 	if s.Config != nil {

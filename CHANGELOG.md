@@ -4,6 +4,17 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
+## Unreleased
+
+### Changed
+
+- A running team reads its profiles from the current configuration at every
+  `member add` and member launch. A profile added while the team runs is usable
+  at once, and an edited launcher reaches a member's next restart as well as a
+  resume. A configuration that fails to load keeps the saved profiles with a
+  warning. A member's engine, model and environment are still fixed when it is
+  added.
+
 ## v0.9.1 — 2026-09-23
 
 ### Fixed

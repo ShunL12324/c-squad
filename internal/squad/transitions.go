@@ -87,16 +87,3 @@ func resumeProfileEnv(saved *config.Config, current config.Config, m *Member) (m
 	}
 	return old, agentenv.Merge(current.Profiles[m.Profile].Env)
 }
-
-// refreshResumeDefaults adopts the current profile tables into the team snapshot.
-// Only the profiles are reloaded: the engine, model and environment a member was
-// added with stay snapshotted, and its command is resolved through its profile at
-// every launch, so an edited launcher reaches the next start.
-func refreshResumeDefaults(s *State, current config.Config) {
-	if s.Config == nil {
-		s.Config = &current
-		return
-	}
-	s.Config.Profiles = current.Profiles
-	s.Config.DefaultProfile, s.Config.MasterProfile = current.DefaultProfile, current.MasterProfile
-}

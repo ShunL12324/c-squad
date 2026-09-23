@@ -112,7 +112,12 @@ csquad member add dev --profile std --instructions "Own the refund endpoint..."
 ```
 
 Profile names use letters, digits, `_` and `-`. An unknown name fails with the
-list of names you have defined. A new configuration is created with the built-in
+list of names you have defined.
+
+Profiles follow the configuration file while a team runs. A profile you add or
+edit is usable by the next `member add`, and reaches an existing member at its
+next restart or resume. If the file stops loading, the team keeps the profiles
+it last read and prints a warning. A new configuration is created with the built-in
 defaults written out as `[profiles.codex]` and `[profiles.claude-opus]`; edit,
 rename, or delete them, keeping the pointers in step. Without `default_profile`
 and `master_profile`, members start `codex` and Master starts `claude` with
@@ -131,8 +136,8 @@ member's name or instructions are never matched against a profile name.
 
 Engine, model, and environment are materialised into the member's record when it
 is added, so later configuration edits never change an existing member. The
-command is resolved at launch through the recorded profile name, so an edited
-wrapper reaches the next restart. Removing a profile that an existing member was
+command is resolved at launch through the recorded profile name, read from the
+current configuration, so an edited wrapper reaches the next restart. Removing a profile that an existing member was
 added with is not fatal: that member launches the engine by name with a warning,
 and keeps the account it was added with.
 

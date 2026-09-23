@@ -10,14 +10,15 @@ workspace shows each member's terminal and a shared task board.
 npm install -g csquad
 csquad completion install --shell zsh  # macOS: follow the printed loading step
 csquad doctor
-csquad new -s my-team --engine claude
+csquad new -s my-team
 ```
 
 Create a named team with `csquad new -s NAME`; `csquad start --name NAME`
 remains compatible. Use `list` to find teams, `attach NAME` to enter a running
 team, `resume NAME` to restore a stopped team, and `stop NAME` to stop it.
 
-Use `--engine codex` for a Codex Master. You can also run `npx csquad`.
+Set `master_profile`, or pass `--profile NAME`, if you want another engine, model
+or account as Master. You can also run `npx csquad`.
 
 Supports macOS and Linux on x64 and arm64. On Windows, install and run inside
 WSL 2. This package includes the native Go binaries: no compiler, install

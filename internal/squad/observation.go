@@ -2,6 +2,7 @@ package squad
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,6 +59,42 @@ func helperCwdKey(command config.Command, env map[string]string, cwd string) str
 	return ""
 }
 
+type claudeEntry struct {
+	SessionID string `json:"sessionId"`
+	Status    string `json:"status"`
+	Waiting   string `json:"waitingFor"`
+}
+
+// Interactive shells may print startup text before their helper runs. Only
+// shell mode skips complete leading lines; both modes require one complete
+// JSON array with no non-whitespace suffix.
+func decodeClaudeAgents(out string, shell bool) ([]claudeEntry, error) {
+	payload := out
+	if shell {
+		offset, found := 0, false
+		for _, line := range strings.SplitAfter(out, "\n") {
+			leading := len(line) - len(strings.TrimLeft(line, " \t\r"))
+			if strings.HasPrefix(line[leading:], "[") {
+				payload = out[offset+leading:]
+				found = true
+				break
+			}
+			offset += len(line)
+		}
+		if !found {
+			return nil, fmt.Errorf("Claude agents JSON array not found")
+		}
+	}
+	if !strings.HasPrefix(strings.TrimSpace(payload), "[") {
+		return nil, fmt.Errorf("Claude agents response is not a JSON array")
+	}
+	var entries []claudeEntry
+	if err := json.Unmarshal([]byte(payload), &entries); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
 // observe refreshes member state and reports which members this pass actually
 // observed. A member missing from the result is unknown: a Claude session the
 // agents helper failed to report keeps its previous state, which proves
@@ -66,11 +103,6 @@ func (st *Store) observe() (map[string]bool, error) {
 	s, e := st.read()
 	if e != nil {
 		return nil, e
-	}
-	type claudeEntry struct {
-		SessionID string `json:"sessionId"`
-		Status    string `json:"status"`
-		Waiting   string `json:"waitingFor"`
 	}
 	type helperResult struct {
 		entries []claudeEntry
@@ -98,8 +130,9 @@ func (st *Store) observe() (map[string]bool, error) {
 		if !seen {
 			name, args, env := command.Invocation(member.Env, "", "agents", "--json")
 			out, err := process.RunStdoutEnv(member.Cwd, env, name, args...)
-			if err == nil && json.Unmarshal([]byte(out), &result.entries) == nil {
-				result.ok = true
+			if err == nil {
+				result.entries, err = decodeClaudeAgents(out, command.Shell != "")
+				result.ok = err == nil
 			}
 			cache[string(key)] = result
 		}

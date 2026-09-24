@@ -29,9 +29,6 @@ func TestObserveSharesClaudeListingWithinAccount(t *testing.T) {
 	must(t, os.WriteFile(helper, []byte("#!/bin/sh\nprintf '%s\\n' \"$ACCOUNT\" >> \"$CALL_LOG\"\nprintf '%s\\n' '[{\"sessionId\":\"s-master\",\"status\":\"idle\"},{\"sessionId\":\"s-a\",\"status\":\"busy\"},{\"sessionId\":\"s-b\",\"status\":\"idle\"}]'\n"), 0700))
 	home := filepath.Join(dir, "home")
 	must(t, os.Mkdir(home, 0700))
-	// Debian's global interactive bashrc prints a sudo hint to stdout unless
-	// this file exists; stdout must contain only the helper's JSON.
-	must(t, os.WriteFile(filepath.Join(home, ".hushlogin"), nil, 0600))
 	must(t, os.WriteFile(filepath.Join(home, ".bashrc"), []byte("alias helperalias="+shellQuote(helper)+"\n"), 0600))
 	st := testStore(t)
 	must(t, st.update(func(s *State) error {
@@ -91,6 +88,26 @@ func TestObserveSharesClaudeListingWithinAccount(t *testing.T) {
 	must(t, err)
 	if got := strings.Count(string(calls), "shared\n"); got != 2 {
 		t.Fatalf("shell mode shared account called %d times across different cwds", got)
+	}
+}
+
+func TestDecodeClaudeAgentsShellStartupText(t *testing.T) {
+	valid := "startup notice\n  [\n  {\"sessionId\":\"s-a\",\"status\":\"idle\"}\n]\n"
+	entries, err := decodeClaudeAgents(valid, true)
+	if err != nil || len(entries) != 1 || entries[0].SessionID != "s-a" {
+		t.Fatalf("complete array after startup text: entries=%+v err=%v", entries, err)
+	}
+	for name, payload := range map[string]string{
+		"direct preamble": valid,
+		"truncated":       "notice\n[{\"sessionId\":\"s-a\"}",
+		"trailing text":   "notice\n[]\nextra output",
+		"no array":        "notice\nno JSON",
+		"non-array value": "null",
+	} {
+		shell := name != "direct preamble"
+		if _, err := decodeClaudeAgents(payload, shell); err == nil {
+			t.Fatalf("%s accepted invalid response %q", name, payload)
+		}
 	}
 }
 

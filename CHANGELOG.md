@@ -4,7 +4,7 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
-## Unreleased
+## v0.12.0 — 2026-09-24
 
 ### Added
 
@@ -15,16 +15,25 @@ release history; earlier releases remain available on
   install`. Archives and other installs get the command to run instead.
   `update` shows the commands and asks first, runs `sudo` only in an
   interactive terminal, refuses member sessions, and `--check` installs
-  nothing.
+  nothing. `--check` and the `.deb` path query GitHub and need it reachable
+  within its unauthenticated rate limit; the release checksum file is not
+  signed, so the `.deb` path is weaker than the signed APT source.
 - Installing a new csquad no longer changes running teams. Each team runs a
   private copy of the build it started with, stored under
   `~/.local/share/csquad/versions/` (or `CSQUAD_VERSIONS_DIR`), and a newer
   csquad hands team commands to that copy. `resume` moves a team to the
   installed version; it refuses an older release and asks when two builds
   cannot be ordered. Writes from any other build are refused. `csquad repin
-  TEAM` recovers a team whose copy is missing or damaged. Teams started by 0.11
-  or earlier are pinned at their next resume: stop them before the first
-  upgrade. `doctor` warns when more than one csquad is on PATH.
+  TEAM` recovers a team whose copy is missing or damaged. Old copies are not
+  deleted automatically; `update --check` shows the space they use. `doctor`
+  warns when more than one csquad is on PATH.
+
+  **First upgrade:** teams started by 0.11 or earlier have no private copy
+  yet, so an upgrade reaches them at once. Stop them, upgrade, then resume
+  them; from then on upgrades leave running teams alone. Never run an older
+  csquad against a team a newer one has pinned: it drops records it does not
+  know. On macOS a build is identified by hashing the file it started from,
+  and macOS has not been tested on real hardware.
 - `task assign TASK --owner NAME --cc A,B` copies members on an assignment
   with one no-reply notice each. They do not become participants. An unknown
   or removed name fails the whole command, and repeating it sends nothing new.
@@ -40,15 +49,18 @@ release history; earlier releases remain available on
   replaced after the upgrade. Do not downgrade once a task has been cancelled:
   an older csquad treats the task as unfinished, keeps its owner occupied and
   its dependents unclaimable, may send its members resume-work notices, and
-  drops the cancellation record when it rewrites the ledger. Master's instructions list the command
-  and say that a cancelled task satisfies no dependency; running sessions
-  receive them at their next eligible hook.
+  drops the cancellation record when it rewrites the ledger. Master's
+  instructions list the command and say that a cancelled task satisfies no
+  dependency; running sessions receive them at their next eligible hook.
 - Master is told once when an in-progress task seems stalled: every member on
   it has been observed quiet (a finished, failed, crashed or stopped turn) for
   5 minutes, with no blocker, open question, pending gate or deliverable
   message. The notice changes nothing else and is superseded if the task moves
   on before delivery. A Codex member interrupted by the user is now shown as
-  `interrupted` until its next prompt.
+  `interrupted` until its next prompt. Background work the engines do not
+  report can cause a notice, and a Claude member stopped with Esc may look
+  busy and cause none. The window is fixed at 5 minutes. This does not use the
+  engines' native goals, and it never continues or completes a task.
 
 ### Changed
 

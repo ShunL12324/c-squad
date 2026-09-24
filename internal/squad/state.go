@@ -341,6 +341,13 @@ func (st *Store) read() (*State, error) {
 // a matching one-time step in migrateLedger whenever a stored shape stops being read.
 const stateVersion = 4
 
+func legacyGeneratedNotice(text, generated string) bool {
+	if text == generated {
+		return true
+	}
+	return strings.HasPrefix(text, generated+" WARNING: ") && len(text) > len(generated+" WARNING: ")
+}
+
 // migrateLedger rewrites stored records once, at a version boundary, so that obsolete
 // shapes never cost anything on the hot read/update path.
 func migrateLedger(s *State) {
@@ -370,7 +377,8 @@ func migrateLedger(s *State) {
 	if s.Version < 4 {
 		// Older dispatch notices were plain text. Attach ledger references to
 		// unfinished ones so an assignment, claim or handoff can withdraw a
-		// stale notice before a busy recipient's next native turn.
+		// stale notice before a busy recipient's next native turn. A message
+		// already handed to the native Codex queue cannot be withdrawn here.
 		for _, m := range s.Messages {
 			if m.Report != nil || m.State != DeliveryStatePending && m.State != DeliveryStateSending {
 				continue
@@ -385,10 +393,29 @@ func migrateLedger(s *State) {
 				if ok && owner != "" {
 					m.Report = &ReportReference{Kind: "cc", Owner: owner}
 				}
-			case strings.HasPrefix(m.Text, "Task available: "+t.ID+" "):
-				m.Report = &ReportReference{Kind: "available"}
-			case strings.HasPrefix(m.Text, "Assigned to task "+t.ID+". "):
-				m.Report = &ReportReference{Kind: "assigned", Owner: t.Owner}
+			case m.RequestKey == "" && m.ReplyTo == "":
+				available := []string{
+					"Task available: " + t.ID + " " + t.Title + ". Read board and claim if suitable.",
+					availableNotice(t),
+				}
+				assigned := []string{
+					"Assigned to task " + t.ID + ". Read board for workspace, ownership, acceptance and milestones.",
+					assignedNotice(t),
+				}
+				for _, generated := range available {
+					if legacyGeneratedNotice(m.Text, generated) {
+						m.Report = &ReportReference{Kind: "available"}
+						break
+					}
+				}
+				if m.Report == nil {
+					for _, generated := range assigned {
+						if legacyGeneratedNotice(m.Text, generated) {
+							m.Report = &ReportReference{Kind: "assigned", Owner: t.Owner}
+							break
+						}
+					}
+				}
 			}
 		}
 	}

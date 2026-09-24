@@ -2,6 +2,8 @@ package squad
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -32,6 +34,30 @@ func markObservationStaleness(s *State) {
 	}
 }
 
+// A native direct invocation can share an account-wide agents listing across
+// worktrees when neither command resolution nor its arguments depend on cwd.
+// Shell startup files can inspect cwd, so shell mode always isolates them.
+func helperCwdKey(command config.Command, env map[string]string, cwd string) string {
+	if command.Shell != "" {
+		return cwd
+	}
+	path, overridden := env["PATH"]
+	if !overridden {
+		path = os.Getenv("PATH")
+	}
+	for _, entry := range strings.Split(path, string(os.PathListSeparator)) {
+		if !filepath.IsAbs(entry) {
+			return cwd
+		}
+	}
+	for _, arg := range command.Args {
+		if strings.ContainsRune(arg, '/') && !filepath.IsAbs(arg) {
+			return cwd
+		}
+	}
+	return ""
+}
+
 // observe refreshes member state and reports which members this pass actually
 // observed. A member missing from the result is unknown: a Claude session the
 // agents helper failed to report keeps its previous state, which proves
@@ -52,9 +78,8 @@ func (st *Store) observe() (map[string]bool, error) {
 	}
 	// The agents helper lists sessions for an account, not for a member. Cache
 	// only within this pass, and keep command and environment in the key: two
-	// profiles can point at different clients or Claude accounts. The native
-	// agents listing is account-wide across working directories; a custom shell
-	// alias whose output depends on cwd must use a distinct profile environment.
+	// profiles can point at different clients or Claude accounts. Cwd joins the
+	// key when command resolution or shell startup can depend on it.
 	helperOK := map[string]bool{}
 	claude := map[string]claudeEntry{}
 	cache := map[string]helperResult{}
@@ -67,7 +92,8 @@ func (st *Store) observe() (map[string]bool, error) {
 		key, _ := json.Marshal(struct {
 			Command config.Command
 			Env     map[string]string
-		}{command, member.Env})
+			Cwd     string
+		}{command, member.Env, helperCwdKey(command, member.Env, member.Cwd)})
 		result, seen := cache[string(key)]
 		if !seen {
 			name, args, env := command.Invocation(member.Env, "", "agents", "--json")

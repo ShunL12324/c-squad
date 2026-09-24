@@ -124,8 +124,12 @@ Profiles follow the configuration file while a team runs. A profile you add or
 edit is usable by the next `member add`, and reaches an existing member at its
 next restart or resume. If the file stops loading, the team keeps the profiles
 it last read and prints a warning. A new configuration is created with the built-in
-defaults written out as `[profiles.codex]` and `[profiles.claude-opus]`; edit,
-rename, or delete them, keeping the pointers in step. Without `default_profile`
+six profiles written out: `claude-junior` (`sonnet[1m]`), `claude-senior`
+(`opus[1m]`), `claude-expert` (`fable[1m]`), `codex-junior` (`gpt-6-luna`),
+`codex-senior` (`gpt-6-sol`), and `codex-expert` (`gpt-6-astra`). Both default
+pointers select `claude-senior`. Account paths are inherited from the environment;
+no personal account directory is included. Edit, rename, or delete profiles,
+keeping the pointers in step. Existing files are preserved. Without `default_profile`
 and `master_profile`, members start `codex` and Master starts `claude` with
 `opus[1m]`.
 
@@ -157,7 +161,7 @@ To apply an edited profile to an existing member, for example after switching
 
 ```sh
 csquad member restart dev --reprofile            # re-read its recorded profile
-csquad member restart dev --profile claude-opus  # move it to another profile
+csquad member restart dev --profile claude-senior  # move it to another profile
 csquad recover --reprofile                       # Master, from an outside terminal
 ```
 

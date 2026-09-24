@@ -85,19 +85,24 @@ func TestGeneratedConfigIsDocumentedAndPreserved(t *testing.T) {
 	t.Setenv("CSQUAD_CONFIG", path)
 	got, err := Load("")
 	must(t, err)
-	if got.MaxMembers != 8 || got.DefaultProfile != "codex" || got.MasterProfile != "claude-opus" {
+	if got.MaxMembers != 8 || got.DefaultProfile != "claude-senior" || got.MasterProfile != "claude-senior" {
 		t.Fatalf("unexpected generated defaults: %+v", got)
 	}
-	if worker := got.Profiles["codex"]; worker.Engine != Codex || worker.Model != "" {
-		t.Fatalf("generated worker profile: %+v", worker)
+	wantProfiles := map[string]Profile{
+		"claude-junior": {Engine: Claude, Model: "sonnet[1m]"},
+		"claude-senior": {Engine: Claude, Model: "opus[1m]"},
+		"claude-expert": {Engine: Claude, Model: "fable[1m]"},
+		"codex-junior":  {Engine: Codex, Model: "gpt-6-luna"},
+		"codex-senior":  {Engine: Codex, Model: "gpt-6-sol"},
+		"codex-expert":  {Engine: Codex, Model: "gpt-6-astra"},
 	}
-	if master := got.Profiles["claude-opus"]; master.Engine != Claude || master.Model != "opus[1m]" {
-		t.Fatalf("generated master profile: %+v", master)
+	if !reflect.DeepEqual(got.Profiles, wantProfiles) {
+		t.Fatalf("generated profiles: %+v", got.Profiles)
 	}
 	body, err := os.ReadFile(path)
 	must(t, err)
-	for _, text := range []string{"# C-Squad", "including Master", "[profiles.codex]", "[profiles.claude-opus]",
-		`default_profile = 'codex'`, `master_profile = 'claude-opus'`, `model = 'opus[1m]'`, "do not expand", "bypass_permissions"} {
+	for _, text := range []string{"# C-Squad", "including Master", "[profiles.codex-junior]", "[profiles.claude-senior]",
+		`default_profile = 'claude-senior'`, `master_profile = 'claude-senior'`, `model = 'gpt-6-luna'`, "do not expand", "bypass_permissions"} {
 		if !strings.Contains(string(body), text) {
 			t.Errorf("generated configuration is missing %q", text)
 		}
@@ -115,6 +120,9 @@ func TestGeneratedConfigIsDocumentedAndPreserved(t *testing.T) {
 	must(t, err)
 	if got.MaxMembers != 3 || got.Profiles["mine"].Env["EXAMPLE"] != "a=b c" {
 		t.Fatalf("custom settings were not preserved: %+v", got)
+	}
+	if len(got.Profiles) != 1 {
+		t.Fatalf("loading replenished deleted profiles: %+v", got.Profiles)
 	}
 	body, err = os.ReadFile(path)
 	must(t, err)

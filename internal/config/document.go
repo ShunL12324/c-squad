@@ -12,8 +12,9 @@ const documentHeader = `# C-Squad configuration (TOML)
 # Profiles never hold responsibilities; those come from member add --instructions.
 # Profile names are plain names with no built-in meaning: a profile called master is
 # not applied to Master unless master_profile or start --profile selects it.
-# The two profiles below are written out on first run. Rename, edit or delete them freely,
-# keeping the pointers in step. With an empty pointer, members start codex and Master starts claude with opus[1m].
+# First run writes junior, senior and expert profiles for Claude and Codex, with both pointers selecting claude-senior.
+# Rename, edit or delete profiles freely, keeping the pointers in step. Existing files are not replenished.
+# With an empty pointer, members start codex and Master starts claude with opus[1m].
 # An optional env table selects the account, or any other variable, for members launched with this profile:
 # [profiles.NAME.env]
 # CODEX_HOME = "/absolute/path/to/codex-home"

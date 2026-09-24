@@ -165,6 +165,7 @@ func Load(root string) (Config, error) {
 	p := Path()
 	b, err := os.ReadFile(p)
 	if os.IsNotExist(err) {
+		imported := false
 		// Import the legacy user file once; retain it as a backup. It predates
 		// profiles, so it is migrated before being written out: the new file has to
 		// launch what the old one launched, which means the built-in profiles are
@@ -172,6 +173,7 @@ func Load(root string) (Config, error) {
 		legacy := strings.TrimSuffix(p, ".toml") + ".json"
 		if strings.HasSuffix(p, ".toml") {
 			if old, e := os.ReadFile(legacy); e == nil {
+				imported = true
 				if e = decodeConfig(legacy, old, &c); e != nil {
 					return c, fmt.Errorf("%s: %w", legacy, e)
 				}
@@ -180,12 +182,13 @@ func Load(root string) (Config, error) {
 				}
 			}
 		}
-		// The built-in launch profiles are written out as ordinary profiles, so a
-		// new user opens the file and sees two definitions to edit rather than
-		// having to guess what the defaults are. They carry no special meaning:
-		// only the pointers make them the defaults, and either may be renamed,
-		// edited, or deleted.
-		seedProfiles(&c)
+		// Fresh installs get six editable profiles. Imported configurations keep
+		// their original launch behavior, including the historical fallbacks.
+		if imported {
+			seedProfiles(&c)
+		} else {
+			firstRunProfiles(&c)
+		}
 		if err = os.MkdirAll(filepath.Dir(p), 0700); err != nil {
 			return c, err
 		}

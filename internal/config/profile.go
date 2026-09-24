@@ -21,14 +21,27 @@ type Profile struct {
 	Model   string            `json:"model,omitempty" toml:"model,omitempty" comment:"Model started by this profile. An empty string uses the native engine default.\nUse a model supported by the selected engine."`
 }
 
-// Built-in launch defaults. A new configuration is created with these written
-// out under the names below, so the defaults are visible and editable. They stay
-// in code as well, as the fallback for a file whose pointers are empty or whose
-// profile a member was added with has since been deleted; a team must still start.
+// Historical launch fallbacks for files whose pointers are empty and for
+// legacy migrations. Fresh installations use firstRunProfiles instead.
 var (
 	builtinWorkerProfile = Profile{Engine: Codex}
 	builtinMasterProfile = Profile{Engine: Claude, Model: "opus[1m]"}
 )
+
+// firstRunProfiles is used only when no user configuration exists. Keep the
+// historical fallbacks above for existing files and legacy migrations.
+func firstRunProfiles(c *Config) {
+	c.Profiles = map[string]Profile{
+		"claude-junior": {Engine: Claude, Model: "sonnet[1m]"},
+		"claude-senior": {Engine: Claude, Model: "opus[1m]"},
+		"claude-expert": {Engine: Claude, Model: "fable[1m]"},
+		"codex-junior":  {Engine: Codex, Model: "gpt-6-luna"},
+		"codex-senior":  {Engine: Codex, Model: "gpt-6-sol"},
+		"codex-expert":  {Engine: Codex, Model: "gpt-6-astra"},
+	}
+	c.DefaultProfile = "claude-senior"
+	c.MasterProfile = "claude-senior"
+}
 
 // Names used for the written-out built-in profiles. They are ordinary names:
 // only default_profile and master_profile make them the defaults.

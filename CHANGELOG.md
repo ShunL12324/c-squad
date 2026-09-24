@@ -8,6 +8,11 @@ release history; earlier releases remain available on
 
 ### Added
 
+- New installations write six editable launch profiles: Claude junior, senior
+  and expert use `sonnet[1m]`, `opus[1m]` and `fable[1m]`; Codex junior, senior
+  and expert use `gpt-6-luna`, `gpt-6-sol` and `gpt-6-astra`. Both default
+  pointers select `claude-senior`. No personal account paths are included;
+  existing configurations and legacy launch defaults are preserved.
 - `csquad update` upgrades csquad through the channel that installed it: npm
   (any global prefix, including nvm), Homebrew (any prefix), the APT source,
   or a local `.deb`, which it downloads from the latest release and verifies

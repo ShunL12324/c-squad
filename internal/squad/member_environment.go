@@ -43,6 +43,8 @@ func (st *Store) memberEnvironment(s *State, m *Member) (map[string]string, erro
 		value := shellQuote(binding[key])
 		fmt.Fprintf(&script, "if [ -n \"${%s-}\" ] && [ \"$%s\" != %s ]; then echo 'csquad: runtime identity conflicts with this session' >&2; exit 1; fi\nexport %s=%s\n", key, key, value, key, value)
 	}
+	// A plain "not found" from exec would not say what to do.
+	fmt.Fprintf(&script, "if [ ! -x %s ]; then echo 'csquad: this team'\\''s csquad build is missing; from a terminal outside the team run: csquad repin %s' >&2; exit 1; fi\n", shellQuote(s.Executable), strings.ReplaceAll(s.ID, "'", ""))
 	fmt.Fprintf(&script, "exec %s \"$@\"\n", shellQuote(s.Executable))
 	link := filepath.Join(bin, "csquad")
 	if current, err := os.ReadFile(link); err != nil || string(current) != script.String() {

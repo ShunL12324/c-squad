@@ -167,6 +167,7 @@ func TestCrashCleanupAndProjectResume(t *testing.T) {
 		accepted <- json.NewDecoder(conn).Decode(&frame)
 	}()
 	var deliveredID string
+	actAsPinnedBuild(t, st)
 	must(t, st.update(func(s *State) error {
 		s.Members["master"].Peer = inbox.Addr().String()
 		s.Members["master"].EngineID = "delivered-session"

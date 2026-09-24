@@ -27,6 +27,11 @@ func (st *Store) launch(id string, resume bool, initial string) (launchErr error
 	if e != nil {
 		return e
 	}
+	// Every launch runs the pinned copy; a missing or altered one fails here,
+	// before a session starts, with the recovery command.
+	if e = ensurePin(s); e != nil {
+		return e
+	}
 	defer func() {
 		if launchErr != nil {
 			launchErr = fmt.Errorf("launch member %s (engine %s, cwd %q): %w", id, m.Engine, m.Cwd, launchErr)

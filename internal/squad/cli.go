@@ -16,6 +16,7 @@ import (
 	"github.com/ShunL12324/c-squad/internal/buildinfo"
 	"github.com/ShunL12324/c-squad/internal/config"
 	"github.com/ShunL12324/c-squad/internal/filelock"
+	"github.com/ShunL12324/c-squad/internal/pin"
 	"github.com/ShunL12324/c-squad/internal/preflight"
 	"github.com/ShunL12324/c-squad/internal/tmux"
 )
@@ -111,7 +112,7 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 		}
 	}
 	name := o["team-name"]
-	if o["name"] != "" && slices.Contains([]string{"resume", "attach", "board", "stop", "ui", "recover"}, p[0]) {
+	if o["name"] != "" && slices.Contains([]string{"resume", "attach", "board", "stop", "ui", "recover", "repin"}, p[0]) {
 		if name != "" {
 			return errors.New("specify only one team selector")
 		}
@@ -137,6 +138,14 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 	s, e := st.read()
 	if e != nil {
 		return e
+	}
+	// Resolved exactly as the command resolves it, and before anything writes:
+	// every other command runs on the team's pinned build. resume and repin
+	// move the pin and run on this build by design.
+	if p[0] != "resume" && p[0] != "repin" {
+		if e = forward(s); e != nil {
+			return e
+		}
 	}
 	actor := o["member"]
 	if actor == "" {
@@ -186,6 +195,12 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 			return errors.New("resume the team from an outside terminal")
 		}
 		return resumeTeam(st, o)
+	}
+	if p[0] == "repin" {
+		if actor != "master" || gen != 0 || os.Getenv("CSQUAD_MEMBER_ID") != "" {
+			return errors.New("repin the team from a terminal outside the team")
+		}
+		return repinTeam(st, o["yes"] == "true")
 	}
 	if p[0] == "run-engine" {
 		return runEngine(st, actor, gen, engineArgs)
@@ -374,13 +389,13 @@ func start(o options) error {
 		return err
 	}
 
-	bin, e := os.Executable()
+	// The team runs a private copy of this build, so replacing the installed
+	// csquad never changes it. See docs/design/update.md.
+	pinned, e := pin.Create()
 	if e != nil {
-		return e
+		return fmt.Errorf("pin this csquad build for the team: %w", e)
 	}
-	// The npm launcher execs ../native/<platform>/csquad, so the raw path carries
-	// an unnormalised bin/.. segment into every prefix injected into an agent.
-	bin = cleanPath(bin)
+	bin := pinned.Path
 	socket := filepath.Join(os.TempDir(), fmt.Sprintf("csq-%d-%s.sock", os.Getuid(), hex.EncodeToString(b)))
 	if v := os.Getenv("TMUX"); v != "" {
 		socket = strings.Split(v, ",")[0]

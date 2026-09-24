@@ -241,6 +241,9 @@ type Store struct {
 	DB         *sql.DB
 	Actor      string
 	Generation int
+	// transition lets one re-pin transaction write before this process is the
+	// team's pinned build. Only transitionPin sets it.
+	transition bool
 }
 
 func openStore(dir string) (*Store, error) {
@@ -292,6 +295,11 @@ func (st *Store) update(fn func(*State) error) error {
 		if !s.Active || m == nil || m.Generation != st.Generation {
 			return ErrStaleGeneration
 		}
+	}
+	// Compared in every transaction against the pin just read, so a process
+	// that passed before a re-pin cannot keep writing after it.
+	if err = st.checkWriter(&s); err != nil {
+		return err
 	}
 	normalizeState(&s)
 	// The snapshot migration runs on both read paths, but only this one persists.

@@ -158,3 +158,19 @@ func TestTransactionRollback(t *testing.T) {
 		t.Fatal("rollback failed")
 	}
 }
+
+// actAsPinnedBuild lets in-process test code write a team that a built csquad
+// binary started and pinned. The self check refuses every other build, and
+// this test binary is one; the override stands in for running the pinned copy.
+func actAsPinnedBuild(t *testing.T, st *Store) {
+	t.Helper()
+	s, err := st.read()
+	must(t, err)
+	p, ok := teamPin(s)
+	if !ok {
+		return
+	}
+	previous := selfSHA256
+	selfSHA256 = func() (string, error) { return p.SHA256, nil }
+	t.Cleanup(func() { selfSHA256 = previous })
+}

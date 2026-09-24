@@ -237,7 +237,7 @@ func execute(run runner, path []string) func(*cobra.Command, []string) error {
 // Normalize aliases before dispatch so authorization sees the original operation.
 func normalizeInputs(cmd *cobra.Command, path []string, values map[string]string, args *[]string) error {
 	selectors := []string{"team", "state-dir", "team-name"}
-	if slices.Contains([]string{"start", "resume", "stop", "recover", "attach", "board", "ui"}, path[0]) {
+	if slices.Contains([]string{"start", "resume", "stop", "recover", "repin", "attach", "board", "ui"}, path[0]) {
 		selectors = append(selectors, "name")
 	}
 	count := 0
@@ -249,7 +249,7 @@ func normalizeInputs(cmd *cobra.Command, path []string, values map[string]string
 			count++
 		}
 	}
-	if (slices.Contains([]string{"start", "resume", "stop", "recover"}, path[0]) || (len(path) == 2 && path[0] == "team" && path[1] == "remove")) && len(*args) == 1 {
+	if (slices.Contains([]string{"start", "resume", "stop", "recover", "repin"}, path[0]) || (len(path) == 2 && path[0] == "team" && path[1] == "remove")) && len(*args) == 1 {
 		count++
 		values["name"] = (*args)[0]
 		*args = nil

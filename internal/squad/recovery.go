@@ -268,6 +268,18 @@ func resumeTeam(st *Store, o options) error {
 	if notice := profileDriftNotice(drifted); notice != "" {
 		fmt.Fprintln(os.Stderr, notice)
 	}
+	// Move the team to this build first, in the one transaction allowed to
+	// write before this process is the pin. Everything above only read. From
+	// here on this process is the team's build: the reaping, reconcile and
+	// relaunch below pass the self check, and any process left from the old
+	// build is refused if it writes before it is reaped.
+	if e = decideRepin(s); e != nil {
+		return e
+	}
+	pinned, e := st.transitionPin()
+	if e != nil {
+		return fmt.Errorf("pin this csquad build for the team: %w", e)
+	}
 	// Reap old process identities before changing socket or clearing PID records.
 	if e = cleanupTeam(st, "interrupted"); e != nil {
 		return fmt.Errorf("old team cleanup failed; recovery refused: %w", e)
@@ -294,13 +306,7 @@ func resumeTeam(st *Store, o options) error {
 	if _, e = rand.Read(random); e != nil {
 		return e
 	}
-	binary, e := os.Executable()
-	if e != nil {
-		return e
-	}
-	// Recovery rewrites State.Executable, so it must normalise too; otherwise a
-	// resume would reintroduce the unnormalised path that start just cleaned.
-	binary = cleanPath(binary)
+	binary := pinned.Path
 	if e = st.update(func(cur *State) error {
 		// The profiles a member inherited from are kept aside before the snapshot
 		// adopts the current tables, so an edit shows up as a difference instead of
@@ -410,6 +416,13 @@ func reapProjectTeams(base string) error {
 			continue
 		}
 		s, err := st.read()
+		if err == nil && !isPinnedBuild(s) {
+			// Another build owns that team; its own csquad cleans it up.
+			fmt.Fprintf(os.Stderr, "csquad: team %s is pinned to another csquad build; not cleaning it up from this one\n", s.ID)
+			unlock()
+			_ = st.DB.Close()
+			continue
+		}
 		if err == nil && ((s.Active && masterGone(s)) || s.Phase == TeamPhaseStopping || s.Phase == TeamPhaseCleanupFailed) {
 			err = cleanupTeam(st, "interrupted")
 		}

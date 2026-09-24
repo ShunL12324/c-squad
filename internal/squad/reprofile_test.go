@@ -100,6 +100,7 @@ func startReprofileTeam(t *testing.T, model string, env map[string]string) *repr
 	h.cli("start", "reprofile", "--detach")
 	h.st, err = openStore(filepath.Join(root, "state", "teams", "reprofile"))
 	must(t, err)
+	actAsPinnedBuild(t, h.st)
 	t.Cleanup(func() { _ = stop(h.st); _ = h.st.DB.Close() })
 	h.cli("member", "add", "worker", "--instructions", "capture the launch")
 	h.launched("worker", 1)

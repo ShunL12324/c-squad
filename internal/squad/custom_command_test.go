@@ -197,6 +197,7 @@ func TestCustomCommandsAcrossLifecycle(t *testing.T) {
 				}
 				waitLaunch("master", 1, masterEngine, prefix, false)
 				waitLaunch("worker", 1, workerEngine, prefix, false)
+				actAsPinnedBuild(t, st)
 				must(t, st.update(func(s *State) error {
 					for id, m := range s.Members {
 						m.EngineID, m.State = "session-"+id, MemberStateIdle

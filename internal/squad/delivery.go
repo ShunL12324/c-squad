@@ -203,6 +203,10 @@ func (st *Store) syncMessages() error {
 	if e != nil {
 		return e
 	}
+	// Delivery writes the ledger; on a pinned team only its own build does it.
+	if !isPinnedBuild(s) {
+		return nil
+	}
 	var failed []string
 	for _, m := range s.Messages {
 		// Sent records remain visible without ACK; only unfinished transport needs work.

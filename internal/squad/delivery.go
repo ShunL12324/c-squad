@@ -12,6 +12,12 @@ import (
 	"github.com/ShunL12324/c-squad/internal/filelock"
 )
 
+// deliveryPaused lists the recipient states deliver waits out, keeping the
+// message pending until the member is available again.
+func deliveryPaused(state MemberState) bool {
+	return state == MemberStateStopped || state == MemberStateStopping || state == MemberStateNeedsAttention || state == MemberStateCrashed
+}
+
 func (st *Store) deliver(id string) error {
 	claimed := false
 	var attempt string
@@ -42,7 +48,7 @@ func (st *Store) deliver(id string) error {
 					v.abandonDelivery()
 					return nil
 				}
-				if member.State == MemberStateStopped || member.State == MemberStateStopping || member.State == MemberStateNeedsAttention || member.State == MemberStateCrashed {
+				if deliveryPaused(member.State) {
 					// Returning without a reason left the sender no signal at all.
 					// Record why delivery paused, exactly as the branch below does,
 					// and keep the message pending so the runtime retries once the

@@ -8,11 +8,18 @@ import (
 	"github.com/ShunL12324/c-squad/internal/process"
 )
 
-func (st *Store) refresh() error {
+func (st *Store) refresh() error { _, err := st.observe(); return err }
+
+// observe refreshes member state and reports which members this pass actually
+// observed. A member missing from the result is unknown: a Claude session the
+// agents helper failed to report keeps its previous state, which proves
+// nothing about whether it is still working.
+func (st *Store) observe() (map[string]bool, error) {
 	s, e := st.read()
 	if e != nil {
-		return e
+		return nil, e
 	}
+	helperOK := map[string]bool{}
 	var claude []struct {
 		SessionID string `json:"sessionId"`
 		Status    string `json:"status"`
@@ -27,6 +34,7 @@ func (st *Store) refresh() error {
 					Waiting   string `json:"waitingFor"`
 				}
 				if json.Unmarshal([]byte(out), &entries) == nil {
+					helperOK[member.ID] = true
 					for _, entry := range entries {
 						if entry.SessionID == member.EngineID {
 							claude = append(claude, entry)
@@ -37,12 +45,18 @@ func (st *Store) refresh() error {
 		}
 	}
 	observed, procErr := process.Snapshot()
-	return st.update(func(cur *State) error {
+	var known map[string]bool
+	err := st.update(func(cur *State) error {
+		known = map[string]bool{}
 		for _, m := range cur.Members {
 			if old := s.Members[m.ID]; old == nil || old.Generation != m.Generation {
 				continue
 			}
-			if m.State == MemberStateRemoved || m.State == MemberStateStopped || m.State == MemberStateStopping || m.State == MemberStateNeedsAttention {
+			if m.State == MemberStateRemoved || m.State == MemberStateStopped {
+				known[m.ID] = true
+				continue
+			}
+			if m.State == MemberStateStopping || m.State == MemberStateNeedsAttention {
 				continue
 			}
 			if procErr == nil && m.RunnerPID > 0 {
@@ -70,8 +84,10 @@ func (st *Store) refresh() error {
 			}
 			if err != nil || out == "1" {
 				m.State = MemberStateCrashed
+				known[m.ID] = true
 				continue
 			}
+			known[m.ID] = m.Engine != config.Claude
 			if m.Engine == config.Codex && m.State == MemberStateStarting {
 				if pane, err := tm(s, "capture-pane", "-p", "-t", agentPane(m)); err == nil && codexEmptyComposer(pane) {
 					m.State = MemberStateIdle
@@ -79,6 +95,7 @@ func (st *Store) refresh() error {
 			}
 			for _, c := range claude {
 				if c.SessionID == m.EngineID {
+					known[m.ID] = helperOK[m.ID]
 					switch c.Status {
 					case "busy":
 						m.State = MemberStateWorking
@@ -99,4 +116,5 @@ func (st *Store) refresh() error {
 		}
 		return nil
 	})
+	return known, err
 }

@@ -71,6 +71,10 @@ func hookInput(st *Store, actor string, gen int, input io.Reader) error {
 			}
 		case "StopFailure":
 			m.State = MemberStateError
+		case "Interrupt":
+			// The user stopped the turn (Codex only). A deliberate pause, which
+			// the stall notice must not treat as a member that stopped working.
+			m.State = MemberStateInterrupted
 		case "SessionEnd":
 			m.State = MemberStateStopped
 		}

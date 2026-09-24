@@ -31,6 +31,7 @@ const (
 	MemberStateCrashed        MemberState = "crashed"
 	MemberStateError          MemberState = "error"
 	MemberStateIdle           MemberState = "idle"
+	MemberStateInterrupted    MemberState = "interrupted"
 	MemberStateNeedsAttention MemberState = "needs_attention"
 	MemberStateRemoved        MemberState = "removed"
 	MemberStateStarting       MemberState = "starting"

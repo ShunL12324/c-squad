@@ -4,6 +4,17 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
+## Unreleased
+
+### Added
+
+- Master is told once when an in-progress task seems stalled: every member on
+  it has been observed quiet (a finished, failed, crashed or stopped turn) for
+  5 minutes, with no blocker, open question, pending gate or deliverable
+  message. The notice changes nothing else and is superseded if the task moves
+  on before delivery. A Codex member interrupted by the user is now shown as
+  `interrupted` until its next prompt.
+
 ## v0.11.1 — 2026-09-23
 
 ### Added

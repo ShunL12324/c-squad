@@ -11,7 +11,7 @@ import (
 // runtimeProtocol must change whenever the persisted ledger schema changes. A
 // runtime left from an older binary rewrites the whole ledger with its own
 // structs, so keeping it alive after an upgrade silently drops new fields.
-const runtimeProtocol = "4"
+const runtimeProtocol = "5"
 
 func runtimeName(s *State) string { return "csq-" + s.ID + "-runtime" }
 func (st *Store) startRuntime() error {
@@ -57,7 +57,9 @@ func (st *Store) runRuntime() error {
 		return fmt.Errorf("runtime already running: %w", e)
 	}
 	defer unlock()
+	var stall stallTimer
 	for {
+		passStart := time.Now()
 		s, e := st.read()
 		if e != nil {
 			return e
@@ -74,7 +76,8 @@ func (st *Store) runRuntime() error {
 				cycleErr = errors.Join(cycleErr, st.prepareWorkspace(t.ID))
 			}
 		}
-		cycleErr = errors.Join(cycleErr, st.refresh())
+		known, refreshErr := st.observe()
+		cycleErr = errors.Join(cycleErr, refreshErr, st.checkStall(&stall, known, refreshErr, passStart))
 		if err := st.update(func(s *State) error {
 			s.RuntimeSeen = now()
 			if cycleErr != nil {

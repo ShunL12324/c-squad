@@ -50,6 +50,9 @@ func (s *State) reportCurrent(m *Message) bool {
 	if r.Kind == "recovery" {
 		return t.State != TaskPhaseDone && m.To == s.recoveryRecipient(t)
 	}
+	if r.Kind == "stall" {
+		return s.stallCurrent(m)
+	}
 	if r.Milestone != "" {
 		for _, ms := range t.Milestones {
 			if ms.Name == r.Milestone {
@@ -154,7 +157,7 @@ func (s *State) queueRecoveryNotices() {
 func (s *State) reportText(m *Message) string {
 	// A recovery notification carries behaviour the ledger snapshot cannot
 	// express (preserve gates, do not repeat completed work), so keep its text.
-	if m.Report == nil || m.Report.Question != "" || m.Report.Kind == "recovery" {
+	if m.Report == nil || m.Report.Question != "" || m.Report.Kind == "recovery" || m.Report.Kind == "stall" {
 		return m.Text
 	}
 	t := s.Tasks[m.Task]

@@ -451,6 +451,44 @@ Review and test evidence refer to a specific candidate commit. Master approves
 and performs the merge through C Squad. If you want a human checkpoint, tell
 Master to ask you before merging.
 
+### Possible-stall notices
+
+The team runtime tells Master when an in-progress task seems to have stopped
+moving: every member working on it (its owner and participants) has been
+observed quiet for 5 minutes in a row. Quiet means a finished turn, a failed
+turn, a crashed session or a stopped session. Master gets one message per
+stalled episode, naming the members and their states, and decides whether to
+wait, ask or recover. Nothing else happens: no task changes phase, no member
+is started or woken, and the task still needs the usual submit, review and
+approval.
+
+No notice is sent while the task is waiting for a known reason: a blocker (an
+unfinished dependency, a gate awaiting approval or an open question), a member
+waiting on Master or a native prompt, a member interrupted in Codex, or a
+message still on its way to a member who can receive it. Tasks that are ready,
+in review, awaiting merge or done are never checked, and neither is a task
+with no participants or a removed participant. Master's own
+`member interrupt NAME` also pauses a Codex member this way until its next
+prompt.
+
+The window restarts whenever a member works, whenever the task records
+progress, a milestone, a submission or a reopen, and whenever a member
+restarts. It also restarts if a member could not be observed (for example,
+Claude's session list was unavailable), if the runtime restarts or the team is
+resumed, or if more than two minutes pass between runtime passes (suspend, a
+stalled runtime or a clock jump). The window is fixed at 5 minutes. Reading a
+task with `task inspect` does not restart it. A notice that is no longer true
+when it would be delivered, because the member resumed, the task moved on or it
+started waiting, is marked superseded and never delivered. An undelivered notice
+is retried as the same message; it is not repeated because nobody acknowledged
+it.
+
+Limits: engines do not report background shells, subagents or scheduled
+wake-ups that continue after a turn ends, so such work can produce a notice
+while it is still running. The notice says no activity was observed, not that
+the work stopped. Claude has no interrupt hook, so a Claude member interrupted
+with Esc may still look busy and produce no notice.
+
 C Squad injects coordination instructions into native engine sessions. No extra
 collaboration skill or MCP server is required. Native MCP configuration and
 account authentication remain under each engine's control. The application uses

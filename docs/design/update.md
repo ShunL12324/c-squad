@@ -86,9 +86,19 @@ current build is compared with the pinned one. There is no override flag.
 | Both stable `X.Y.Z`, current older | Refused: "team T is pinned to csquad A; this is B, which is older. Use csquad A: PINNED-PATH resume T". |
 | Anything not comparable: either side not a stable `X.Y.Z` (`dev`, prerelease, `unknown`), or the same version with a different hash | Order unknown, so safety cannot be decided. On an interactive TTY csquad names both builds and hashes and asks `Pin team T to this build? [y/N]`; the default is no. Without a TTY it is refused. |
 
-The recovery contract is always the same: the team's own pinned build still
-exists in the store and can resume it (`PINNED-PATH resume T`), so a refusal
-never strands a team. Known limitation: a local build and a release that share
+The recovery contract:
+
+- **Pin intact:** run the pinned build, `PINNED-PATH resume T`, or use any
+  forwarded command.
+- **Pin missing, or its hash does not match**, for example because the store
+  was deleted by hand:
+  1. If a binary on hand has the same hash, csquad re-creates the pin from it
+     (§3).
+  2. Otherwise, `csquad repin T` with the current binary, subject to the table
+     above: a downgrade is refused, and a build that cannot be compared needs
+     TTY confirmation.
+  3. If the only binary available is older than the recorded version, there
+     is no automatic recovery. Install the matching or a newer version first. Known limitation: a local build and a release that share
 a version string cannot be ordered; csquad asks, it does not guess.
 
 **Every embedded path is regenerated after a re-pin.** A re-pin happens only
@@ -119,13 +129,17 @@ Every ledger write goes through `Store.update`, and every `update` transaction
 runs a **self check** against the `State.Executable` it has just read inside
 that same transaction:
 
-- The process's **identity** is computed once and cached: its resolved own
-  path and the SHA-256 of its running image. The image is read from
-  `/proc/self/exe` on Linux, or on macOS from the path it was started from,
-  after checking owner, mode and that it is a regular file and not a symlink.
-- The **comparison** runs in every transaction. For a pinned team, the cached
-  path must equal the transaction's `State.Executable`, and the cached hash
-  must equal the hash in that path.
+- The process's **identity** is the SHA-256 of its own running image,
+  computed once and cached. The image is read from `/proc/self/exe` on Linux,
+  or on macOS from the path it was started from, after checking owner, mode
+  and that it is a regular file and not a symlink.
+- The **comparison** runs in every transaction: for a pinned team, the cached
+  hash must equal the hash parsed from that transaction's `State.Executable`.
+- The path is deliberately not compared. Identical bytes are the same build,
+  whether they run from the store or from the install path. `new`, `start`,
+  `resume` and `repin` run from the install path, and after the transition
+  they are the pin by hash. Any other build has a different hash and is
+  refused in every transaction.
 
 A long-lived process therefore cannot keep writing after the pin changes. A
 runtime, runner or panel left from before a re-pin fails its next write.
@@ -149,9 +163,11 @@ the process is not yet the pin. This is not a command-wide bypass:
   Everything up to that point only reads the ledger, and the implementation
   moves any write it finds there to after the transition. Then a single
   **transition transaction** sets `Executable` to the new pin. It is marked by
-  an in-process token that only this code path creates, and it is the only
-  transaction the self check lets through with a mismatched pin. Every later
-  write in the same command runs as the new pin and passes normally.
+  an in-process token that only this code path creates. It is the only
+  transaction the self check lets through with a hash that does not match
+  yet. Every later write in the same command is by the new pin's own bytes,
+  so its hash matches and it passes normally. `start` needs no token: the
+  creator's hash is the pin's from the first write.
 - The one mixed write is `repin` stopping an **active** team whose pin is
   broken. The user confirms it, and it is limited to the stop transaction.
 
@@ -208,8 +224,9 @@ forwards these:
   `--name`, `--team-name`, `--team`/`--state-dir`, a bound
   `CSQUAD_STATE_DIR`, and the current project's last team. The original argv
   is forwarded unchanged, so the pinned binary resolves the same team again.
-- **Condition:** the team is pinned, the pinned path differs from the resolved
-  own executable, and the command is not in the exemption list.
+- **Condition:** the team is pinned, the pin's hash differs from the running
+  image's hash, and the command is not in the exemption list. Identical bytes
+  run from another path are not forwarded.
 - **Action:** verify the pinned file (§1), then `syscall.Exec` it with the
   same argv and environment, and the same cwd. The exit code is the pinned
   binary's own.
@@ -466,6 +483,8 @@ Re-pin, downgrade and runtime:
   - semver ordering is numeric (`0.10.0 > 0.9.0`).
 - Self check in every transaction: a process whose first write passed is
   refused after a re-pin changes `State.Executable`.
+- Self check by hash: a process whose image hash equals the pin can write when
+  started from a different path. One with a different hash is refused.
 - The transition token is honoured only inside resume/repin after reaping; a
   forged mismatch outside it is refused.
 - An exempt newer binary does not restart the pinned runtime; the runtime PID

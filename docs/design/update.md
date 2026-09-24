@@ -49,9 +49,12 @@ them. csquad provides it by giving each team its own copy of the binary.
 
 ### Recording the pin
 
-`State` gains `ExecutableSHA256` and `ExecutableVersion`. `Executable` holds
-the pinned path. A ledger without a hash is **unpinned**; every team created
-by ≤0.11.x is unpinned.
+There is no new ledger field. The pin is `State.Executable`, a field every
+released version already reads and writes back unchanged. A team is **pinned**
+when `Executable` is exactly `<store>/versions/<version>-<sha256>/csquad`. The
+version and the full expected hash are parsed from that content-addressed
+path, so an older binary rewriting the ledger cannot drop the pin record. Any
+other `Executable` (every team created by ≤0.11.x) is **unpinned**.
 
 Pinning happens only at these points:
 
@@ -67,15 +70,45 @@ The pin never changes while a team is active. `recover`, `member restart` and
 
 ### Verification
 
-Before csquad starts anything from the pinned path, it checks the file's owner,
-mode, "regular, not a symlink" and full SHA-256 against the ledger. The
-starting points are the runtime (`startRuntime`), a member launch, `recover`,
-and forwarding (§2).
+Verification is enforced at the write chokepoint, not only on forwarding.
+Every ledger write goes through `Store.update`. For a pinned team, the first
+`update` in each process runs a **self check** before writing:
 
-Hashing a roughly 10 MB binary costs about 10 ms, and it happens only at these
-points. Agents' own `csquad` calls go straight through the member PATH wrapper
-to the pinned path; the wrapper checks only `[ -x "$pinned" ]` and otherwise
-prints the recovery hint.
+1. The process's own resolved executable path equals `State.Executable`.
+2. The SHA-256 of its own running image equals the hash in that path. The
+   image is read from `/proc/self/exe` on Linux, or on macOS from the path it
+   was started from, after checking owner, mode and that it is a regular file
+   and not a symlink.
+
+If either check fails, the write is refused with the recovery hint and the
+ledger is untouched. The result is cached for the life of the process.
+
+This covers every writer the pinned file runs as: the member PATH wrapper
+(each agent `csquad` call), hooks, run-engine, runtime, navigation and panel
+keys, shutdown and hook-triggered sync. It also covers a current-version
+writer that was not forwarded, such as a code path missed in §2, which is
+refused instead of silently mixing versions.
+
+Exempt from the self check:
+- `start`, `resume` and `repin`, the three places that set the pin. They pin
+  the current binary first and then write.
+- Unpinned teams, which keep today's behaviour.
+
+Before csquad *starts* a process from the pinned path (`startRuntime`, member
+launch, `recover`) and before forwarding (§2), it verifies the target file the
+same way: owner, mode, regular file and hash. A broken pin therefore fails
+before anything is launched.
+
+Hashing a roughly 10 MB binary takes a few milliseconds, once per process.
+Implementation measures it on an agent CLI call; if the cost matters, the
+check is kept and the reason recorded. The member PATH wrapper also checks
+`[ -x "$pinned" ]`, only to print the recovery hint instead of a shell "not
+found".
+
+Trust boundary: the store protects against accidental change: replacement,
+deletion, partial copy, a corrupt entry or a wrong version. It does not
+protect against the same user deliberately editing the file, since that user
+could equally edit the ledger.
 
 ## 2. One writer version per team
 
@@ -185,7 +218,7 @@ the package manager's own metadata.
 | pnpm / yarn / bun global | `R` under `node_modules/csquad/` with a pnpm, `.bun` or yarn global layout | hint only: `pnpm add -g csquad@latest` or the matching command | — |
 | Homebrew | `R` = `C/csquad/<kegver>/bin/csquad`, `B = dirname(C)/bin/brew` is executable, and `B --cellar` resolves to `C`; this works for any prefix | `B upgrade <tap>/csquad`; `<tap>` comes from the keg's `INSTALL_RECEIPT.json` `source.tap`, falling back to `B list --full-name --formula` | refused if `C/csquad` is not writable (Homebrew refuses root) |
 | APT | `dpkg-query -S R` reports package `csquad`, and `apt-cache policy csquad` lists an origin under `shunl12324.github.io/c-squad/apt` | `sudo apt-get update`, then `sudo apt-get install --only-upgrade csquad` | yes |
-| Local `.deb` | owned by the `csquad` package, no csquad APT origin | hint only: download the `.deb` from GitHub Releases and run `sudo apt install ./csquad_VERSION_ARCH.deb`, or add the APT source; csquad downloads no binaries itself | — |
+| Local `.deb` | owned by the `csquad` package, no csquad APT origin | download and verify the release `.deb` (below), then `sudo apt-get install <tmpdir>/csquad_<ver>_<arch>.deb` | yes |
 | Manual / source | none of the above | hint only: latest version, `docs/install.md` link | — |
 
 Notes on the npm row:
@@ -197,6 +230,39 @@ Notes on the npm row:
   resets `PATH`, so `#!/usr/bin/env node` may not find nvm's node, and npm
   itself discourages sudo.
 
+### Local `.deb` download
+
+The user installed a `.deb` from GitHub Releases, so `update` follows the same
+source the installation docs point to.
+
+1. Resolve the release from the `releases/latest` API response: `tag_name`
+   must be a stable `vX.Y.Z`, newer than the installed version. The
+   architecture comes from `dpkg --print-architecture` and must be `amd64` or
+   `arm64`.
+2. Choose exactly two assets from that response by name:
+   `csquad_<X.Y.Z>_<arch>.deb` (goreleaser's `ConventionalFileName`) and
+   `checksums.txt`. Download them by their `browser_download_url`, over HTTPS
+   only, to a fresh 0700 temp directory.
+   - Size caps: 64 MiB for the `.deb`, 1 MiB for the checksums. Downloads
+     stop at the cap.
+   - Timeouts: 30 s to connect and read headers, 5 minutes overall.
+   - Redirects are followed only to `https` hosts.
+3. Verify:
+   - the SHA-256 of the `.deb` equals its line in `checksums.txt`;
+   - `dpkg-deb --field <file> Package Version Architecture` reports `csquad`,
+     `X.Y.Z` and `<arch>`.
+
+   Any mismatch deletes the files and aborts before sudo.
+4. Show the verified version, hash and the exact `sudo apt-get install
+   <abs path>` command, confirm, run it on an interactive TTY only, then
+   delete the temp directory.
+
+Trust boundary: GitHub's HTTPS and the release's `checksums.txt`, the same
+evidence a manual download relies on. The checksums file is not separately
+signed, so it protects against a truncated or wrong download but not against a
+compromised release. The docs say so and recommend the APT source, which is
+signed, for signature verification.
+
 ### Running the command
 
 - Commands run with argv only, and stdin, stdout and stderr connected to the
@@ -207,8 +273,17 @@ Notes on the npm row:
 
 ### Afterwards
 
-- `update` runs `R version` again to report the installed version. `R` is the
-  original path, now replaced.
+The upgrade may delete `R`: `brew upgrade` removes the old keg by default. So
+`update` re-resolves the channel's stable entry and runs `<entry> version`:
+
+| Channel | Entry |
+|---|---|
+| npm | `P/lib/node_modules/csquad/native/<os>-<arch>/csquad` |
+| Homebrew | `dirname(C)/opt/csquad/bin/csquad`; the opt link follows the linked keg, which is confirmed with `B --prefix csquad` |
+| APT and local `.deb` | the file `dpkg-query -L csquad` lists under `/usr/bin` |
+
+If the entry is missing or still reports the old version, `update` reports
+that instead of claiming success.
 - It lists the teams it found with their pinned versions:
   `team X: csquad 0.12.0 (pinned) — resume to move to 0.13.0`.
 
@@ -219,14 +294,25 @@ Notes on the npm row:
   discovered completely. Old `versions/` entries stay until removed by hand;
   the docs say so, and `update --check` prints the directory's size.
 
-## 6. Compatibility
+## 6. Compatibility and the downgrade boundary
 
-- Ledger: new optional fields `ExecutableSHA256` and `ExecutableVersion`, and
-  `stateVersion` stays 3.
-  - An older binary that rewrites the ledger drops them, so the team becomes
-    unpinned, which is safe and is pinned again at the next resume.
-  - An older binary that resumes the team re-points `Executable` at itself.
-    That is a downgrade and behaves as today.
+- No new ledger field, and `stateVersion` stays 3. The pin lives in
+  `Executable`, which older versions preserve.
+- **Pinning protects a team only against a newer csquad.** It does not protect
+  against an older one.
+- **Running an older csquad against a pinned team is not safe and not
+  supported.** Versions before pinning neither forward nor run the self check,
+  so an older binary on PATH writes the ledger directly as a second writer
+  version.
+  - It drops fields it does not know, for example a `task cancel` record
+    (reason, actor, time).
+  - It may act on state it does not understand.
+  - If it resumes the team, it re-points `Executable` at itself, which
+    unpins the team.
+
+  csquad cannot prevent this. The docs say: do not use an older csquad on a
+  team pinned by a newer one; to go back, stop the team and resume it with the
+  older version, accepting those losses.
 - runtimeProtocol is bumped, so a runtime from an older version is replaced on
   upgrade.
 - The member PATH wrapper script gains only the `-x` check.
@@ -251,7 +337,7 @@ Isolation:
 
 - Start a team with a built binary, then overwrite the source file in place
   and delete it. The runtime, a member launch, recover and hooks still run the
-  pinned build (reported by `version --json`).
+  pinned build (reported by `version`).
 - A new `csquad` on PATH forwards `board`, `task progress` and `stop` to the
   pinned build.
 - The loop guard triggers.
@@ -261,6 +347,10 @@ Missing or corrupt pin:
 
 - Forwarding, launch and runtime start fail with the recovery hint and write
   nothing (ledger bytes unchanged).
+- Self check: a pinned team written by a binary at another path, or by an image
+  whose hash differs (a test build with a different embedded marker), is
+  refused before the ledger changes. This covers a hook, a wrapper call and an
+  unforwarded CLI path.
 - The identical-hash self-heal works.
 - `repin` works on an inactive team and on an active team with `--yes`, and
   is refused when the pin is intact and in member sessions.
@@ -285,6 +375,13 @@ Old teams:
 - Root rules: npm prints `sudo`, and Homebrew refuses a non-writable Cellar.
 - TTY and `--yes` rules.
 - Refused inside a member session.
+- Local `.deb`: a fake HTTPS release server (`httptest` TLS) serves the API
+  response, the `.deb` and checksums; a fake `dpkg-deb` reports the fields.
+  Covered: checksum mismatch, field or version mismatch, oversize, timeout,
+  wrong architecture, not newer, non-TTY and non-confirmation. The files are
+  removed on every path.
+- Post-update entry resolution: the Homebrew old keg is deleted by the fake
+  `brew`, and the new version is read from `opt`.
 - `--check` runs no install (the fakes record calls).
 - Failure paths: network error, fake exits non-zero, unknown channel hints.
 

@@ -74,14 +74,22 @@ The pin never changes while a team is active. `recover`, `member restart` and
 `member replace` keep it.
 
 **No downgrade by accident.** `resume` and `repin` pin the *current* binary.
-If its version is older than the team's pinned version (semantic version from
-the path), they refuse. Several installs can coexist (nvm npm, Homebrew, a stray
-old file on PATH), so this would otherwise be a silent downgrade that drops
-newer ledger fields. `--downgrade` accepts it explicitly. `repin` checks this
-before it stops anything.
+Several installs can coexist (nvm npm, Homebrew, a stray old file on PATH), so
+a re-pin could otherwise silently downgrade a team and drop newer ledger
+fields. Before any change, and for `repin` before it stops anything, the
+current build is compared with the pinned one. There is no override flag.
 
-Equal versions with different hashes (local builds) are allowed; csquad prints
-the old and new hash.
+| Current vs pinned | Decision |
+|---|---|
+| Same hash | Not a version change; allowed. |
+| Both stable `X.Y.Z`, current newer (numeric semver order, never string order) | Allowed: this is the upgrade. |
+| Both stable `X.Y.Z`, current older | Refused: "team T is pinned to csquad A; this is B, which is older. Use csquad A: PINNED-PATH resume T". |
+| Anything not comparable: either side not a stable `X.Y.Z` (`dev`, prerelease, `unknown`), or the same version with a different hash | Order unknown, so safety cannot be decided. On an interactive TTY csquad names both builds and hashes and asks `Pin team T to this build? [y/N]`; the default is no. Without a TTY it is refused. |
+
+The recovery contract is always the same: the team's own pinned build still
+exists in the store and can resume it (`PINNED-PATH resume T`), so a refusal
+never strands a team. Known limitation: a local build and a release that share
+a version string cannot be ordered; csquad asks, it does not guess.
 
 **Every embedded path is regenerated after a re-pin.** A re-pin happens only
 while the team is stopped: `resume` and `repin`, after stopping. Stopping ends
@@ -107,17 +115,23 @@ writing as a second version.
 ### Verification
 
 Verification is enforced at the write chokepoint, not only on forwarding.
-Every ledger write goes through `Store.update`. For a pinned team, the first
-`update` in each process runs a **self check** before writing:
+Every ledger write goes through `Store.update`, and every `update` transaction
+runs a **self check** against the `State.Executable` it has just read inside
+that same transaction:
 
-1. The process's own resolved executable path equals `State.Executable`.
-2. The SHA-256 of its own running image equals the hash in that path. The
-   image is read from `/proc/self/exe` on Linux, or on macOS from the path it
-   was started from, after checking owner, mode and that it is a regular file
-   and not a symlink.
+- The process's **identity** is computed once and cached: its resolved own
+  path and the SHA-256 of its running image. The image is read from
+  `/proc/self/exe` on Linux, or on macOS from the path it was started from,
+  after checking owner, mode and that it is a regular file and not a symlink.
+- The **comparison** runs in every transaction. For a pinned team, the cached
+  path must equal the transaction's `State.Executable`, and the cached hash
+  must equal the hash in that path.
 
-If either check fails, the write is refused with the recovery hint and the
-ledger is untouched. The result is cached for the life of the process.
+A long-lived process therefore cannot keep writing after the pin changes. A
+runtime, runner or panel left from before a re-pin fails its next write.
+
+On failure the transaction is aborted with the recovery hint and the ledger is
+untouched.
 
 This covers every writer the pinned file runs as: the member PATH wrapper
 (each agent `csquad` call), hooks, run-engine, runtime, navigation and panel
@@ -125,10 +139,23 @@ keys, shutdown and hook-triggered sync. It also covers a current-version
 writer that was not forwarded, such as a code path missed in §2, which is
 refused instead of silently mixing versions.
 
-Exempt from the self check:
-- `start`, `resume` and `repin`, the three places that set the pin. They pin
-  the current binary first and then write.
-- Unpinned teams, which keep today's behaviour.
+**The pin transition.** Changing the pin is the only write that may run while
+the process is not yet the pin. This is not a command-wide bypass:
+
+- `start` creates the ledger with the pin in its first transaction, so the
+  creator is the pin from the first write.
+- `resume` and `repin` hold `team-lifecycle`, confirm the team is inactive
+  (`repin` first stops an active team, see §3), and reap the old processes.
+  Everything up to that point only reads the ledger, and the implementation
+  moves any write it finds there to after the transition. Then a single
+  **transition transaction** sets `Executable` to the new pin. It is marked by
+  an in-process token that only this code path creates, and it is the only
+  transaction the self check lets through with a mismatched pin. Every later
+  write in the same command runs as the new pin and passes normally.
+- The one mixed write is `repin` stopping an **active** team whose pin is
+  broken. The user confirms it, and it is limited to the stop transaction.
+
+Unpinned teams keep today's behaviour, with no self check.
 
 Before csquad *starts* a process from the pinned path (`startRuntime`, member
 launch, `recover`) and before forwarding (§2), it verifies the target file the
@@ -148,13 +175,19 @@ could equally edit the ledger.
 
 **Only the pinned binary drives a pinned team's runtime.** `startRuntime`
 kills and relaunches the runtime when the protocol differs from the caller's
-own constant. `startRuntime` and `syncMessages` therefore run the self check
-first, and on a pinned team they return without effect when the caller is not
-the pin. Otherwise an unforwarded newer binary would restart the pinned
-runtime on every call, a restart loop.
+own constant. These are tmux and process operations, not ledger writes, so the
+`Store.update` check does not cover them. `startRuntime` and `syncMessages`
+therefore compare the caller's identity with the pin first, and on a pinned
+team they return without effect when the caller is not the pin. Otherwise an
+unforwarded newer binary would restart the pinned runtime on every call, a
+restart loop. The same guard applies to every tmux kill of team sessions
+outside the transition.
 
 Exempt commands never reach them: `list`, `version`, `doctor`, `config`,
-`completion`, `usage` and `update` only read ledgers. The exceptions are
+`completion`, `usage` and `update` only read ledgers. Their read path is
+`st.read`, which normalizes an in-memory copy and never persists. The
+implementation keeps that true and adds a test that these commands leave a
+pinned team's ledger bytes and tmux sessions unchanged. The exceptions are
 `resume` and `repin`, which re-pin first and only then start or stop anything.
 The implementation audits every call site, and a test checks it.
 
@@ -424,8 +457,17 @@ Re-pin, downgrade and runtime:
   generated hook command, the wrapper, the runtime and member session
   commands, and the shutdown hook.
 - A binding left on the old pin is refused by the self check.
-- `resume` and `repin` refuse an older current binary without `--downgrade`;
-  equal version with a different hash is allowed.
+- Version decision table:
+  - stable newer is allowed;
+  - stable older is refused, with the pinned-path hint;
+  - same hash is allowed;
+  - `dev`, prerelease or same version with a different hash asks on a TTY
+    (default no) and is refused without a TTY;
+  - semver ordering is numeric (`0.10.0 > 0.9.0`).
+- Self check in every transaction: a process whose first write passed is
+  refused after a re-pin changes `State.Executable`.
+- The transition token is honoured only inside resume/repin after reaping; a
+  forged mismatch outside it is refused.
 - An exempt newer binary does not restart the pinned runtime; the runtime PID
   is unchanged across calls.
 - `noexec` store: a fake exec failure gives the clear error, and

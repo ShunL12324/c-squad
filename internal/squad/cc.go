@@ -36,6 +36,7 @@ func (s *State) ccNotices(actor string, t *Task, cc []string) {
 		}
 		m := s.message(actor, id, t.ID, ccNotice(t), "")
 		m.RequestKey = key
+		m.Report = &ReportReference{Kind: "cc", Owner: t.Owner}
 		sent = append(sent, id)
 	}
 	if len(sent) > 0 {

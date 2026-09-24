@@ -8,7 +8,7 @@ Commands (COMMAND --help lists all flags):
   question request --task TASK --text QUESTION
 {{- if eq .Member "master"}}
   task create TITLE --description TEXT --acceptance TEXT --request-id UNIQUE [--code] [--milestones plan,tests] [--gates plan] [--deps T1,T2] [--dispatch assigned|open] [--setup TEXT]
-  task assign TASK --owner NAME [--to NAME,NAME]; task gate TASK --name NAME; task approve TASK; task merge TASK; task reopen TASK
+  task assign TASK --owner NAME [--to NAME,NAME]; task gate TASK --name NAME; task approve TASK; task merge TASK; task reopen TASK; task cancel TASK --reason TEXT
   member add NAME --instructions RESPONSIBILITIES [--profile NAME] [--task TASK] [--cwd DIRECTORY] [--color COLOR]
   member list|profiles; member inspect|interrupt|remove NAME; member restart|replace NAME [--cwd DIRECTORY] [--reprofile] [--profile NAME]
   message broadcast --text TEXT --task TASK (or --all); question list; question answer QUESTION --text ANSWER

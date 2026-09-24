@@ -17,7 +17,9 @@ release history; earlier releases remain available on
   A task that is preparing its workspace or merging cannot be cancelled until
   that finishes or is aborted. An older csquad reading a ledger with a
   cancelled task treats it as unfinished, and a running runtime from an older
-  version is replaced after the upgrade.
+  version is replaced after the upgrade. Master's instructions list the command
+  and say that a cancelled task satisfies no dependency; running sessions
+  receive them at their next eligible hook.
 - Master is told once when an in-progress task seems stalled: every member on
   it has been observed quiet (a finished, failed, crashed or stopped turn) for
   5 minutes, with no blocker, open question, pending gate or deliverable

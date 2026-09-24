@@ -12,7 +12,7 @@ import (
 
 // Revision invalidates the hook's once-per-session context marker when the
 // embedded policy changes. It does not change member identity or permissions.
-const Revision = "6"
+const Revision = "7"
 
 //go:embed templates/*.tmpl
 var files embed.FS

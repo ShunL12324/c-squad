@@ -51,7 +51,8 @@ Routine uncertainty is distinguished from missing authority or an actual blocker
 
 Master reviews the current candidate SHA and consolidates findings instead of
 answering every update. Workers retain their ban on asking the human directly,
-merging, or removing worktrees. Master is guided to inspect
+merging into the target branch, or removing worktrees. Owners may integrate
+assigned branches within their own task worktree to prepare a candidate. Master is guided to inspect
 `task clean-worktree TASK --dry-run` after merging and explicitly clean only
 when safe, preserving ledger/evidence and branches. It must retain a worktree
 with uncommitted, untracked or ignored files, or one still used by a member.

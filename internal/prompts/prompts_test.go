@@ -99,7 +99,7 @@ var masterOnly = []string{
 
 var workerOnly = []string{
 	"task claim TASK (only --dispatch open tasks)", "Workers MUST NOT ask the human",
-	"use question request and end your turn", "do not enter plan mode", "Do not merge or remove worktrees",
+	"use question request and end your turn", "do not enter plan mode", "Do not merge into the target branch",
 }
 
 func TestStartupAndRecoverySharePolicyAndRoleBoundaries(t *testing.T) {

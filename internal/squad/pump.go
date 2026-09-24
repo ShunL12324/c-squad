@@ -70,7 +70,7 @@ func (st *Store) runRuntime() error {
 		if err := st.checkMaster(); err != nil {
 			return err
 		}
-		cycleErr := errors.Join(st.syncMessages(), st.reconcile())
+		cycleErr := errors.Join(st.expireStall(&stall), st.syncMessages(), st.reconcile())
 		for _, t := range s.Tasks {
 			if t.State == TaskPhasePreparing {
 				cycleErr = errors.Join(cycleErr, st.prepareWorkspace(t.ID))

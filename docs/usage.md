@@ -475,19 +475,26 @@ The window restarts whenever a member works, whenever the task records
 progress, a milestone, a submission or a reopen, and whenever a member
 restarts. It also restarts if a member could not be observed (for example,
 Claude's session list was unavailable), if the runtime restarts or the team is
-resumed, or if more than two minutes pass between runtime passes (suspend, a
-stalled runtime or a clock jump). The window is fixed at 5 minutes. Reading a
-task with `task inspect` does not restart it. A notice that is no longer true
-when it would be delivered, because the member resumed, the task moved on or it
-started waiting, is marked superseded and never delivered. An undelivered notice
-is retried as the same message; it is not repeated because nobody acknowledged
-it.
+resumed, or if a runtime pass stalls so that more than two minutes pass between
+passes. Time is measured on a monotonic clock, so system sleep and changes to
+the wall clock neither count as quiet time nor restart the window. The window
+is fixed at 5 minutes. Reading a task with `task inspect` does not restart it.
+
+A notice is delivered only while it still holds. It is marked superseded and
+never delivered if, before delivery, the member resumed, the task moved on or
+started waiting, or the runtime could no longer confirm the stall because an
+observation failed or the runtime restarted. A superseded notice does not count:
+if the same episode is later observed quiet for a whole window again, Master is
+told then. A notice that cannot be delivered yet is retried as the same message,
+and once delivered an episode is not repeated because nobody acknowledged it.
 
 Limits: engines do not report background shells, subagents or scheduled
 wake-ups that continue after a turn ends, so such work can produce a notice
 while it is still running. The notice says no activity was observed, not that
 the work stopped. Claude has no interrupt hook, so a Claude member interrupted
-with Esc may still look busy and produce no notice.
+with Esc may still look busy and produce no notice. A `csquad sync` run between
+two runtime passes can deliver a waiting notice on the previous pass's
+observation, about two seconds old.
 
 C Squad injects coordination instructions into native engine sessions. No extra
 collaboration skill or MCP server is required. Native MCP configuration and

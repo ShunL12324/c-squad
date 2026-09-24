@@ -374,3 +374,89 @@ func TestObserveReportsOnlyVerifiedMembers(t *testing.T) {
 		t.Fatal("a crashed member is a known fact")
 	}
 }
+
+// A task that changes between the pass that found its window expired and the
+// transaction that queues the notice is a new episode: it gets no notice until
+// it has been quiet for a window of its own.
+func TestStallNoticeRequiresTheTimedEpisode(t *testing.T) {
+	st := stallStore(t)
+	var w stallTimer
+	passes(t, st, &w, 0, stallWindow-2*time.Second, allKnown)
+	s, err := st.read()
+	must(t, err)
+	due := w.due(s, allKnown, time.Unix(1e9, 0).Add(stallWindow))
+	if len(due) != 1 || due[0].task != "T1" {
+		t.Fatalf("due = %+v", due)
+	}
+	// Master records progress on the task while its members stay idle.
+	must(t, taskCommand(st, "master", []string{"progress", "T1"}, options{"text": "reassessing"}))
+	queued, err := st.notifyStall(due, allKnown)
+	must(t, err)
+	if queued || len(stallNotices(t, st)) != 0 {
+		t.Fatal("the changed episode was notified without its own window")
+	}
+	passes(t, st, &w, stallWindow+2*time.Second, 2*stallWindow, allKnown)
+	if len(stallNotices(t, st)) != 0 {
+		t.Fatal("the new episode was notified early")
+	}
+	passes(t, st, &w, 2*stallWindow+2*time.Second, 2*stallWindow+6*time.Second, allKnown)
+	if len(stallNotices(t, st)) != 1 {
+		t.Fatal("the new episode was not notified after its window")
+	}
+}
+
+// A queued notice is only delivered while the runtime still observes the
+// stall. If observation fails, a member works briefly, or a new runtime has
+// observed nothing yet, it is superseded before delivery, and a later fully
+// observed window of the same episode can notify again. A delivered notice is
+// never repeated.
+func TestStallNoticeNeedsCurrentObservationToDeliver(t *testing.T) {
+	for name, interrupt := range map[string]func(t *testing.T, st *Store, w *stallTimer, at time.Duration){
+		"failed observation": func(t *testing.T, st *Store, w *stallTimer, at time.Duration) {
+			must(t, st.checkStall(w, allKnown, os.ErrDeadlineExceeded, time.Unix(1e9, 0).Add(at)))
+		},
+		"unobserved member": func(t *testing.T, st *Store, w *stallTimer, at time.Duration) {
+			pass(t, st, w, at, map[string]bool{"master": true, "b": true})
+		},
+		"brief work without progress": func(t *testing.T, st *Store, w *stallTimer, at time.Duration) {
+			edit(t, st, func(s *State) { s.Members["a"].State = MemberStateWorking })
+			pass(t, st, w, at, allKnown)
+			edit(t, st, func(s *State) { s.Members["a"].State = MemberStateIdle })
+		},
+		"runtime restart": func(t *testing.T, st *Store, w *stallTimer, at time.Duration) {
+			*w = stallTimer{}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			st := stallStore(t)
+			var w stallTimer
+			passes(t, st, &w, 0, stallWindow, allKnown)
+			must(t, st.expireStall(&w))
+			if n := stallNotices(t, st); len(n) != 1 || n[0].State != DeliveryStatePending {
+				t.Fatalf("a backed notice was expired: %+v", n)
+			}
+			interrupt(t, st, &w, stallWindow+2*time.Second)
+			must(t, st.expireStall(&w))
+			n := stallNotices(t, st)
+			if len(n) != 1 || n[0].State != DeliveryStateSuperseded {
+				t.Fatalf("notice after %s: %+v", name, n)
+			}
+			must(t, st.deliver(n[0].ID))
+			if stallNotices(t, st)[0].State != DeliveryStateSuperseded {
+				t.Fatal("an unconfirmed notice was transported")
+			}
+			// The same episode, observed quiet for a whole new window.
+			passes(t, st, &w, stallWindow+4*time.Second, 2*stallWindow+6*time.Second, allKnown)
+			if n = stallNotices(t, st); len(n) != 2 || n[1].State != DeliveryStatePending {
+				t.Fatalf("a superseded notice swallowed the next window: %+v", n)
+			}
+			// Once delivered, the episode is never notified again.
+			edit(t, st, func(s *State) { s.Messages[len(s.Messages)-1].State = DeliveryStateSent })
+			interrupt(t, st, &w, 2*stallWindow+8*time.Second)
+			passes(t, st, &w, 2*stallWindow+10*time.Second, 4*stallWindow, allKnown)
+			if n = stallNotices(t, st); len(n) != 2 {
+				t.Fatalf("a delivered episode was notified again: %d notices", len(n))
+			}
+		})
+	}
+}

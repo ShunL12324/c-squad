@@ -20,8 +20,10 @@ var stallWindow = 5 * time.Minute
 // stallGap is the longest pause between the starts of two runtime passes that
 // still counts as continuous observation. A pass normally takes about two
 // seconds; the headroom covers slow engine helpers with several members. A
-// longer gap (suspend, a blocked runtime, a clock jump) proves nothing about
-// the time in between, so every window restarts.
+// longer gap means the runtime itself stalled, which proves nothing about the
+// time in between, so every window restarts. Times are monotonic: system sleep
+// and wall-clock changes do not advance them, and the backwards check is only
+// a guard.
 var stallGap = 2 * time.Minute
 
 // stallKeyPrefix starts with a character member IDs cannot contain, so a
@@ -40,6 +42,12 @@ type stallTimer struct {
 type stallStart struct {
 	fingerprint string
 	at          time.Time
+}
+
+// stallDue is a task whose episode, identified by fingerprint, has been
+// observed quiet for a whole window.
+type stallDue struct {
+	task, fingerprint string
 }
 
 // stallParticipants is the task's owner and participants without duplicates.
@@ -139,7 +147,7 @@ func stallEligible(s *State, t *Task, known map[string]bool) bool {
 // due advances the timers with one pass of observations and returns the tasks
 // whose episode has been quiet for a whole window. known is nil when this
 // pass observed nothing reliably, which restarts every window.
-func (w *stallTimer) due(s *State, known map[string]bool, now time.Time) []string {
+func (w *stallTimer) due(s *State, known map[string]bool, now time.Time) []stallDue {
 	if w.since == nil {
 		w.since = map[string]stallStart{}
 	}
@@ -149,7 +157,7 @@ func (w *stallTimer) due(s *State, known map[string]bool, now time.Time) []strin
 		clear(w.since)
 		return nil
 	}
-	var out []string
+	var out []stallDue
 	for id, t := range s.Tasks {
 		if !stallEligible(s, t, known) {
 			delete(w.since, id)
@@ -162,7 +170,7 @@ func (w *stallTimer) due(s *State, known map[string]bool, now time.Time) []strin
 			continue
 		}
 		if now.Sub(start.at) >= stallWindow {
-			out = append(out, id)
+			out = append(out, stallDue{id, fp})
 		}
 	}
 	for id := range w.since {
@@ -170,26 +178,38 @@ func (w *stallTimer) due(s *State, known map[string]bool, now time.Time) []strin
 			delete(w.since, id)
 		}
 	}
-	sort.Strings(out)
+	sort.Slice(out, func(i, j int) bool { return out[i].task < out[j].task })
 	return out
+}
+
+// backs reports whether this runtime still holds a full observed quiet window
+// for the episode a stall notice was queued for.
+func (w *stallTimer) backs(task, fingerprint string) bool {
+	start, ok := w.since[task]
+	return ok && start.fingerprint == fingerprint && w.last.Sub(start.at) >= stallWindow
 }
 
 // notifyStall re-checks each due task inside one transaction and queues at
 // most one notice per episode. The message's stable RequestKey is the
 // deduplication record, written in the same update, so a crash either loses
 // both or keeps both, and retries reuse the same message.
-func (st *Store) notifyStall(ids []string, known map[string]bool) (bool, error) {
+func (st *Store) notifyStall(due []stallDue, known map[string]bool) (bool, error) {
 	queued := false
 	err := st.update(func(s *State) error {
-		for _, id := range ids {
-			t := s.Tasks[id]
-			if t == nil || !stallEligible(s, t, known) {
+		for _, d := range due {
+			t := s.Tasks[d.task]
+			// The window was measured for one episode. If the task changed
+			// since that snapshot, the new episode has not been quiet for a
+			// window yet; the next pass starts timing it.
+			if t == nil || stallFingerprint(s, t) != d.fingerprint || !stallEligible(s, t, known) {
 				continue
 			}
 			key := stallKey(s, t)
 			exists := false
 			for _, m := range s.Messages {
-				if m.RequestKey == key {
+				// A superseded notice was never delivered; it must not stop a
+				// later, fully observed window of the same episode.
+				if m.RequestKey == key && m.State != DeliveryStateSuperseded {
 					exists = true
 					break
 				}
@@ -222,6 +242,42 @@ func stallText(s *State, t *Task) string {
 func (s *State) stallCurrent(m *Message) bool {
 	t := s.Tasks[m.Task]
 	return t != nil && m.RequestKey == stallKey(s, t) && stallEligible(s, t, nil)
+}
+
+// expireStall supersedes queued stall notices this runtime can no longer back
+// with a full observed window: the ledger check at delivery cannot see that
+// observation failed or that a member worked in between. It runs before each
+// pass delivers messages, so a restarted runtime, which has observed nothing
+// yet, never delivers a notice queued by its predecessor. A notice already in
+// transport is left alone.
+func (st *Store) expireStall(w *stallTimer) error {
+	s, err := st.read()
+	if err != nil {
+		return err
+	}
+	stale := false
+	for _, m := range s.Messages {
+		if m.State == DeliveryStatePending && m.Report != nil && m.Report.Kind == "stall" && !w.backs(m.Task, stallKeyFingerprint(m.RequestKey)) {
+			stale = true
+			break
+		}
+	}
+	if !stale {
+		return nil
+	}
+	return st.update(func(s *State) error {
+		for _, m := range s.Messages {
+			if m.State == DeliveryStatePending && m.Report != nil && m.Report.Kind == "stall" && !w.backs(m.Task, stallKeyFingerprint(m.RequestKey)) {
+				m.State = DeliveryStateSuperseded
+				m.Error = "no longer confirmed by current observation; retained for history"
+			}
+		}
+		return nil
+	})
+}
+
+func stallKeyFingerprint(key string) string {
+	return key[strings.LastIndex(key, ":")+1:]
 }
 
 // checkStall runs once per runtime pass, after observation, on a fresh

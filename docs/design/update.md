@@ -1,6 +1,6 @@
 # Design: team version pinning and `csquad update`
 
-Status: design for review (T224). Nothing here is implemented yet.
+Status: implemented (T224). The implementation notes at the end list where the code refines this design.
 
 ## Goal
 
@@ -527,3 +527,34 @@ Old teams:
 - Failure paths: network error, fake exits non-zero, unknown channel hints.
 
 Finally, `make check` and the applicable packaging tests.
+
+## 8. Implementation notes
+
+- **`repin` on a running team** moves the pin first, in the transition
+  transaction, and only then stops the team. The stop is therefore written by
+  the new pin, and the one confirmed mixed write described in §3 does not
+  happen.
+- **`team remove`** is not forwarded. It runs only on a stopped team, deletes
+  that team's files and never writes the ledger, so the self check has
+  nothing to guard.
+- **Other teams at `start`.** When `new`/`start` cleans up interrupted teams
+  in the same project, it skips teams pinned to another build and says so;
+  their own build cleans them up.
+- **Hash cost**, measured on the WSL2 development host: hashing a 16.7 MB
+  csquad binary takes 41 to 46 ms. It runs once per process: on the first
+  ledger transaction, and on forwarding. Long-lived processes (the runtime,
+  runners) pay it once.
+- **Tests**:
+  - `internal/pin`: store security, copy independence, idempotence,
+    concurrency, repair, and noexec and replacement probes.
+  - `internal/squad/pinning_test.go`:
+    - self check in every transaction, the runtime and delivery guard, and
+      the downgrade table;
+    - repin, and forwarding across six ways of selecting a team, plus exempt
+      commands, a loop, and a damaged or missing pin;
+    - `doctor`;
+    - a real two-build team: the install is replaced and deleted, resume
+      re-pins and every generated entry point moves, and an older build is
+      refused.
+  - `internal/update`: every channel's exact argv, with fake tools on PATH
+    and a fake TLS release server. Nothing installs or upgrades anything real.

@@ -31,7 +31,8 @@ sudo apt install tmux procps git
 ```
 
 Install and sign in to your chosen agent CLI separately. Update with
-`npm install -g csquad@latest`; remove with `npm uninstall -g csquad`.
+`csquad update` (see [Updating](#updating)); remove with
+`npm uninstall -g csquad`.
 Use one installation channel to avoid competing executables on PATH.
 npm enables no completion by itself. Run `csquad completion install` once and
 apply the line it prints; see
@@ -135,9 +136,66 @@ Installing a package does not require an engine login and does not create user
 configuration. `doctor` checks executable availability, not authentication or
 account quota. `--help` and completion generation work without engine binaries.
 
-Stop teams before upgrading. Uninstalling the program preserves user
-configuration and project `.csquad/` recovery data. Delete those separately only
-when you no longer need them.
+Uninstalling the program preserves user configuration and project `.csquad/`
+recovery data. Delete those separately only when you no longer need them.
+
+## Updating
+
+```sh
+csquad update --check   # installed version, channel and latest release; installs nothing
+csquad update           # shows the exact commands, asks, then runs them
+```
+
+`csquad update` upgrades through the channel that installed csquad. It works
+this out from the real path of the running binary and the package manager's
+own records:
+
+| Installed with | `update` runs |
+|---|---|
+| npm (any global prefix, including nvm) | `npm install --global --prefix PREFIX csquad@latest`. If that prefix is not writable, it only prints the `sudo` command. |
+| Homebrew (any prefix) | `PREFIX/bin/brew upgrade TAP/csquad`, using the brew that owns the Cellar. |
+| The APT source | `sudo apt-get update`, then `sudo apt-get install --only-upgrade csquad`. `apt-get update` refreshes every source on the system. |
+| A local `.deb` | Downloads the latest release's `.deb` and `checksums.txt` over HTTPS, verifies the checksum and the package's name, version and architecture, then runs `sudo apt-get install` on it. The checksum file is not signed, so this is weaker than the signed APT source. |
+| An archive, a source build, pnpm, yarn or bun | Nothing. It prints the command to use instead. |
+
+- `sudo` runs only in an interactive terminal, after you confirm.
+- `--yes` skips the question for the commands that need no `sudo`.
+- `update` refuses to run inside a team member's session.
+- `--check` and the local `.deb` path query GitHub. If GitHub cannot be
+  reached, or its limit of 60 unauthenticated requests per hour is used up,
+  `update` says it was unable to query the latest release.
+
+### Running teams keep their version
+
+Installing a new csquad no longer changes a running team:
+
+- Each team runs a private copy of the csquad build it started with, stored
+  under `~/.local/share/csquad/versions/` (`$XDG_DATA_HOME` is honoured). Set
+  `CSQUAD_VERSIONS_DIR` to use another directory, for example when your home
+  is mounted `noexec`.
+- A newer `csquad` on PATH hands team commands to the team's own copy.
+- `csquad resume` moves a stopped team to the installed version. It refuses
+  an older release. It asks first when the two builds cannot be ordered, such
+  as development builds or two builds with the same version.
+- If a team's copy is missing or damaged, commands for that team stop with an
+  error, and `csquad repin TEAM` is the way out. It restores the copy from an
+  identical build, or moves the team to the installed build, stopping it
+  first if it is running.
+- Old copies are not deleted automatically, because csquad cannot find teams
+  in every project. `csquad update --check` shows how much space they use;
+  delete unused ones by hand.
+
+**First upgrade to this version.** Teams started by csquad 0.11 or earlier
+have no private copy, so an upgrade reaches them as soon as it is installed.
+Stop them first, upgrade, then resume them; from then on upgrades leave
+running teams alone.
+
+**Keep one installation.** A csquad earlier on PATH that predates pinning
+still writes teams directly. The same goes for any older csquad: never run it
+against a team a newer one has pinned. It does not understand newer records,
+drops fields it does not know, such as a task's cancellation reason, and a
+resume by it takes the team back to itself. `csquad doctor` lists every csquad
+on PATH and warns when there is more than one.
 
 ## Building from source
 

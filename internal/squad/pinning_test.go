@@ -416,3 +416,21 @@ func TestPinnedTeamSurvivesReplacementAndResumeRepins(t *testing.T) {
 		t.Fatal("a refused downgrade changed the pin")
 	}
 }
+
+// doctor names every csquad on PATH and warns when there is more than one.
+func TestDoctorListsEveryCsquadOnPath(t *testing.T) {
+	first, second := t.TempDir(), t.TempDir()
+	for dir, version := range map[string]string{first: "0.12.0", second: "0.10.0"} {
+		must(t, os.WriteFile(filepath.Join(dir, "csquad"), []byte("#!/bin/sh\necho 'csquad "+version+"'\n"), 0700))
+	}
+	t.Setenv("PATH", first+string(os.PathListSeparator)+second)
+	got := csquadInstalls()
+	found := got["on_path"].([]map[string]string)
+	if len(found) != 2 || found[0]["version"] != "csquad 0.12.0" || found[1]["version"] != "csquad 0.10.0" || got["warning"] == nil {
+		t.Fatalf("installs: %+v", got)
+	}
+	t.Setenv("PATH", first)
+	if got = csquadInstalls(); got["warning"] != nil {
+		t.Fatalf("one install warned: %+v", got)
+	}
+}

@@ -8,6 +8,23 @@ release history; earlier releases remain available on
 
 ### Added
 
+- `csquad update` upgrades csquad through the channel that installed it: npm
+  (any global prefix, including nvm), Homebrew (any prefix), the APT source,
+  or a local `.deb`, which it downloads from the latest release and verifies
+  against the release checksum and its package fields before `sudo apt-get
+  install`. Archives and other installs get the command to run instead.
+  `update` shows the commands and asks first, runs `sudo` only in an
+  interactive terminal, refuses member sessions, and `--check` installs
+  nothing.
+- Installing a new csquad no longer changes running teams. Each team runs a
+  private copy of the build it started with, stored under
+  `~/.local/share/csquad/versions/` (or `CSQUAD_VERSIONS_DIR`), and a newer
+  csquad hands team commands to that copy. `resume` moves a team to the
+  installed version; it refuses an older release and asks when two builds
+  cannot be ordered. Writes from any other build are refused. `csquad repin
+  TEAM` recovers a team whose copy is missing or damaged. Teams started by 0.11
+  or earlier are pinned at their next resume: stop them before the first
+  upgrade. `doctor` warns when more than one csquad is on PATH.
 - `task cancel TASK --reason TEXT` lets master stop a task. The reason, actor
   and time are recorded, and the task becomes `cancelled`, a final phase that is
   not success: it satisfies no dependency, shows no completion mark and accepts

@@ -3,6 +3,7 @@ package squad
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/ShunL12324/c-squad/internal/config"
@@ -83,6 +84,7 @@ func doctor(o options) error {
 		}
 		result[name] = info
 	}
+	result["csquad"] = csquadInstalls()
 	if err := jsonOut(result); err != nil {
 		return err
 	}
@@ -95,4 +97,35 @@ func doctor(o options) error {
 		return preflight.CheckCommand(engine, command, env)
 	}
 	return nil
+}
+
+// csquadInstalls lists every csquad executable on PATH with its version. More
+// than one is a risk: a team is pinned against newer builds, but an older
+// csquad earlier on PATH, or one from before pinning, still writes it directly.
+func csquadInstalls() map[string]any {
+	var found []map[string]string
+	seen := map[string]bool{}
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		path := filepath.Join(dir, "csquad")
+		info, err := os.Stat(path)
+		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
+			continue
+		}
+		real, err := filepath.EvalSymlinks(path)
+		if err != nil || seen[real] {
+			continue
+		}
+		seen[real] = true
+		version, err := exec.Command(path, "version").Output()
+		entry := map[string]string{"path": path, "version": strings.TrimSpace(string(version))}
+		if err != nil {
+			entry["error"] = err.Error()
+		}
+		found = append(found, entry)
+	}
+	out := map[string]any{"on_path": found}
+	if len(found) > 1 {
+		out["warning"] = "more than one csquad is on PATH; upgrade or remove the others, since a csquad from before pinning writes teams directly"
+	}
+	return out
 }

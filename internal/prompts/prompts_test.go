@@ -77,6 +77,10 @@ var sharedInvariants = []string{
 	"does not prove that a message was read", "go in the ledger", "avoid a mistaken wait",
 	"already notify the right people", "gate must be released", "Developers and reviewers",
 	"never reply to pure acknowledgments", "not message quotas", "surface real blockers",
+	// role separation, coordinated validation and event-driven waiting
+	"developers implement their tasks", "reviewers review and return findings",
+	"Testing is a separate assignment scheduled by master", "Do not start tests after each small edit",
+	"Required review and test evidence still gate", "do not use long fixed sleeps",
 	// restarts and idling
 	"Preserve edits on restart", "Never alter global configuration", "do not busy-poll",
 }

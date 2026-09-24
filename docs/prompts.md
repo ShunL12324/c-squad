@@ -72,3 +72,26 @@ remain required where applicable. Master checks for substantive progress before
 an actually needed follow-up; it does not use a fixed timeout or demand receipts
 for every update. This policy changes the prompt revision so existing sessions
 receive it through the next eligible hook running the new executable.
+
+## Parallel roles and coordinated validation
+
+Keep developers working on separate tasks in parallel. Developers implement their
+assigned scope and report implementation readiness to master. Reviewers inspect
+candidates and return consolidated findings; they do not take over implementation
+or automatically run tests. Writing regression cases may be part of development;
+executing them is a separate testing assignment.
+
+Master schedules testing when the overall implementation or a coherent batch is
+ready, assigning an explicit scope and candidate to a developer or dedicated
+tester. Members do not start test runs after every small edit. A submitted
+candidate may still have pending tests: describe that honestly, and retain the
+required passing review and test evidence before approval/merge. On failure,
+master coordinates the correction and the affected retest scope. Reuse results
+for the exact tested candidate rather than independently repeating the same run;
+do not transfer a passing result to an untested SHA.
+
+Arrange participants before handing off review or testing. Prefer completion
+notifications to long fixed sleeps, and ignore superseded task notices without
+sending another acknowledgment. These rules apply to startup and recovery via
+the shared roles fragment; they guide behavior rather than enforcing a hard
+role-based command restriction.

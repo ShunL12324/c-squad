@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ShunL12324/c-squad/internal/config"
 )
@@ -25,6 +26,7 @@ func busyCodexStore(t *testing.T) (*Store, string) {
 		m.Engine, m.EngineID, m.Cwd = config.Codex, "thread-1", dir
 		m.Env = map[string]string{"QUEUE_LOG": log}
 		m.State = MemberStateWorking
+		m.LastSeen = now()
 		s.Tasks["T1"] = &Task{ID: "T1", Title: "work", State: TaskPhaseInReview, Owner: "a", Participants: []string{"a"}, Submission: "T1-r1"}
 		return nil
 	}))
@@ -42,7 +44,7 @@ func queueCalls(t *testing.T, path string) string {
 }
 
 func TestBusyCodexNoticeKindsAreExplicit(t *testing.T) {
-	member := &Member{Engine: config.Codex, State: MemberStateWorking}
+	member := &Member{Engine: config.Codex, State: MemberStateWorking, LastSeen: now()}
 	for _, kind := range []string{"delivery", "ready", "available", "assigned", "cc"} {
 		if !deferBusyCodexNotice(member, &Message{Report: &ReportReference{Kind: kind}}) {
 			t.Fatalf("routine %s report was not held", kind)
@@ -63,6 +65,11 @@ func TestBusyCodexNoticeKindsAreExplicit(t *testing.T) {
 	member.Engine, member.State = config.Claude, MemberStateWorking
 	if deferBusyCodexNotice(member, &Message{Report: &ReportReference{Kind: "delivery"}}) {
 		t.Fatal("Claude transport was changed")
+	}
+	member.Engine = config.Codex
+	member.LastSeen = time.Now().Add(-6 * time.Minute).Format(time.RFC3339Nano)
+	if deferBusyCodexNotice(member, &Message{Report: &ReportReference{Kind: "delivery"}}) {
+		t.Fatal("stale working hook held a notice indefinitely")
 	}
 }
 

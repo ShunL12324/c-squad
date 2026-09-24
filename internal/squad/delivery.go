@@ -27,6 +27,12 @@ func deferBusyCodexNotice(member *Member, msg *Message) bool {
 	if member.Engine != config.Codex || member.State != MemberStateWorking || msg.Report == nil {
 		return false
 	}
+	// Codex's working state is hook-driven. If the Stop hook was lost, fall
+	// back to native queueing rather than holding routine notices forever.
+	seen, err := time.Parse(time.RFC3339Nano, member.LastSeen)
+	if err != nil || time.Since(seen) > 5*time.Minute {
+		return false
+	}
 	switch msg.Report.Kind {
 	case "delivery", "ready", "available", "assigned", "cc":
 		return true

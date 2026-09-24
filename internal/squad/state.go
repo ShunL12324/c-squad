@@ -87,6 +87,8 @@ type Task struct {
 	ExternalClosure *ExternalClosure `json:"external_closure,omitempty"`
 
 	UserConfirmation *UserConfirmation `json:"user_confirmation,omitempty"`
+	// Cancellation is set only by task cancel, together with the cancelled phase.
+	Cancellation *Cancellation `json:"cancellation,omitempty"`
 }
 
 // ExternalClosure records a master decision to close a code task on a commit that
@@ -377,7 +379,7 @@ func normalizeState(s *State) {
 		}
 		migrateSubmission(t)
 		t.Blockers = []string{}
-		if t.State == TaskPhaseDone {
+		if t.State.terminal() {
 			continue
 		}
 		for _, d := range t.Dependencies {
@@ -411,7 +413,7 @@ func canOwn(s *State, task *Task, id string) error {
 		return fmt.Errorf("member unavailable: %s", id)
 	}
 	for _, t := range s.Tasks {
-		if t.ID != task.ID && t.Owner == id && t.State != TaskPhaseDone {
+		if t.ID != task.ID && t.Owner == id && !t.State.terminal() {
 			return fmt.Errorf("%s already owns unfinished task %s; finish or hand off first", id, t.ID)
 		}
 	}

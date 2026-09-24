@@ -87,7 +87,7 @@ func (st *Store) createTask(s *State, actor string, p []string, o options) (*Tas
 	s.event(actor, "task_created", t.ID+" "+t.Title)
 	for id, m := range s.Members {
 		if t.State == TaskPhaseReady && t.Dispatch == DispatchModeOpen && id != "master" && m.State != MemberStateRemoved {
-			s.message(actor, id, t.ID, "Task available: "+t.ID+" "+t.Title+". Run task inspect "+t.ID+" and claim if suitable.", "")
+			s.message(actor, id, t.ID, availableNotice(t), "")
 		}
 	}
 	return t, nil

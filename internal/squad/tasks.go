@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 )
 
 func taskCommand(st *Store, actor string, p []string, o options) error {
@@ -51,8 +52,22 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 			result = t
 			return nil
 		}
-		if t.State == TaskPhaseDone || t.State == TaskPhaseMerging || t.State == TaskPhasePreparing {
-			return errors.New("task is completed or has a pending filesystem operation")
+		if op == "cancel" {
+			dependents, e := cancelTask(s, actor, t, o["reason"])
+			if e != nil {
+				return e
+			}
+			if len(dependents) > 0 {
+				printNotice([]string{fmt.Sprintf("%s stays blocked on cancelled %s; cancel it or create a replacement without that dependency", strings.Join(dependents, ", "), t.ID)})
+			}
+			t.Updated = t.Cancellation.At
+			s.expireReports()
+			s.event(actor, op, t.ID+" "+t.Cancellation.Reason)
+			result = t
+			return nil
+		}
+		if t.State.terminal() || t.State == TaskPhaseMerging || t.State == TaskPhasePreparing {
+			return fmt.Errorf("task is %s; completed, cancelled or pending a filesystem operation", t.State)
 		}
 		masterOnly := op == "assign" || op == "approve" || op == "merge" || op == "gate" || op == "reopen" || op == "close-external"
 		if masterOnly && actor != "master" {
@@ -107,7 +122,7 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 				}
 				crossRepo := noticeCrossRepo(s, actor, t, m)
 				if newlyAssigned {
-					text := "Assigned to task " + t.ID + ". Run task inspect " + t.ID + " for workspace, ownership, acceptance and milestones; use board for cross-task coordination."
+					text := assignedNotice(t)
 					if crossRepo != "" {
 						text += " WARNING: " + crossRepo
 					}

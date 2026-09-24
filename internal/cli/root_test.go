@@ -284,3 +284,24 @@ func must(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
+
+// task cancel requires --reason before anything reaches the backend.
+func TestTaskCancelRequiresReason(t *testing.T) {
+	root := newCommand(func([]string, map[string]string, []string) error {
+		t.Fatal("task cancel without --reason reached the backend")
+		return nil
+	})
+	root.SetArgs([]string{"task", "cancel", "T1"})
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "reason") {
+		t.Fatalf("got %v", err)
+	}
+	var got map[string]string
+	root = newCommand(func(path []string, values map[string]string, _ []string) error { got = values; return nil })
+	root.SetArgs([]string{"task", "cancel", "T1", "--reason", "superseded"})
+	must(t, root.Execute())
+	if got["reason"] != "superseded" {
+		t.Fatalf("values: %v", got)
+	}
+}

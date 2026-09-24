@@ -119,11 +119,26 @@ func (m model) boardHeading(title string) string {
 	return spread(textStyle("  "+title, foreground, true), paint(" × ", foreground, true), max(1, m.width-2), canvas) + "  "
 }
 
+// finished reports the phases the second tab holds: done and cancelled. Every
+// other phase, including any a newer ledger adds, stays under Active.
+func finished(state string) bool {
+	return state == "done" || state == "cancelled"
+}
+
+// finishedLabel names the second tab in full when the segment holds it, and
+// otherwise by a word short enough not to be cut mid-label.
+func finishedLabel(count, width int) string {
+	if label := fmt.Sprintf("Done/Cancelled %d", count); ansi.StringWidth(label) <= width {
+		return label
+	}
+	return fmt.Sprintf("Closed %d", count)
+}
+
 // tasks keeps all task interactions in the same filtered index space.
 func (m model) tasks() []Task {
 	var tasks []Task
 	for _, task := range m.data.Tasks {
-		if (task.State == "done") == m.completed {
+		if finished(task.State) == m.completed {
 			tasks = append(tasks, task)
 		}
 	}
@@ -162,7 +177,7 @@ func filterSegment(text string, width int, selected bool) string {
 func (m model) taskFilters() string {
 	done := 0
 	for _, task := range m.data.Tasks {
-		if task.State == "done" {
+		if finished(task.State) {
 			done++
 		}
 	}
@@ -171,5 +186,5 @@ func (m model) taskFilters() string {
 	// otherwise inherit the terminal's own background instead of the canvas.
 	gutter := lipgloss.NewStyle().Background(lipgloss.Color(canvas)).Render("  ")
 	return gutter + filterSegment(fmt.Sprintf("Active %d", len(m.data.Tasks)-done), left, !m.completed) +
-		filterSegment(fmt.Sprintf("Done %d", done), right, m.completed) + gutter
+		filterSegment(finishedLabel(done, right), right, m.completed) + gutter
 }

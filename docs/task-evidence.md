@@ -113,6 +113,32 @@ preserved), and every other cause is requeued as `pending` for another attempt.
 Normalization is visible on read and persisted by the next ledger update. Existing
 native-engine queued input cannot be withdrawn by this migration.
 
+## Cancellation
+
+Master stops a task with `csquad task cancel TASK --reason TEXT`; the reason is
+required and is recorded with who cancelled and when. A ready, in-progress,
+in-review or awaiting-merge task can be cancelled. A task that is preparing its
+workspace or merging must finish, or be reconciled or aborted with
+`task abort-merge`, first. Done and cancelled tasks are final.
+
+Cancelled is not success. No operation changes a cancelled task afterwards, it
+never satisfies a dependency (dependents stay blocked, and the command names
+them so master can cancel or replace them), and it never shows the completion
+mark. Its owner may take other work. The owner, participants, workspace, branch,
+candidate and evidence stay as history, and `clean-worktree` keeps its workspace.
+No member process is stopped.
+
+Cancelling withdraws what still asks someone to act on the task: queued
+submission, readiness, failure, milestone, recovery and stall notices and
+undelivered assignment or availability notices are superseded, and open
+questions about it are answered with the cancellation, which releases a member
+waiting on master. The owner and participants each receive one notice to stop
+work. Messages members wrote are left alone.
+
+The task panel has two tabs: **Active** holds every unfinished phase, and
+**Done/Cancelled** (**Closed** when the pane is narrow) holds finished and
+cancelled tasks with distinct badges; a cancelled card shows its reason.
+
 ## Brief report (removed)
 
 The task panel's **Brief report** button, its `b`/`r` keys and `task brief TASK`
@@ -128,8 +154,8 @@ accepted it; the user never has to click anything. A code task is marked once
 master merged the candidate that carries passing independent review and test
 evidence (`✓ Completed · merged SHA`). A task without a workspace is marked once
 master approved it with no failing evidence (`✓ Completed · accepted by master`).
-Ready, in-progress, blocked, in-review, awaiting-merge and merging tasks are
-never marked, whatever the author reports and whether or not the member has
+Ready, in-progress, blocked, in-review, awaiting-merge, merging and cancelled
+tasks are never marked, whatever the author reports and whether or not the member has
 stopped. A task closed on an external commit stays in Done without the mark and
 keeps its "Closed externally · not merged" note.
 

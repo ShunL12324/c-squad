@@ -41,14 +41,15 @@ func (s *State) reportCurrent(m *Message) bool {
 		return q != nil && q.State == QuestionStateOpen
 	}
 	t := s.Tasks[m.Task]
-	if t == nil {
+	if t == nil || t.State == TaskPhaseCancelled {
+		// Nothing about a cancelled task needs master or a member to act.
 		return false
 	}
 	// A recovery notification names no submission, so it answers before the
 	// review checks below. It stays current only while that task still needs
 	// this recipient to act.
 	if r.Kind == "recovery" {
-		return t.State != TaskPhaseDone && m.To == s.recoveryRecipient(t)
+		return !t.State.terminal() && m.To == s.recoveryRecipient(t)
 	}
 	if r.Kind == "stall" {
 		return s.stallCurrent(m)
@@ -148,7 +149,7 @@ func (s *State) recoveryNotice(t *Task) {
 // queueRecoveryNotices re-engages every task an interruption left open.
 func (s *State) queueRecoveryNotices() {
 	for _, t := range s.Tasks {
-		if t.State != TaskPhaseDone {
+		if !t.State.terminal() {
 			s.recoveryNotice(t)
 		}
 	}

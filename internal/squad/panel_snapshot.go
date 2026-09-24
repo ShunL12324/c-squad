@@ -25,7 +25,7 @@ func (st *Store) panelSnapshot() (teamui.Snapshot, error) {
 		tasks := []string{}
 		for _, id := range taskIDs {
 			t := s.Tasks[id]
-			if t.State != TaskPhaseDone && (t.Owner == m.ID || slices.Contains(t.Participants, m.ID)) {
+			if !t.State.terminal() && (t.Owner == m.ID || slices.Contains(t.Participants, m.ID)) {
 				tasks = append(tasks, id)
 			}
 		}
@@ -75,6 +75,11 @@ func (st *Store) panelSnapshot() (teamui.Snapshot, error) {
 			note = "Closed externally · not merged · " + short(t.ExternalClosure.SHA)
 			detail += "\n\n" + strings.Join(describeExternalClosure(t.ExternalClosure), "\n")
 		}
+		// A cancelled task is not a finished one: its note says why it stopped.
+		if c := t.Cancellation; c != nil {
+			note = "Cancelled · " + c.Reason
+			detail += "\n\nCancelled by " + c.By + " at " + c.At + "\n" + c.Reason
+		}
 		// Ledgers from before completion was derived may carry a user click.
 		// It is shown for audit only and never decides completion.
 		if t.UserConfirmation != nil {
@@ -109,8 +114,8 @@ func sortedTaskIDs(s *State) []string {
 	}
 	sort.Slice(ids, func(i, j int) bool {
 		a, b := s.Tasks[ids[i]], s.Tasks[ids[j]]
-		if (a.State == TaskPhaseDone) != (b.State == TaskPhaseDone) {
-			return a.State != TaskPhaseDone
+		if a.State.terminal() != b.State.terminal() {
+			return !a.State.terminal()
 		}
 		return ids[i] < ids[j]
 	})

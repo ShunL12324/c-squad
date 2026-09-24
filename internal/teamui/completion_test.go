@@ -1,6 +1,8 @@
 package teamui
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -83,5 +85,51 @@ func TestCompletionIsDisplayedNotClicked(t *testing.T) {
 		if len(acted) != 0 || strings.Contains(ansi.Strip(strings.Join(m.footer(), "\n")), "Confirm") {
 			t.Fatalf("panel still confirms: %+v", acted)
 		}
+	}
+}
+
+// The task panel has two tabs. Every unfinished phase, including legacy
+// blocked and any unknown one, is under Active; done and cancelled share the
+// second tab and keep distinct badges, and only done can carry the mark.
+func TestTaskTabsSplitActiveFromDoneOrCancelled(t *testing.T) {
+	active := []string{"ready", "preparing", "in progress", "in review", "awaiting merge", "merging", "blocked", "future phase"}
+	m := model{kind: "tasks", width: 60, height: 200, data: Snapshot{Active: true}}
+	for i, state := range active {
+		m.data.Tasks = append(m.data.Tasks, Task{ID: fmt.Sprintf("A%d", i), Title: state, State: state})
+	}
+	m.data.Tasks = append(m.data.Tasks,
+		Task{ID: "D1", Title: "shipped", State: "done", Completion: "✓ Completed · merged abc1234"},
+		Task{ID: "C1", Title: "dropped", State: "cancelled", Note: "Cancelled · superseded"})
+	ids := func() []string {
+		var out []string
+		for _, task := range m.tasks() {
+			out = append(out, task.ID)
+		}
+		return out
+	}
+	if got := ids(); len(got) != len(active) || slices.Contains(got, "D1") || slices.Contains(got, "C1") {
+		t.Fatalf("Active tab: %v", got)
+	}
+	filters := ansi.Strip(m.taskFilters())
+	if !strings.Contains(filters, fmt.Sprintf("Active %d", len(active))) || !strings.Contains(filters, "Done/Cancelled 2") {
+		t.Fatalf("tab labels: %q", filters)
+	}
+	m.filterTasks(true)
+	if got := ids(); !slices.Equal(got, []string{"D1", "C1"}) {
+		t.Fatalf("Done or cancelled tab: %v", got)
+	}
+	cards, _ := m.taskCards()
+	text := ansi.Strip(strings.Join(cards, "\n"))
+	for _, want := range []string{" Done ", " Cancelled ", "✓ Completed", "Cancelled · superseded"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("finished cards lack %q:\n%s", want, text)
+		}
+	}
+	if strings.Count(text, "✓ Completed") != 1 {
+		t.Fatalf("cancelled task shows the completion mark:\n%s", text)
+	}
+	narrow := model{kind: "tasks", width: 24, height: 40, data: m.data}
+	if filters := ansi.Strip(narrow.taskFilters()); !strings.Contains(filters, "Closed 2") || strings.Contains(filters, "…") {
+		t.Fatalf("narrow tab label cut: %q", filters)
 	}
 }

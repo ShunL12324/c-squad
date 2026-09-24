@@ -8,12 +8,29 @@ release history; earlier releases remain available on
 
 ### Added
 
+- `task cancel TASK --reason TEXT` lets master stop a task. The reason, actor
+  and time are recorded, and the task becomes `cancelled`, a final phase that is
+  not success: it satisfies no dependency, shows no completion mark and accepts
+  no further operation. Its owner is free for other work, and its workspace,
+  candidate and evidence are kept. Pending notices about the task are
+  withdrawn, its open questions are closed, and its members are told to stop.
+  A task that is preparing its workspace or merging cannot be cancelled until
+  that finishes or is aborted. An older csquad reading a ledger with a
+  cancelled task treats it as unfinished, and a running runtime from an older
+  version is replaced after the upgrade.
 - Master is told once when an in-progress task seems stalled: every member on
   it has been observed quiet (a finished, failed, crashed or stopped turn) for
   5 minutes, with no blocker, open question, pending gate or deliverable
   message. The notice changes nothing else and is superseded if the task moves
   on before delivery. A Codex member interrupted by the user is now shown as
   `interrupted` until its next prompt.
+
+### Changed
+
+- The task panel's second tab is **Done/Cancelled** (**Closed** when narrow):
+  it holds finished and cancelled tasks with distinct badges, while every
+  unfinished phase stays under **Active**. A member card no longer lists a
+  cancelled task as its current work.
 
 ### Removed
 

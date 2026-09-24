@@ -69,6 +69,7 @@ type TaskPhase string
 const (
 	TaskPhaseAwaitingMerge TaskPhase = "awaiting_merge"
 	TaskPhaseBlocked       TaskPhase = "blocked"
+	TaskPhaseCancelled     TaskPhase = "cancelled"
 	TaskPhaseDone          TaskPhase = "done"
 	TaskPhaseInProgress    TaskPhase = "in_progress"
 	TaskPhaseInReview      TaskPhase = "in_review"

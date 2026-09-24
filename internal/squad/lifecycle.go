@@ -152,7 +152,7 @@ func lifecycle(st *Store, actor, op, id string, o options) error {
 		if op == "remove" {
 			v.State = MemberStateRemoved
 			for _, t := range s.Tasks {
-				if t.State == TaskPhaseDone {
+				if t.State.terminal() {
 					continue
 				}
 				if t.Owner == id {

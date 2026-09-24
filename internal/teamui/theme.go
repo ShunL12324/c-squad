@@ -57,6 +57,8 @@ func badge(state string) string {
 		color, bg = "115", "238"
 	case "Blocked":
 		color, bg = "222", "238"
+	case "Cancelled":
+		color, bg = "210", "238"
 	case "Idle", "Pending", "Waiting":
 		color, bg = muted, "239"
 	}

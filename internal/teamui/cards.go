@@ -31,9 +31,9 @@ const detailsLabel = " View details › "
 func (m model) taskCards() ([]string, []cardHit) {
 	if len(m.tasks()) == 0 {
 		if m.completed {
-			return block([]string{textStyle("No completed tasks", foreground, true), "", textStyle("Finished work will appear here.", muted, false)}, m.width, surface, ""), nil
+			return block([]string{textStyle("No finished tasks", foreground, true), "", textStyle("Done and cancelled work appears here.", muted, false)}, m.width, surface, ""), nil
 		}
-		return block([]string{textStyle("Nothing in progress", foreground, true), "", textStyle("Tasks from Master appear here.", muted, false), textStyle("Past work is under Done.", muted, false)}, m.width, surface, ""), nil
+		return block([]string{textStyle("Nothing in progress", foreground, true), "", textStyle("Tasks from Master appear here.", muted, false), textStyle("Past work is under Done or cancelled.", muted, false)}, m.width, surface, ""), nil
 	}
 	available := max(0, m.height-taskHeaderRows-2)
 	var lines []string

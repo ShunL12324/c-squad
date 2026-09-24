@@ -26,6 +26,9 @@ func mergeCommand(st *Store, actor, id string) error {
 		if t.State == TaskPhaseDone {
 			return nil
 		}
+		if t.State == TaskPhaseCancelled {
+			return errors.New("task was cancelled and cannot be merged")
+		}
 		if t.State == TaskPhaseMerging && t.MergeIntent != nil {
 			return nil
 		}

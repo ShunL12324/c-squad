@@ -39,7 +39,11 @@ func TestLegacyNeedsAttentionLedgerIsNormalizedOnce(t *testing.T) {
 	must(t, st.update(func(*State) error { return nil }))
 	var raw string
 	must(t, st.DB.QueryRow("SELECT data FROM state WHERE id=1").Scan(&raw))
-	if strings.Contains(raw, "needs_attention") || !strings.Contains(raw, `"version":3`) {
+	var persisted struct {
+		Version int `json:"version"`
+	}
+	must(t, json.Unmarshal([]byte(raw), &persisted))
+	if strings.Contains(raw, "needs_attention") || persisted.Version != stateVersion {
 		t.Fatalf("upgrade was not written back: %s", raw)
 	}
 	again, err := st.read()

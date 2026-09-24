@@ -8,6 +8,11 @@ release history; earlier releases remain available on
 
 ### Added
 
+- `task assign TASK --owner NAME --cc A,B` copies members on an assignment
+  with one no-reply notice each. They do not become participants. An unknown
+  or removed name fails the whole command, and repeating it sends nothing new.
+  A name repeated in `--to` now gets one assignment notice instead of two.
+
 - `task cancel TASK --reason TEXT` lets master stop a task. The reason, actor
   and time are recorded, and the task becomes `cancelled`, a final phase that is
   not success: it satisfies no dependency, shows no completion mark and accepts

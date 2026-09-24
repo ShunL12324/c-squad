@@ -82,7 +82,7 @@ var sharedInvariants = []string{
 }
 
 var masterOnly = []string{
-	"task create TITLE", "--request-id UNIQUE [--code]", "task assign TASK", "task approve TASK", "task merge TASK",
+	"task create TITLE", "--request-id UNIQUE [--code]", "task assign TASK --owner NAME [--to NAME,NAME] [--cc NAME,NAME]", "task approve TASK", "task merge TASK",
 	"member add NAME --instructions RESPONSIBILITIES", "member restart|replace NAME", "question answer QUESTION",
 	"Only master approves and merges", "always assign --owner", "task clean-worktree TASK --dry-run",
 	"Review the current candidate SHA", "someone other than the author", "task close-external", "never use it to skip review or merge",

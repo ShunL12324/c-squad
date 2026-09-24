@@ -427,6 +427,23 @@ message. Claude may still display its own native peer notice.
 They report meaningful milestones and ask Master for help when blocked. Master
 brings questions that need a human decision back to you.
 
+Master can copy other members on an assignment so they know who is doing it:
+
+```sh
+csquad task assign T7 --owner dev --to reviewer --cc lead,docs
+```
+
+Each `--cc` member gets one short notice with the task ID, title and owner, and
+is told no reply is needed. They do not become participants: they are not
+assigned, do not own the task, and are not counted in its progress or stall
+checks. Every name is checked first, so an unknown or removed member fails the
+whole command with nothing assigned or sent. The owner, participants and
+repeated names are skipped. A member is copied once per task and owner, so
+repeating the command sends nothing new, and adding a name notifies only that
+member. Use `message send` for later updates. The notice waits in the normal
+message queue and does not interrupt a busy member. Cancelling the task
+withdraws notices not yet delivered.
+
 A code task gets a Git worktree, even when it has only one developer. Its owner
 writes the code; other members review or test it. Separate implementation tasks
 use separate worktrees. Code tasks require a Git repository with an existing

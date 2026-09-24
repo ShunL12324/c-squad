@@ -35,7 +35,7 @@ func assignedNotice(t *Task) string {
 
 func dispatchNotice(m *Message, t *Task) bool {
 	return m.From == "master" && m.Task == t.ID &&
-		(strings.HasPrefix(m.Text, "Task available: "+t.ID+" ") || strings.HasPrefix(m.Text, "Assigned to task "+t.ID+". "))
+		(strings.HasPrefix(m.Text, "Task available: "+t.ID+" ") || strings.HasPrefix(m.Text, "Assigned to task "+t.ID+". ") || strings.HasPrefix(m.RequestKey, ccKeyPrefix+t.ID+":"))
 }
 
 // cancelTask moves a task to cancelled inside the caller's transaction and

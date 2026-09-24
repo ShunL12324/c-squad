@@ -91,6 +91,7 @@ var masterOnly = []string{
 	"Only master approves and merges", "always assign --owner", "task clean-worktree TASK --dry-run",
 	"Review the current candidate SHA", "someone other than the author", "task close-external", "never use it to skip review or merge",
 	"task cancel TASK --reason TEXT", "Cancelled tasks satisfy no dependency",
+	"wait for all modules to finish and integrate", "one combined test pass",
 	"First inspect the member", "ask once", "no fixed response deadline", "activity clues, not proof of completion",
 }
 

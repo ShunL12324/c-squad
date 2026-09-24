@@ -81,9 +81,12 @@ candidates and return consolidated findings; they do not take over implementatio
 or automatically run tests. Writing regression cases may be part of development;
 executing them is a separate testing assignment.
 
-Master schedules testing when the overall implementation or a coherent batch is
-ready, assigning an explicit scope and candidate to a developer or dedicated
-tester. Members do not start test runs after every small edit. A submitted
+For a feature spanning related modules (for example, modules one, two and
+three), master waits until all those modules are implemented and integrated,
+then schedules a combined test pass on that candidate. Do not test module one
+in isolation and repeat the same suite whenever the next module arrives.
+Independent features need not wait for unrelated work. Master assigns an
+explicit scope and candidate to a developer or dedicated tester. Members do not start test runs after every small edit. A submitted
 candidate may still have pending tests: describe that honestly, and retain the
 required passing review and test evidence before approval/merge. On failure,
 master coordinates the correction and the affected retest scope. Reuse results

@@ -155,6 +155,10 @@ func describe(w io.Writer, ch Channel) {
 		_, _ = fmt.Fprintln(w, ch.Hint)
 		return
 	}
+	if ch.deb && len(ch.Commands) == 0 {
+		_, _ = fmt.Fprintln(w, "Update: download the latest release's .deb for this architecture from GitHub, verify it against the release checksums and its package fields, then run: sudo apt-get install <that .deb>")
+		return
+	}
 	_, _ = fmt.Fprintln(w, "Update commands:")
 	for _, argv := range ch.Commands {
 		_, _ = fmt.Fprintln(w, "  "+strings.Join(quoteAll(argv), " "))

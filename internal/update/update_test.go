@@ -192,6 +192,11 @@ func TestDpkgChannels(t *testing.T) {
 	if ch, _ = Detect("/usr/bin/csquad"); ch.Name != "deb" || !ch.Root || !ch.deb {
 		t.Fatalf("local deb: %+v", ch)
 	}
+	var described bytes.Buffer
+	describe(&described, ch)
+	if !strings.Contains(described.String(), "verify it against the release checksums") {
+		t.Fatalf("local deb check describes nothing: %q", described.String())
+	}
 	write(t, filepath.Join(os.Getenv("PATH"), "dpkg-query"), "#!/bin/sh\necho 'dpkg-query: no path found' >&2; exit 1\n", 0700)
 	if ch, _ = Detect("/home/u/bin/csquad"); ch.Name != "manual" || ch.Hint == "" {
 		t.Fatalf("manual: %+v", ch)

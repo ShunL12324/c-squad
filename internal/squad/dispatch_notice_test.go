@@ -192,7 +192,7 @@ func TestLegacyDispatchNoticesGainFreshnessReferences(t *testing.T) {
 		Version: 3,
 		Tasks: map[string]*Task{
 			"T1": {ID: "T1", State: TaskPhaseInProgress, Owner: "a", Participants: []string{"a", "b"}},
-			"T2": {ID: "T2", State: TaskPhaseReady, Dispatch: DispatchModeOpen},
+			"T2": {ID: "T2", Title: "Open", State: TaskPhaseReady, Dispatch: DispatchModeOpen},
 		},
 		Messages: []*Message{
 			{ID: "M1", From: "master", To: "b", Task: "T1", Text: assignedNotice(&Task{ID: "T1"}), State: DeliveryStatePending},
@@ -200,18 +200,28 @@ func TestLegacyDispatchNoticesGainFreshnessReferences(t *testing.T) {
 			{ID: "M3", From: "master", To: "c", Task: "T1", RequestKey: ccKeyPrefix + "T1:a:c", Text: "FYI", State: DeliveryStatePending},
 			{ID: "M4", From: "a", To: "b", Task: "T1", Text: "please review", State: DeliveryStatePending},
 			{ID: "M5", From: "master", To: "a", Task: "T1", Text: assignedNotice(&Task{ID: "T1"}), State: DeliveryStateSent},
+			{ID: "M6", From: "master", To: "b", Task: "T1", Text: "Assigned to task T1. Please send me your design notes.", State: DeliveryStatePending},
+			{ID: "M7", From: "master", To: "b", Task: "T1", Text: "Assigned to task T1. Read board for workspace, ownership, acceptance and milestones.", State: DeliveryStatePending},
+			{ID: "M8", From: "master", To: "b", Task: "T2", Text: "Task available: T2 Open. Read board and claim if suitable.", State: DeliveryStatePending},
+			{ID: "M9", From: "master", To: "b", Task: "T1", RequestKey: "manual", Text: assignedNotice(&Task{ID: "T1"}), State: DeliveryStatePending},
+			{ID: "M10", From: "master", To: "b", Task: "T1", ReplyTo: "M4", Text: assignedNotice(&Task{ID: "T1"}), State: DeliveryStatePending},
+			{ID: "M11", From: "master", To: "b", Task: "T1", Text: assignedNotice(&Task{ID: "T1"}) + " WARNING: member b starts in another repository", State: DeliveryStatePending},
+			{ID: "M12", From: "master", To: "b", Task: "T2", Text: availableNotice(&Task{ID: "T2", Title: "Open"}) + " WARNING: different repository", State: DeliveryStatePending},
+			{ID: "M13", From: "master", To: "b", Task: "T2", Text: availableNotice(&Task{ID: "T2", Title: "Old title"}), State: DeliveryStatePending},
 		},
 	}
 	normalizeState(s)
 	if s.Version != stateVersion {
 		t.Fatalf("version = %d", s.Version)
 	}
-	for i, want := range []ReportReference{{Kind: "assigned", Owner: "a"}, {Kind: "available"}, {Kind: "cc", Owner: "a"}} {
+	for i, want := range map[int]ReportReference{0: {Kind: "assigned", Owner: "a"}, 1: {Kind: "available"}, 2: {Kind: "cc", Owner: "a"}, 6: {Kind: "assigned", Owner: "a"}, 7: {Kind: "available"}, 10: {Kind: "assigned", Owner: "a"}, 11: {Kind: "available"}} {
 		if got := s.Messages[i].Report; got == nil || got.Kind != want.Kind || got.Owner != want.Owner {
 			t.Fatalf("legacy notice %d not tagged: %+v", i, got)
 		}
 	}
-	if s.Messages[3].Report != nil || s.Messages[4].Report != nil {
-		t.Fatal("migration changed personal or already-sent history")
+	for _, i := range []int{3, 4, 5, 8, 9, 12} {
+		if s.Messages[i].Report != nil {
+			t.Fatalf("migration changed freeform, reply, keyed or already-sent message %d", i)
+		}
 	}
 }

@@ -90,7 +90,8 @@ explicit scope and candidate to a developer or dedicated tester. For related
 code tasks, owners integrate their branches into the same final candidate SHA
 before submission. Run the combined validation once on that SHA and record its
 results against each task submission; obtain all required scope reviews before
-merging the batch. This reuses a tested candidate without bypassing per-task
+merging the batch. Approve and merge tasks one at a time so each approval
+records the current target branch. This reuses a tested candidate without bypassing per-task
 evidence requirements. Members do not start test runs after every small edit. A submitted
 candidate may still have pending tests: describe that honestly, and retain the
 required passing review and test evidence before approval/merge. On failure,

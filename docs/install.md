@@ -177,6 +177,9 @@ Installing a new csquad no longer changes a running team:
 - `csquad resume` moves a stopped team to the installed version. It refuses
   an older release. It asks first when the two builds cannot be ordered, such
   as development builds or two builds with the same version.
+- If a resume fails after it has moved the team, the team stays on the new
+  version, and the older build can no longer resume it. Retry with the new
+  build; the error names the command.
 - If a team's copy is missing or damaged, commands for that team stop with an
   error, and `csquad repin TEAM` is the way out. It restores the copy from an
   identical build, or moves the team to the installed build, stopping it
@@ -189,6 +192,12 @@ Installing a new csquad no longer changes a running team:
 have no private copy, so an upgrade reaches them as soon as it is installed.
 Stop them first, upgrade, then resume them; from then on upgrades leave
 running teams alone.
+
+**macOS.** csquad identifies its own build by hashing the file it was started
+from, because macOS has no `/proc/self/exe`. A csquad process started from an
+install path whose file is replaced in place while it runs is identified by the
+new file's bytes. Processes a team starts run from the pinned copy, which never
+changes, so they are not affected. macOS has not been tested on real hardware.
 
 **Keep one installation.** A csquad earlier on PATH that predates pinning
 still writes teams directly. The same goes for any older csquad: never run it

@@ -223,7 +223,7 @@ func (st *Store) checkMaster() error {
 	return nil
 }
 
-func resumeTeam(st *Store, o options) error {
+func resumeTeam(st *Store, o options) (err error) {
 	if err := rejectRemovedLaunchFlags(o); err != nil {
 		return err
 	}
@@ -280,6 +280,14 @@ func resumeTeam(st *Store, o options) error {
 	if e != nil {
 		return fmt.Errorf("pin this csquad build for the team: %w", e)
 	}
+	// From here the team belongs to this build. A failure below leaves it so,
+	// and an older build is refused, so the retry must use this build.
+	started := false
+	defer func() {
+		if err != nil && !started {
+			err = fmt.Errorf("%w; team %s is now pinned to csquad %s, so retry with that build: %s resume %s", err, s.ID, pinned.Version, pinned.Path, s.ID)
+		}
+	}()
 	// Reap old process identities before changing socket or clearing PID records.
 	if e = cleanupTeam(st, "interrupted"); e != nil {
 		return fmt.Errorf("old team cleanup failed; recovery refused: %w", e)
@@ -383,6 +391,7 @@ func resumeTeam(st *Store, o options) error {
 		return e
 	}
 	unlock()
+	started = true
 	if o["detach"] == "true" {
 		return jsonOut(map[string]string{"team": st.Dir, "state": "resumed", "attach": binary + " --team " + st.Dir + " attach"})
 	}

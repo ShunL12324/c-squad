@@ -540,6 +540,14 @@ Finally, `make check` and the applicable packaging tests.
 - **Other teams at `start`.** When `new`/`start` cleans up interrupted teams
   in the same project, it skips teams pinned to another build and says so;
   their own build cleans them up.
+- **Resume failing after the transition** leaves the team pinned to the new
+  build. The older build is then refused as a downgrade. The error ends with
+  the retry command, which uses the new pinned build.
+- **macOS identity.** Without `/proc/self/exe`, a process hashes the file at
+  its resolved executable path. A process started from an install path that is
+  replaced in place while it runs is identified by the new bytes. Pinned
+  processes run from a file that never changes and are unaffected. macOS has
+  not been tested on real hardware.
 - **Hash cost**, measured on the WSL2 development host: hashing a 16.7 MB
   csquad binary takes 41 to 46 ms. It runs once per process: on the first
   ledger transaction, and on forwarding. Long-lived processes (the runtime,

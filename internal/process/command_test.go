@@ -59,3 +59,14 @@ func TestManagedCommandCancellationStopsChildren(t *testing.T) {
 	}
 	t.Fatal("command cancellation left its child alive")
 }
+
+func TestRunStdoutEnvSeparatesStderr(t *testing.T) {
+	out, err := RunStdoutEnv("", nil, "sh", "-c", `printf 'warning\n' >&2; printf '  [{"sessionId":"s-1"}]  \n'`)
+	if err != nil || out != `[{"sessionId":"s-1"}]` {
+		t.Fatalf("structured stdout was polluted by stderr: out=%q err=%v", out, err)
+	}
+	out, err = RunStdoutEnv("", nil, "sh", "-c", `printf 'partial'; printf 'helper failed\n' >&2; exit 7`)
+	if out != "partial" || err == nil || !strings.Contains(err.Error(), "helper failed") {
+		t.Fatalf("failure lost stdout or stderr diagnosis: out=%q err=%v", out, err)
+	}
+}

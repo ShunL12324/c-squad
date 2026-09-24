@@ -1,6 +1,7 @@
 package process
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os/exec"
@@ -39,6 +40,22 @@ func RunEnv(cwd string, env map[string]string, name string, args ...string) (str
 	b, e := c.CombinedOutput()
 	if e != nil {
 		return string(b), fmt.Errorf("%s: %w: %s", name, e, strings.TrimSpace(string(b)))
+	}
+	return strings.TrimSpace(string(b)), nil
+}
+
+// RunStdoutEnv is for helpers whose stdout is a structured response. It uses
+// the same timeout and process-group cancellation as RunEnv, but keeps stderr
+// out of a successful response while retaining it in failure diagnostics.
+func RunStdoutEnv(cwd string, env map[string]string, name string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	c := Command(ctx, cwd, env, name, args...)
+	var stderr bytes.Buffer
+	c.Stderr = &stderr
+	b, e := c.Output()
+	if e != nil {
+		return string(b), fmt.Errorf("%s: %w: %s", name, e, strings.TrimSpace(stderr.String()))
 	}
 	return strings.TrimSpace(string(b)), nil
 }

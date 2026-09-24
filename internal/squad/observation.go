@@ -97,7 +97,7 @@ func (st *Store) observe() (map[string]bool, error) {
 		result, seen := cache[string(key)]
 		if !seen {
 			name, args, env := command.Invocation(member.Env, "", "agents", "--json")
-			out, err := process.RunEnv(member.Cwd, env, name, args...)
+			out, err := process.RunStdoutEnv(member.Cwd, env, name, args...)
 			if err == nil && json.Unmarshal([]byte(out), &result.entries) == nil {
 				result.ok = true
 			}

@@ -29,6 +29,9 @@ func TestObserveSharesClaudeListingWithinAccount(t *testing.T) {
 	must(t, os.WriteFile(helper, []byte("#!/bin/sh\nprintf '%s\\n' \"$ACCOUNT\" >> \"$CALL_LOG\"\nprintf '%s\\n' '[{\"sessionId\":\"s-master\",\"status\":\"idle\"},{\"sessionId\":\"s-a\",\"status\":\"busy\"},{\"sessionId\":\"s-b\",\"status\":\"idle\"}]'\n"), 0700))
 	home := filepath.Join(dir, "home")
 	must(t, os.Mkdir(home, 0700))
+	// Debian's global interactive bashrc prints a sudo hint to stdout unless
+	// this file exists; stdout must contain only the helper's JSON.
+	must(t, os.WriteFile(filepath.Join(home, ".hushlogin"), nil, 0600))
 	must(t, os.WriteFile(filepath.Join(home, ".bashrc"), []byte("alias helperalias="+shellQuote(helper)+"\n"), 0600))
 	st := testStore(t)
 	must(t, st.update(func(s *State) error {

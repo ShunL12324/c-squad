@@ -75,12 +75,6 @@ func (m model) updateKey(v tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.kind == "tasks" {
 			return m, m.open()
 		}
-	case "b", "r":
-		// One key for both: a retry is the same request, and the ledger
-		// reuses the message rather than queueing a second one.
-		if m.kind == "tasks" {
-			return m.brief()
-		}
 	case "g":
 		// Master is offered, never opened for the user: asking about one
 		// card should not move someone who is working through several.
@@ -145,14 +139,7 @@ func (m model) updateMouse(v tea.MouseMsg) (tea.Model, tea.Cmd) {
 			}
 			if m.detail {
 				if v.Y == taskFilterRow {
-					_, buttons := detailRow(m.width)
-					for _, button := range buttons {
-						if button.action == "brief" && v.X >= button.start && v.X < button.end {
-							return m.brief()
-						}
-					}
-					// Every other cell on this row still goes back, as it
-					// did before the row carried a second button.
+					// The whole row goes back, not only the painted button.
 					m.detail = false
 					m.offset = 0
 				}
@@ -172,9 +159,6 @@ func (m model) updateMouse(v tea.MouseMsg) (tea.Model, tea.Cmd) {
 						for _, button := range hit.buttons {
 							if v.Y != button.row+taskHeaderRows || v.X < button.start || v.X >= button.end {
 								continue
-							}
-							if button.action == "brief" {
-								return m.brief()
 							}
 							m.detail, m.offset = true, 0
 							break

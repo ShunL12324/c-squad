@@ -15,6 +15,14 @@ release history; earlier releases remain available on
   on before delivery. A Codex member interrupted by the user is now shown as
   `interrupted` until its next prompt.
 
+### Removed
+
+- **Breaking.** The task panel's **Brief report** button, its `b` and `r` keys
+  and `task brief TASK` are removed; ask master directly. Submission and
+  evidence reports, task progress and `task submit` summaries are unchanged. A
+  Brief request recorded by an older version still loads and is never
+  delivered or retried.
+
 ## v0.11.1 — 2026-09-23
 
 ### Added

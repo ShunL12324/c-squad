@@ -16,12 +16,6 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 	if len(p) > 1 && p[0] == "merge" {
 		return mergeCommand(st, actor, p[1])
 	}
-	// Asking about a task is not an operation on it. Routed here so the phase
-	// rejection below, which exists to stop edits to finished work, cannot take
-	// the button away from exactly the done tasks the user wants explained.
-	if len(p) > 1 && p[0] == "brief" {
-		return briefCommand(st, actor, p[1])
-	}
 	if len(p) > 1 && p[0] == "clean-worktree" {
 		plan, err := cleanTaskWorkspace(st, actor, p[1], o["dry-run"] == "true")
 		if err != nil {

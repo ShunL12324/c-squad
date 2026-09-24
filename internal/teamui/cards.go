@@ -26,10 +26,7 @@ type cardHit struct {
 // gutter cells, then one cell of its own horizontal padding.
 const cardContentX = 3
 
-const (
-	detailsLabel = " View details › "
-	briefLabel   = " Brief report "
-)
+const detailsLabel = " View details › "
 
 func (m model) taskCards() ([]string, []cardHit) {
 	if len(m.tasks()) == 0 {
@@ -80,25 +77,13 @@ func (m model) taskCards() ([]string, []cardHit) {
 // taskCardButtons lays out the card actions and the cells that trigger them.
 // The renderer and the mouse hit test read this one result, so a painted button
 // and its clickable region cannot drift apart - the discipline filterSplit
-// already applies to the task filter. Buttons stack when the row does not fit.
+// already applies to the task filter.
 func taskCardButtons(contentWidth int) ([]string, []cardButton) {
-	details, brief := ansi.StringWidth(detailsLabel), ansi.StringWidth(briefLabel)
-	clamp := func(b cardButton) cardButton {
-		// block truncates an overlong row, so never claim cells beyond the
-		// content it can actually paint.
-		b.end = min(b.end, cardContentX+contentWidth)
-		return b
-	}
-	painted := []string{paint(detailsLabel, accent, true), paint(briefLabel, accent, true)}
-	if details+1+brief <= contentWidth {
-		return []string{painted[0] + " " + painted[1]}, []cardButton{
-			clamp(cardButton{action: "details", row: 0, start: cardContentX, end: cardContentX + details}),
-			clamp(cardButton{action: "brief", row: 0, start: cardContentX + details + 1, end: cardContentX + details + 1 + brief}),
-		}
-	}
-	return painted, []cardButton{
-		clamp(cardButton{action: "details", row: 0, start: cardContentX, end: cardContentX + details}),
-		clamp(cardButton{action: "brief", row: 1, start: cardContentX, end: cardContentX + brief}),
+	details := ansi.StringWidth(detailsLabel)
+	// block truncates an overlong row, so never claim cells beyond the content
+	// it can actually paint.
+	return []string{paint(detailsLabel, accent, true)}, []cardButton{
+		{action: "details", row: 0, start: cardContentX, end: min(cardContentX+details, cardContentX+contentWidth)},
 	}
 }
 
@@ -149,9 +134,6 @@ func (m model) taskCard(index int) ([]string, []cardButton) {
 	rows, buttons := taskCardButtons(width)
 	base := len(content)
 	content = append(content, rows...)
-	if status := m.briefLine(task, width); status != "" {
-		content = append(content, status)
-	}
 	card := block(content, m.width, bg, stripe)
 	if len(card) == len(content) {
 		// block declines to frame a pane this narrow and returns the content

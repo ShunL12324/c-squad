@@ -75,7 +75,7 @@ func TestAutomaticRecoveryAndExplicitRetryAreDifferent(t *testing.T) {
 		}
 	}
 	m := &Message{State: DeliveryStateSent, Attempts: 1}
-	m.resetDelivery() // Explicit user re-request, as used by Brief report.
+	m.resetDelivery() // Explicit re-request of the same message.
 	if m.State != DeliveryStatePending || m.Attempts != 0 {
 		t.Fatal("explicit re-request disabled")
 	}

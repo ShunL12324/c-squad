@@ -48,11 +48,6 @@ func (st *Store) runPanel(owner, view string, popup bool) error {
 			}
 			return "", st.setPanelView(view, true)
 		}
-		// Brief sends native user input to master without changing the task or
-		// writing a team message.
-		if a.Kind == "brief" {
-			return briefRequest(st, "master", a.Task)
-		}
 		m, err := s.member(a.Member)
 		if err != nil {
 			return "", err

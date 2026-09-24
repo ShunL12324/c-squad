@@ -64,23 +64,16 @@ func milestoneLines(milestones []Milestone, width, limit int) []string {
 const backLabel = " ‹ Back to tasks "
 
 // detailRow lays out the detail header actions and the cells that trigger them,
-// so the renderer and the mouse hit test read one result. The brief button is
-// dropped rather than truncated when the pane cannot hold both.
-func detailRow(width int) (string, []cardButton) {
+// so the renderer and the mouse hit test read one result.
+func detailRow() (string, []cardButton) {
 	back := ansi.StringWidth(backLabel)
-	row := "  " + paint(backLabel, accent, true)
-	buttons := []cardButton{{action: "back", row: taskFilterRow, start: 2, end: 2 + back}}
-	if brief := ansi.StringWidth(briefLabel); 2+back+1+brief <= width {
-		row += " " + paint(briefLabel, accent, true)
-		buttons = append(buttons, cardButton{action: "brief", row: taskFilterRow, start: 2 + back + 1, end: 2 + back + 1 + brief})
-	}
-	return row, buttons
+	return "  " + paint(backLabel, accent, true), []cardButton{{action: "back", row: taskFilterRow, start: 2, end: 2 + back}}
 }
 
 func (m model) boardView() []string {
 	if m.detail && m.count() > 0 {
 		task := m.tasks()[m.selected]
-		header, _ := detailRow(m.width)
+		header, _ := detailRow()
 		lines := []string{"", m.boardHeading("TASK DETAILS"), "", header, "", ""}
 		return append(lines, m.details(m.detailBody(task), m.height-taskHeaderRows-2)...)
 	}
@@ -92,9 +85,6 @@ func (m model) boardView() []string {
 // detailBody is the scrollable text of a task's detail view.
 func (m model) detailBody(task Task) string {
 	body := task.ID + " · " + label(task.State) + "\n\n" + task.Title + "\n\nOwner: " + task.Owner + "\n\n"
-	if status := m.briefLine(task, max(1, m.width-6)); status != "" {
-		body += status + "\n\n"
-	}
 	if task.Completion != "" {
 		body += task.Completion + "\n\n"
 	}

@@ -79,7 +79,6 @@ type model struct {
 	detail                               bool
 	loading                              bool
 	err                                  error
-	briefs                               map[string]briefFeedback
 }
 
 // Run owns only its pane's terminal; the native agent continues in another pane.
@@ -91,7 +90,7 @@ func Run(kind, current string, load Source, act Handler) error {
 		lipgloss.SetColorProfile(termenv.ANSI256)
 	}
 
-	m := model{kind: kind, current: current, load: load, act: act, width: 24, height: 24, loading: true, briefs: map[string]briefFeedback{}}
+	m := model{kind: kind, current: current, load: load, act: act, width: 24, height: 24, loading: true}
 	if kind == "members" {
 		m.selectedID = current
 	}
@@ -110,21 +109,6 @@ func (m model) action(a Action) tea.Cmd {
 	}
 }
 
-// brief asks Master to summarise the selected task. It reports nothing about the
-// task itself: the request is a message, and the task is untouched by it.
-func (m model) brief() (tea.Model, tea.Cmd) {
-	if m.kind != "tasks" || m.count() == 0 {
-		return m, nil
-	}
-	if m.briefs == nil {
-		m.briefs = map[string]briefFeedback{}
-	}
-	id := m.tasks()[m.selected].ID
-	if !m.press(id) {
-		return m, nil
-	}
-	return m, m.action(Action{Kind: "brief", Task: id})
-}
 func (m model) count() int {
 	if m.kind == "members" {
 		return len(m.data.Members)
@@ -236,19 +220,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.read
 	case actionMsg:
 		m.err = v.err
-		if v.kind == "brief" {
-			// Keep the outcome on the card it belongs to. The footer shows one
-			// error at a time and the user may have moved on already.
-			m.err = nil
-			f := briefFeedback{phase: briefDone, text: v.note, at: time.Now()}
-			if v.err != nil {
-				f = briefFeedback{phase: briefFailed, text: v.err.Error(), at: time.Now()}
-			}
-			if m.briefs == nil {
-				m.briefs = map[string]briefFeedback{}
-			}
-			m.briefs[v.task] = f
-		}
 		if v.quit && v.err == nil {
 			return m, tea.Quit
 		}

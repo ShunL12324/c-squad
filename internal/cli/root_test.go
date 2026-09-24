@@ -253,3 +253,34 @@ func TestHelpRecommendsOneSpellingAndHidesIdentity(t *testing.T) {
 		t.Fatalf("hidden selectors were not passed on: %s", got)
 	}
 }
+
+// task brief was removed with the panel's Brief report; it is no longer a
+// command and never reaches the backend.
+func TestTaskBriefIsRemoved(t *testing.T) {
+	root := newCommand(func([]string, map[string]string, []string) error {
+		t.Fatal("task brief reached the backend")
+		return nil
+	})
+	var out bytes.Buffer
+	root.SetArgs([]string{"task", "brief", "T1"})
+	root.SetOut(&out)
+	root.SetErr(&bytes.Buffer{})
+	if err := root.Execute(); err == nil {
+		t.Fatal("task brief was accepted")
+	}
+	help := newCommand(func([]string, map[string]string, []string) error { return nil })
+	help.SetArgs([]string{"task", "--help"})
+	var text bytes.Buffer
+	help.SetOut(&text)
+	must(t, help.Execute())
+	if strings.Contains(text.String(), "brief") {
+		t.Fatalf("task help still lists brief:\n%s", text.String())
+	}
+}
+
+func must(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+}

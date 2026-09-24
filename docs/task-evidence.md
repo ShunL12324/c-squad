@@ -71,8 +71,7 @@ summaries/blockers at 160, with an explicit truncation marker. Lists show at mos
 12 evidence entries and 8 blockers/questions; omitted counts and the total current
 failure count remain visible. Triggering failures come first, then other failures. Read `task inspect TASK` for the
 current full record, `question list` for questions, and `board` for recent message
-history. The existing task-card Brief report action requests a human-readable
-explanation from master.
+history.
 
 A queued submission report is folded into a newer readiness/failure report.
 Repeated submission calls do not create duplicate reports. An answered question,
@@ -114,27 +113,13 @@ preserved), and every other cause is requeued as `pending` for another attempt.
 Normalization is visible on read and persisted by the next ledger update. Existing
 native-engine queued input cannot be withdrawn by this migration.
 
-## Brief: direct user input
+## Brief report (removed)
 
-The **Brief report** button, `b` shortcut, and `task brief TASK` send a short
-English user prompt to master's native session: current progress, remaining
-work, and blockers, with a direct reply in the user's language. Its template
-lives in `internal/prompts/templates/brief.tmpl`. No task or team message record
-is written: there is no team message ID, sender envelope, ACK, or outbox retry.
-Codex uses its native thread queue through the configured executable/alias;
-Claude receives a plain native user frame scoped to its current session ID.
-Neither path types into the terminal composer. A missing native session,
-unavailable master, or stale caller generation fails explicitly.
-
-The panel suppresses rapid repeat clicks and concurrent requests. After feedback,
-each deliberate click is a new question, including after failure. Success means
-only that native transport completed, not that master read or answered it;
-feedback is local to the panel and disappears on respawn. Transport failures
-have no automatic retry; the user may click again. A lost transport response
-can leave acceptance uncertain, so a manual repeat can duplicate native input.
-Old Brief messages remain available for audit but no longer drive panel status,
-automatic delivery/recovery, or explicit message retry. Input already accepted
-by an engine cannot be withdrawn.
+The task panel's **Brief report** button, its `b`/`r` keys and `task brief TASK`
+are removed; ask master directly instead. Submission, readiness and failure
+reports, task progress and `task submit` summaries are unaffected. A Brief
+request recorded by an older version stays in the ledger for audit and is never
+delivered, retried or recovered.
 
 ## Completion
 

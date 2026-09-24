@@ -27,7 +27,9 @@ func TestObserveSharesClaudeListingWithinAccount(t *testing.T) {
 	log := filepath.Join(dir, "calls")
 	helper := filepath.Join(dir, "claude-helper")
 	must(t, os.WriteFile(helper, []byte("#!/bin/sh\nprintf '%s\\n' \"$ACCOUNT\" >> \"$CALL_LOG\"\nprintf '%s\\n' '[{\"sessionId\":\"s-master\",\"status\":\"idle\"},{\"sessionId\":\"s-a\",\"status\":\"busy\"},{\"sessionId\":\"s-b\",\"status\":\"idle\"}]'\n"), 0700))
-	must(t, os.Symlink(helper, filepath.Join(dir, "helperalias")))
+	home := filepath.Join(dir, "home")
+	must(t, os.Mkdir(home, 0700))
+	must(t, os.WriteFile(filepath.Join(home, ".bashrc"), []byte("alias helperalias="+shellQuote(helper)+"\n"), 0600))
 	st := testStore(t)
 	must(t, st.update(func(s *State) error {
 		cfg := config.Defaults()
@@ -36,7 +38,7 @@ func TestObserveSharesClaudeListingWithinAccount(t *testing.T) {
 		for id, m := range s.Members {
 			m.Profile, m.EngineID, m.Session = "one", "s-"+id, "obs-"+id
 			m.Cwd = filepath.Join(dir, "cwd-"+id)
-			m.Env = map[string]string{"ACCOUNT": "shared", "CALL_LOG": log, "PATH": dir + ":/usr/bin:/bin"}
+			m.Env = map[string]string{"ACCOUNT": "shared", "CALL_LOG": log, "HOME": home, "PATH": "/usr/bin:/bin"}
 		}
 		s.Members["master"].Env["ACCOUNT"] = "other"
 		return nil

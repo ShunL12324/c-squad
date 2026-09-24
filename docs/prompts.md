@@ -21,7 +21,7 @@ Each rule is stated once. A member with a known task runs `task inspect TASK`
 first and uses `board` only for cross-task coordination, and evidence names the
 current submission with `--submission ID` for code and non-code tasks alike. The
 startup prompt is kept under a whitespace-word budget for a fixed fixture (Codex
-worker 750, master 1100), checked by the template tests.
+worker 780, master 1200), checked by the template tests.
 
 The renderer requires team, member, positive generation and a supported engine.
 Responsibilities, working directory, handoff and colors are typed data fields. Member instructions are passed as values, never parsed as templates;
@@ -51,7 +51,8 @@ Routine uncertainty is distinguished from missing authority or an actual blocker
 
 Master reviews the current candidate SHA and consolidates findings instead of
 answering every update. Workers retain their ban on asking the human directly,
-merging, or removing worktrees. Master is guided to inspect
+merging into the target branch, or removing worktrees. Owners may integrate
+assigned branches within their own task worktree to prepare a candidate. Master is guided to inspect
 `task clean-worktree TASK --dry-run` after merging and explicitly clean only
 when safe, preserving ledger/evidence and branches. It must retain a worktree
 with uncommitted, untracked or ignored files, or one still used by a member.
@@ -72,3 +73,35 @@ remain required where applicable. Master checks for substantive progress before
 an actually needed follow-up; it does not use a fixed timeout or demand receipts
 for every update. This policy changes the prompt revision so existing sessions
 receive it through the next eligible hook running the new executable.
+
+## Parallel roles and coordinated validation
+
+Keep developers working on separate tasks in parallel. Developers implement their
+assigned scope and report implementation readiness to master. Reviewers inspect
+candidates and return consolidated findings; they do not take over implementation
+or automatically run tests. Writing regression cases may be part of development;
+executing them is a separate testing assignment.
+
+For a feature spanning related modules (for example, modules one, two and
+three), master waits until all those modules are implemented and integrated,
+then schedules a combined test pass on that candidate. Do not test module one
+in isolation and repeat the same suite whenever the next module arrives.
+Independent features need not wait for unrelated work. Master assigns an
+explicit scope and candidate to a developer or dedicated tester. For related
+code tasks, owners integrate their branches into the same final candidate SHA
+before submission. Run the combined validation once on that SHA and record its
+results against each task submission; obtain all required scope reviews before
+merging the batch. Approve and merge tasks one at a time so each approval
+records the current target branch. This reuses a tested candidate without bypassing per-task
+evidence requirements. Members do not start test runs after every small edit. A submitted
+candidate may still have pending tests: describe that honestly, and retain the
+required passing review and test evidence before approval/merge. On failure,
+master coordinates the correction and the affected retest scope. Reuse results
+for the exact tested candidate rather than independently repeating the same run;
+do not transfer a passing result to an untested SHA.
+
+Arrange participants before handing off review or testing. Prefer completion
+notifications to long fixed sleeps, and ignore superseded task notices without
+sending another acknowledgment. These rules apply to startup and recovery via
+the shared roles fragment; they guide behavior rather than enforcing a hard
+role-based command restriction.

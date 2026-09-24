@@ -77,6 +77,10 @@ var sharedInvariants = []string{
 	"does not prove that a message was read", "go in the ledger", "avoid a mistaken wait",
 	"already notify the right people", "gate must be released", "Developers and reviewers",
 	"never reply to pure acknowledgments", "not message quotas", "surface real blockers",
+	// role separation, coordinated validation and event-driven waiting
+	"developers implement their tasks", "reviewers review and return findings",
+	"Testing is a separate assignment scheduled by master", "Do not start tests after each small edit",
+	"Required review and test evidence still gate", "do not use long fixed sleeps",
 	// restarts and idling
 	"Preserve edits on restart", "Never alter global configuration", "do not busy-poll",
 }
@@ -87,12 +91,15 @@ var masterOnly = []string{
 	"Only master approves and merges", "always assign --owner", "task clean-worktree TASK --dry-run",
 	"Review the current candidate SHA", "someone other than the author", "task close-external", "never use it to skip review or merge",
 	"task cancel TASK --reason TEXT", "Cancelled tasks satisfy no dependency",
+	"not an opening user message", "Naming a repository in instructions does not set its directory",
+	"Unrelated features need not wait", "same candidate SHA",
+	"wait for all modules to finish and integrate", "one combined test pass",
 	"First inspect the member", "ask once", "no fixed response deadline", "activity clues, not proof of completion",
 }
 
 var workerOnly = []string{
 	"task claim TASK (only --dispatch open tasks)", "Workers MUST NOT ask the human",
-	"use question request and end your turn", "do not enter plan mode", "Do not merge or remove worktrees",
+	"use question request and end your turn", "do not enter plan mode", "Do not merge into the target branch",
 }
 
 func TestStartupAndRecoverySharePolicyAndRoleBoundaries(t *testing.T) {
@@ -158,7 +165,7 @@ func isCommand(s string) bool {
 // the architecture review (whitespace words, not model tokens) and keep a
 // later edit from quietly regrowing it; before T87 they were 1272 and 1648.
 func TestStartupPromptWordBudget(t *testing.T) {
-	for member, limit := range map[string]int{"worker": 750, "master": 1100} {
+	for member, limit := range map[string]int{"worker": 780, "master": 1200} {
 		for _, engine := range []string{"codex", "claude"} {
 			text, err := Render("startup", Data{Team: "example", Member: member, Generation: 1, Engine: engine, Cwd: "/project"})
 			if err != nil {

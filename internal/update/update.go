@@ -108,20 +108,20 @@ func Run(o Options) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(o.Out, "Installed: %s\nChannel: %s (%s)\n", buildinfo.String(), ch.Name, self)
+	_, _ = fmt.Fprintf(o.Out, "Installed: %s\nChannel: %s (%s)\n", buildinfo.String(), ch.Name, self)
 	if o.Check {
 		latest, err := Latest()
 		if err != nil {
-			fmt.Fprintf(o.Out, "Latest: unable to query the latest release: %v\n", err)
+			_, _ = fmt.Fprintf(o.Out, "Latest: unable to query the latest release: %v\n", err)
 		} else {
-			fmt.Fprintf(o.Out, "Latest: %s\n", latest.Tag)
+			_, _ = fmt.Fprintf(o.Out, "Latest: %s\n", latest.Tag)
 		}
 		describe(o.Out, ch)
 		reportStore(o.Out)
 		return nil
 	}
 	if ch.Hint != "" {
-		fmt.Fprintln(o.Out, ch.Hint)
+		_, _ = fmt.Fprintln(o.Out, ch.Hint)
 		return fmt.Errorf("csquad cannot update a %s installation itself", ch.Name)
 	}
 	var download *debPackage
@@ -152,15 +152,15 @@ func Run(o Options) error {
 
 func describe(w io.Writer, ch Channel) {
 	if ch.Hint != "" {
-		fmt.Fprintln(w, ch.Hint)
+		_, _ = fmt.Fprintln(w, ch.Hint)
 		return
 	}
-	fmt.Fprintln(w, "Update commands:")
+	_, _ = fmt.Fprintln(w, "Update commands:")
 	for _, argv := range ch.Commands {
-		fmt.Fprintln(w, "  "+strings.Join(quoteAll(argv), " "))
+		_, _ = fmt.Fprintln(w, "  "+strings.Join(quoteAll(argv), " "))
 	}
 	if ch.Name == "apt" {
-		fmt.Fprintln(w, "apt-get update refreshes every package source configured on this system.")
+		_, _ = fmt.Fprintln(w, "apt-get update refreshes every package source configured on this system.")
 	}
 }
 
@@ -181,7 +181,7 @@ func warnUnpinned(o Options) {
 	}
 	for _, t := range o.Teams() {
 		if t.Active && !t.Pinned {
-			fmt.Fprintf(o.Out, "Warning: team %s is running and not pinned to a csquad build; the upgrade reaches it at once. Stop it first, then resume it after the update to pin it.\n", t.Name)
+			_, _ = fmt.Fprintf(o.Out, "Warning: team %s is running and not pinned to a csquad build; the upgrade reaches it at once. Stop it first, then resume it after the update to pin it.\n", t.Name)
 		}
 	}
 }
@@ -195,16 +195,16 @@ func report(o Options, ch Channel) error {
 	}
 	installed := strings.TrimSpace(out)
 	if installed == buildinfo.String() {
-		fmt.Fprintf(o.Out, "csquad is up to date: %s\n", installed)
+		_, _ = fmt.Fprintf(o.Out, "csquad is up to date: %s\n", installed)
 	} else {
-		fmt.Fprintf(o.Out, "Updated: %s\n", installed)
+		_, _ = fmt.Fprintf(o.Out, "Updated: %s\n", installed)
 	}
 	if o.Teams != nil {
 		for _, t := range o.Teams() {
 			if t.Pinned {
-				fmt.Fprintf(o.Out, "team %s: csquad %s (pinned); resume it to move to the new build\n", t.Name, t.Version)
+				_, _ = fmt.Fprintf(o.Out, "team %s: csquad %s (pinned); resume it to move to the new build\n", t.Name, t.Version)
 			} else {
-				fmt.Fprintf(o.Out, "team %s: not pinned; stop and resume it to pin\n", t.Name)
+				_, _ = fmt.Fprintf(o.Out, "team %s: not pinned; stop and resume it to pin\n", t.Name)
 			}
 		}
 	}
@@ -212,7 +212,7 @@ func report(o Options, ch Channel) error {
 }
 
 func askYesNo(question string) bool {
-	fmt.Fprint(os.Stderr, question)
+	_, _ = fmt.Fprint(os.Stderr, question)
 	answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	answer = strings.ToLower(strings.TrimSpace(answer))
 	return answer == "y" || answer == "yes"

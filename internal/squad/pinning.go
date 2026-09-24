@@ -8,11 +8,12 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/charmbracelet/x/term"
+
 	"github.com/ShunL12324/c-squad/internal/buildinfo"
 	"github.com/ShunL12324/c-squad/internal/filelock"
 	"github.com/ShunL12324/c-squad/internal/pin"
 	"github.com/ShunL12324/c-squad/internal/update"
-	"github.com/charmbracelet/x/term"
 )
 
 // ErrWrongBuild refuses a write to a pinned team from any other csquad build.
@@ -84,7 +85,7 @@ func ensurePin(s *State) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("team %s is pinned to csquad %s (%s…), but its copy is unusable: %v; run: csquad repin %s", s.ID, p.Version, p.SHA256[:12], err, s.ID)
+	return fmt.Errorf("team %s is pinned to csquad %s (%s…), but its copy is unusable: %w; run: csquad repin %s", s.ID, p.Version, p.SHA256[:12], err, s.ID)
 }
 
 // forward runs a team command with the team's pinned build instead of this

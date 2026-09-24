@@ -190,7 +190,7 @@ func prepareDeb(w io.Writer) (*debPackage, error) {
 	if err = os.Chmod(dir, 0700); err != nil {
 		return nil, err
 	}
-	fmt.Fprintf(w, "Downloading %s\n", deb.URL)
+	_, _ = fmt.Fprintf(w, "Downloading %s\n", deb.URL)
 	if err = download(deb.URL, d.path, maxDeb); err != nil {
 		return nil, err
 	}
@@ -222,8 +222,8 @@ func prepareDeb(w io.Writer) (*debPackage, error) {
 	if control["Package"] != "csquad" || control["Version"] != version || control["Architecture"] != arch {
 		return nil, fmt.Errorf("%s declares package %q version %q architecture %q, not csquad %s %s", debName, control["Package"], control["Version"], control["Architecture"], version, arch)
 	}
-	fmt.Fprintf(w, "Verified %s (SHA-256 %s) against the release checksums and its package fields.\n", debName, got)
-	fmt.Fprintln(w, "This checks GitHub's HTTPS download and the release checksums file, which is not separately signed; the signed APT source gives stronger verification (see docs/install.md).")
+	_, _ = fmt.Fprintf(w, "Verified %s (SHA-256 %s) against the release checksums and its package fields.\n", debName, got)
+	_, _ = fmt.Fprintln(w, "This checks GitHub's HTTPS download and the release checksums file, which is not separately signed; the signed APT source gives stronger verification (see docs/install.md).")
 	ok = true
 	return d, nil
 }
@@ -314,5 +314,5 @@ func reportStore(w io.Writer) {
 		}
 		return nil
 	})
-	fmt.Fprintf(w, "Pinned builds: %d in %s (%.1f MB); remove unused ones by hand\n", entries, dir, float64(size)/(1<<20))
+	_, _ = fmt.Fprintf(w, "Pinned builds: %d in %s (%.1f MB); remove unused ones by hand\n", entries, dir, float64(size)/(1<<20))
 }

@@ -101,9 +101,20 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 			if e = canOwn(s, t, owner); e != nil {
 				return e
 			}
-			members := list(o["to"])
-			if !slices.Contains(members, owner) {
-				members = append(members, owner)
+			// Every CC recipient is checked before anything changes, so a bad
+			// name leaves no partial assignment or notice behind.
+			cc := list(o["cc"])
+			for _, id := range cc {
+				if _, e = s.recipient(id); e != nil {
+					return e
+				}
+			}
+			members := []string{}
+			for _, id := range append(list(o["to"]), owner) {
+				// A name repeated in --to is one participant with one notice.
+				if !slices.Contains(members, id) {
+					members = append(members, id)
+				}
 			}
 			if len(members) == 0 {
 				return errors.New("--to required")
@@ -133,6 +144,7 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 			if t.State == TaskPhaseReady {
 				t.State = TaskPhaseInProgress
 			}
+			s.ccNotices(actor, t, cc)
 		case "claim":
 			if t.Dispatch != DispatchModeOpen || t.State != TaskPhaseReady || t.Owner != "" {
 				return errors.New("task already claimed or not ready")

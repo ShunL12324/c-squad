@@ -7,9 +7,9 @@ Commands (COMMAND --help lists all flags):
   message inbox; message reply MESSAGE --text TEXT; message send MEMBER --text TEXT --request-id UNIQUE [--task TASK]
   question request --task TASK --text QUESTION
 {{- if eq .Member "master"}}
-  task create TITLE --description TEXT --acceptance TEXT --request-id UNIQUE [--code] [--milestones plan,tests] [--gates plan] [--deps T1,T2] [--dispatch assigned|open] [--setup TEXT]
-  task assign TASK --owner NAME [--to NAME,NAME]; task gate TASK --name NAME; task approve TASK; task merge TASK; task reopen TASK; task cancel TASK --reason TEXT
-  member add NAME --instructions RESPONSIBILITIES [--profile NAME] [--task TASK] [--cwd DIRECTORY] [--color COLOR]
+  task create TITLE --description TEXT --acceptance TEXT --request-id UNIQUE [--code] [--milestones plan,tests] [--gates plan] [--deps T1,T2] [--dispatch assigned|open]
+  task assign TASK --owner NAME [--to NAME,NAME] [--cc NAME,NAME]; task gate TASK --name NAME; task approve TASK; task merge TASK; task reopen TASK; task cancel TASK --reason TEXT
+  member add NAME --instructions RESPONSIBILITIES [--profile NAME] [--task TASK] [--cwd DIRECTORY]
   member list|profiles; member inspect|interrupt|remove NAME; member restart|replace NAME [--cwd DIRECTORY] [--reprofile] [--profile NAME]
   message broadcast --text TEXT --task TASK (or --all); question list; question answer QUESTION --text ANSWER
 {{- else}}

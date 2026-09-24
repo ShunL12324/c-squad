@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/ShunL12324/c-squad/internal/config"
@@ -338,7 +339,7 @@ func (st *Store) read() (*State, error) {
 
 // stateVersion is the schema version of the persisted ledger. Bump it together with
 // a matching one-time step in migrateLedger whenever a stored shape stops being read.
-const stateVersion = 3
+const stateVersion = 4
 
 // migrateLedger rewrites stored records once, at a version boundary, so that obsolete
 // shapes never cost anything on the hot read/update path.
@@ -363,6 +364,31 @@ func migrateLedger(s *State) {
 				m.Error = ""
 			default:
 				m.resetDelivery()
+			}
+		}
+	}
+	if s.Version < 4 {
+		// Older dispatch notices were plain text. Attach ledger references to
+		// unfinished ones so an assignment, claim or handoff can withdraw a
+		// stale notice before a busy recipient's next native turn.
+		for _, m := range s.Messages {
+			if m.Report != nil || m.State != DeliveryStatePending && m.State != DeliveryStateSending {
+				continue
+			}
+			t := s.Tasks[m.Task]
+			if t == nil || !dispatchNotice(m, t) {
+				continue
+			}
+			switch {
+			case strings.HasPrefix(m.RequestKey, ccKeyPrefix+t.ID+":"):
+				owner, _, ok := strings.Cut(strings.TrimPrefix(m.RequestKey, ccKeyPrefix+t.ID+":"), ":")
+				if ok && owner != "" {
+					m.Report = &ReportReference{Kind: "cc", Owner: owner}
+				}
+			case strings.HasPrefix(m.Text, "Task available: "+t.ID+" "):
+				m.Report = &ReportReference{Kind: "available"}
+			case strings.HasPrefix(m.Text, "Assigned to task "+t.ID+". "):
+				m.Report = &ReportReference{Kind: "assigned", Owner: t.Owner}
 			}
 		}
 	}

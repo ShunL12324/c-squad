@@ -18,6 +18,22 @@ func deliveryPaused(state MemberState) bool {
 	return state == MemberStateStopped || state == MemberStateStopping || state == MemberStateNeedsAttention || state == MemberStateCrashed
 }
 
+// Codex queues a message as a future native turn even while the current turn
+// is running. Keep routine automatic snapshots in our outbox until that turn
+// ends, so a changed task can supersede them before they reach the native queue.
+// Free-form messages and reports that need a decision or signal a failure stay
+// immediate. The explicit list avoids delaying new report kinds by accident.
+func deferBusyCodexNotice(member *Member, msg *Message) bool {
+	if member.Engine != config.Codex || member.State != MemberStateWorking || msg.Report == nil {
+		return false
+	}
+	switch msg.Report.Kind {
+	case "delivery", "ready", "available", "assigned", "cc":
+		return true
+	}
+	return false
+}
+
 func (st *Store) deliver(id string) error {
 	claimed := false
 	var attempt string
@@ -56,6 +72,10 @@ func (st *Store) deliver(id string) error {
 					if v.State == DeliveryStatePending {
 						v.Error = "recipient is " + string(member.State) + "; delivery paused until it is available"
 					}
+					return nil
+				}
+				if v.State == DeliveryStatePending && deferBusyCodexNotice(member, v) {
+					v.Error = "routine automatic notice held until Codex recipient is idle"
 					return nil
 				}
 				if member.Engine == config.Claude && (member.EngineID == "" || member.Peer == "") {
@@ -146,6 +166,21 @@ func (st *Store) deliver(id string) error {
 			return nil
 		})
 		return errors.Join(e, stateErr)
+	}
+	if deferBusyCodexNotice(m, msg) {
+		// The member became busy between claim and transport. This claim did
+		// not reach the native queue, so restore pending without a retry delay.
+		return st.update(func(s *State) error {
+			for _, v := range s.Messages {
+				if v.ID == id && v.State == DeliveryStateSending && v.Attempt == attempt {
+					v.State = DeliveryStatePending
+					v.Attempt = ""
+					v.Attempts--
+					v.Error = "routine automatic notice held until Codex recipient is idle"
+				}
+			}
+			return nil
+		})
 	}
 	// Refresh aggregated facts immediately before transport.
 	msg.Text = s.reportText(msg)

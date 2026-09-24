@@ -51,7 +51,9 @@ func (s *State) reportCurrent(m *Message) bool {
 	case "available":
 		return t.Dispatch == DispatchModeOpen && t.State == TaskPhaseReady && t.Owner == ""
 	case "assigned":
-		return !t.State.terminal() && t.Owner == r.Owner && slices.Contains(t.Participants, m.To)
+		// A reviewer remains assigned through an owner handoff. Only the
+		// former owner's personal assignment becomes obsolete.
+		return !t.State.terminal() && slices.Contains(t.Participants, m.To) && (m.To != r.Owner || t.Owner == r.Owner)
 	case "cc":
 		return !t.State.terminal() && t.Owner == r.Owner && !slices.Contains(t.Participants, m.To)
 	}

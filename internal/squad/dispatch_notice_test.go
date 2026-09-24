@@ -162,3 +162,56 @@ func TestOldOwnerCCExpiresAfterHandoff(t *testing.T) {
 		t.Fatal("current owner's CC was suppressed")
 	}
 }
+
+func TestReviewerAssignmentSurvivesOwnerHandoff(t *testing.T) {
+	st := ccStore(t)
+	must(t, assign(st, options{"owner": "a", "to": "b"}))
+	reviewer := messageFor(t, st, "assigned", "b")
+	owner := messageFor(t, st, "assigned", "a")
+	must(t, st.update(func(s *State) error {
+		task := s.Tasks["T1"]
+		task.Owner = "c"
+		task.Participants = append(task.Participants, "c")
+		s.expireReports()
+		return nil
+	}))
+	s, err := st.read()
+	must(t, err)
+	for _, m := range s.Messages {
+		if m.ID == reviewer.ID && m.State != DeliveryStatePending {
+			t.Fatalf("reviewer lost still-current assignment: %+v", m)
+		}
+		if m.ID == owner.ID && m.State != DeliveryStateSuperseded {
+			t.Fatalf("former owner kept stale personal assignment: %+v", m)
+		}
+	}
+}
+
+func TestLegacyDispatchNoticesGainFreshnessReferences(t *testing.T) {
+	s := &State{
+		Version: 3,
+		Tasks: map[string]*Task{
+			"T1": {ID: "T1", State: TaskPhaseInProgress, Owner: "a", Participants: []string{"a", "b"}},
+			"T2": {ID: "T2", State: TaskPhaseReady, Dispatch: DispatchModeOpen},
+		},
+		Messages: []*Message{
+			{ID: "M1", From: "master", To: "b", Task: "T1", Text: assignedNotice(&Task{ID: "T1"}), State: DeliveryStatePending},
+			{ID: "M2", From: "master", To: "b", Task: "T2", Text: availableNotice(&Task{ID: "T2", Title: "Open"}), State: DeliveryStateSending},
+			{ID: "M3", From: "master", To: "c", Task: "T1", RequestKey: ccKeyPrefix + "T1:a:c", Text: "FYI", State: DeliveryStatePending},
+			{ID: "M4", From: "a", To: "b", Task: "T1", Text: "please review", State: DeliveryStatePending},
+			{ID: "M5", From: "master", To: "a", Task: "T1", Text: assignedNotice(&Task{ID: "T1"}), State: DeliveryStateSent},
+		},
+	}
+	normalizeState(s)
+	if s.Version != stateVersion {
+		t.Fatalf("version = %d", s.Version)
+	}
+	for i, want := range []ReportReference{{Kind: "assigned", Owner: "a"}, {Kind: "available"}, {Kind: "cc", Owner: "a"}} {
+		if got := s.Messages[i].Report; got == nil || got.Kind != want.Kind || got.Owner != want.Owner {
+			t.Fatalf("legacy notice %d not tagged: %+v", i, got)
+		}
+	}
+	if s.Messages[3].Report != nil || s.Messages[4].Report != nil {
+		t.Fatal("migration changed personal or already-sent history")
+	}
+}

@@ -17,7 +17,9 @@ them. csquad provides it by giving each team its own copy of the binary.
 
 ### Store
 
-- Location: `${XDG_DATA_HOME:-$HOME/.local/share}/csquad/versions/`.
+- Location: `${XDG_DATA_HOME:-$HOME/.local/share}/csquad/versions/`, or
+  `CSQUAD_VERSIONS_DIR` when set. The override is an absolute path, checked
+  the same way. It exists for home directories mounted `noexec`.
 - Each entry is `<version>-<sha256 hex>/csquad`, using the full hash, so two
   builds with the same version string never collide.
 - The `csquad` and `versions` directories are created 0700. Before every use,
@@ -39,7 +41,10 @@ them. csquad provides it by giving each team its own copy of the binary.
    (version, commit and build date) with the running build's own
    `buildinfo.String()`. On macOS the file at the
    path may already be newer than the running image; a mismatch fails the pin
-   with "csquad was replaced while running; run the command again".
+   with "csquad was replaced while running; run the command again". If the
+   exec itself fails with `EACCES` or `ENOEXEC` (a `noexec` mount), the pin
+   fails with "cannot execute files in DIR (noexec?); set
+   CSQUAD_VERSIONS_DIR to an executable directory".
 4. `rename` the temp file into `<version>-<sha>/csquad`, then fsync the
    directory.
 5. If the destination already exists, hash it. If the hash matches, reuse it:
@@ -67,6 +72,37 @@ Pinning happens only at these points:
 
 The pin never changes while a team is active. `recover`, `member restart` and
 `member replace` keep it.
+
+**No downgrade by accident.** `resume` and `repin` pin the *current* binary.
+If its version is older than the team's pinned version (semantic version from
+the path), they refuse. Several installs can coexist (nvm npm, Homebrew, a stray
+old file on PATH), so this would otherwise be a silent downgrade that drops
+newer ledger fields. `--downgrade` accepts it explicitly. `repin` checks this
+before it stops anything.
+
+Equal versions with different hashes (local builds) are allowed; csquad prints
+the old and new hash.
+
+**Every embedded path is regenerated after a re-pin.** A re-pin happens only
+while the team is stopped: `resume` and `repin`, after stopping. Stopping ends
+the runtime session and every member session. `resume` then creates a new tmux
+socket and new generations, and relaunches everything from the new
+`State.Executable`:
+
+| Entry point | Source |
+|---|---|
+| runtime session | `pump.go` |
+| member launch and run-engine argv | `engine.go:170` |
+| engine hook command, passed at each launch | `engine.go:79` |
+| member PATH wrapper, in a per-generation directory | `member_environment.go` |
+| tmux navigation and panel bindings, on the new server | `configureNavigation`, `navigation.go`, `panels.go` |
+| master exit and shutdown `run-shell` | `recovery.go:78` |
+| hook-triggered sync | `hooks.go:121`, through the wrapper and hooks |
+
+If an entry point were ever missed, the old pinned file still exists. With the
+self check (Verification below), a writer running from a path other than
+`State.Executable` is refused, so a stale binding fails loudly instead of
+writing as a second version.
 
 ### Verification
 
@@ -110,6 +146,18 @@ deletion, partial copy, a corrupt entry or a wrong version. It does not
 protect against the same user deliberately editing the file, since that user
 could equally edit the ledger.
 
+**Only the pinned binary drives a pinned team's runtime.** `startRuntime`
+kills and relaunches the runtime when the protocol differs from the caller's
+own constant. `startRuntime` and `syncMessages` therefore run the self check
+first, and on a pinned team they return without effect when the caller is not
+the pin. Otherwise an unforwarded newer binary would restart the pinned
+runtime on every call, a restart loop.
+
+Exempt commands never reach them: `list`, `version`, `doctor`, `config`,
+`completion`, `usage` and `update` only read ledgers. The exceptions are
+`resume` and `repin`, which re-pin first and only then start or stop anything.
+The implementation audits every call site, and a test checks it.
+
 ## 2. One writer version per team
 
 Writers **inside** a team all go through `State.Executable`: the member PATH
@@ -120,8 +168,13 @@ Entry points **outside** a team run whatever `csquad` is on PATH, for example
 `attach`, `stop`, `board` or `task …` from a human terminal. The new binary
 forwards these:
 
-- **Where:** in `Execute`, right after `ResolveTeamDirectory` and a read-only
-  `st.read()`, and before anything writes.
+- **Where:** in `Execute`, after the team is fully resolved exactly as the
+  command itself resolves it, then a read-only `st.read()`, before anything
+  writes. Resolution follows the existing order: positional `TEAM` for
+  `attach`, `stop`, `recover` and `ui`, the legacy `attach MEMBER` rule,
+  `--name`, `--team-name`, `--team`/`--state-dir`, a bound
+  `CSQUAD_STATE_DIR`, and the current project's last team. The original argv
+  is forwarded unchanged, so the pinned binary resolves the same team again.
 - **Condition:** the team is pinned, the pinned path differs from the resolved
   own executable, and the command is not in the exemption list.
 - **Action:** verify the pinned file (§1), then `syscall.Exec` it with the
@@ -177,10 +230,15 @@ retroactively.
   manager replaces the file. The old runtime and runners keep the old inode,
   and new hooks and member CLI calls run the new binary. The old bytes are
   gone, so the new binary cannot pin that team.
-- On its first contact with an active unpinned team, the new binary prints:
-  `team X is not pinned to a csquad version; stop and resume it to pin`. It
-  then works as today; it does not refuse, because refusing would strand a
-  running team with no way to stop it.
+- On every command against an active unpinned team, if stderr is a TTY, the
+  new binary prints: `team X is not pinned to a csquad version; stop and
+  resume it to pin`. Nothing is recorded, so the notice itself never writes
+  the ledger. It then works as today; it does not refuse, because refusing
+  would strand a running team with no way to stop it.
+- **Every install must be upgraded together.** A ≤0.11 csquad left anywhere
+  on PATH (another npm prefix, Homebrew, a stray copy) can still write any team
+  without forwarding. `doctor` warns when more than one `csquad` executable is
+  on PATH and names their versions.
 - **Recommended path, documented in the release notes and `docs/install.md`:**
   before the first upgrade to the pinning release, run `csquad stop` for each
   active team, then upgrade, then `csquad resume`. From then on, upgrades never
@@ -201,7 +259,12 @@ forwarded.
 - `--check` reports the installed version, the channel and the latest release,
   and installs nothing. It queries
   `https://api.github.com/repos/ShunL12324/c-squad/releases/latest` with a
-  10-second timeout. A network failure is reported as such.
+  10-second timeout. A network failure or GitHub's unauthenticated limit of
+  60 requests per hour is reported as "unable to query the latest release:
+  REASON".
+- The npm, Homebrew and APT updates do not depend on the GitHub API: the
+  package manager decides what is newest. Only `--check` and the local `.deb`
+  path query GitHub.
 - Without `--check`, `update` prints the exact commands it will run (argv, no
   shell) and asks `Proceed? [y/N]`. `--yes` skips the question.
 - Without a TTY and without `--yes`, it prints the commands and exits 1.
@@ -216,8 +279,8 @@ the package manager's own metadata.
 |---|---|---|---|
 | npm | `R` = `P/lib/node_modules/csquad/native/<os>-<arch>/csquad`, and `P/lib/node_modules/csquad/package.json` has name `csquad` | `NPM install --global --prefix P csquad@latest`; `NPM` is `P/bin/npm` if executable, else `npm` on PATH | when `P/lib/node_modules` is not writable |
 | pnpm / yarn / bun global | `R` under `node_modules/csquad/` with a pnpm, `.bun` or yarn global layout | hint only: `pnpm add -g csquad@latest` or the matching command | — |
-| Homebrew | `R` = `C/csquad/<kegver>/bin/csquad`, `B = dirname(C)/bin/brew` is executable, and `B --cellar` resolves to `C`; this works for any prefix | `B upgrade <tap>/csquad`; `<tap>` comes from the keg's `INSTALL_RECEIPT.json` `source.tap`, falling back to `B list --full-name --formula` | refused if `C/csquad` is not writable (Homebrew refuses root) |
-| APT | `dpkg-query -S R` reports package `csquad`, and `apt-cache policy csquad` lists an origin under `shunl12324.github.io/c-squad/apt` | `sudo apt-get update`, then `sudo apt-get install --only-upgrade csquad` | yes |
+| Homebrew | `R` = `C/csquad/<kegver>/bin/csquad`, `B = dirname(C)/bin/brew` is executable, and `B --cellar` resolves to `C`; this works for any prefix | `B upgrade <tap>/csquad`; `<tap>` comes from the keg's `INSTALL_RECEIPT.json` `source.tap` (compared case-insensitively; receipts store lowercase names such as `shunl12324/c-squad`), falling back to `B list --full-name --formula` | refused if `C/csquad` is not writable (Homebrew refuses root) |
+| APT | `dpkg-query -S R` reports package `csquad`, and `apt-cache policy csquad` lists an origin under `shunl12324.github.io/c-squad/apt` | `sudo apt-get update`, then `sudo apt-get install --only-upgrade csquad`; the confirmation text says that `apt-get update` refreshes every configured source | yes |
 | Local `.deb` | owned by the `csquad` package, no csquad APT origin | download and verify the release `.deb` (below), then `sudo apt-get install <tmpdir>/csquad_<ver>_<arch>.deb` | yes |
 | Manual / source | none of the above | hint only: latest version, `docs/install.md` link | — |
 
@@ -354,6 +417,23 @@ Missing or corrupt pin:
 - The identical-hash self-heal works.
 - `repin` works on an inactive team and on an active team with `--yes`, and
   is refused when the pin is intact and in member sessions.
+
+Re-pin, downgrade and runtime:
+
+- After a re-pin, the old pinned path appears nowhere: `tmux list-keys`, the
+  generated hook command, the wrapper, the runtime and member session
+  commands, and the shutdown hook.
+- A binding left on the old pin is refused by the self check.
+- `resume` and `repin` refuse an older current binary without `--downgrade`;
+  equal version with a different hash is allowed.
+- An exempt newer binary does not restart the pinned runtime; the runtime PID
+  is unchanged across calls.
+- `noexec` store: a fake exec failure gives the clear error, and
+  `CSQUAD_VERSIONS_DIR` is honoured.
+- Forwarding under each resolution path: positional `TEAM`, `--team-name`,
+  `--team`/`--state-dir`, bound `CSQUAD_STATE_DIR`, the cwd project, and the
+  legacy `attach MEMBER`.
+- `doctor` reports multiple csquad executables on PATH.
 
 Resume:
 

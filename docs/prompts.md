@@ -21,7 +21,7 @@ Each rule is stated once. A member with a known task runs `task inspect TASK`
 first and uses `board` only for cross-task coordination, and evidence names the
 current submission with `--submission ID` for code and non-code tasks alike. The
 startup prompt is kept under a whitespace-word budget for a fixed fixture (Codex
-worker 750, master 1100), checked by the template tests.
+worker 780, master 1200), checked by the template tests.
 
 The renderer requires team, member, positive generation and a supported engine.
 Responsibilities, working directory, handoff and colors are typed data fields. Member instructions are passed as values, never parsed as templates;
@@ -86,7 +86,12 @@ three), master waits until all those modules are implemented and integrated,
 then schedules a combined test pass on that candidate. Do not test module one
 in isolation and repeat the same suite whenever the next module arrives.
 Independent features need not wait for unrelated work. Master assigns an
-explicit scope and candidate to a developer or dedicated tester. Members do not start test runs after every small edit. A submitted
+explicit scope and candidate to a developer or dedicated tester. For related
+code tasks, owners integrate their branches into the same final candidate SHA
+before submission. Run the combined validation once on that SHA and record its
+results against each task submission; obtain all required scope reviews before
+merging the batch. This reuses a tested candidate without bypassing per-task
+evidence requirements. Members do not start test runs after every small edit. A submitted
 candidate may still have pending tests: describe that honestly, and retain the
 required passing review and test evidence before approval/merge. On failure,
 master coordinates the correction and the affected retest scope. Reuse results

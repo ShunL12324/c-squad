@@ -15,9 +15,11 @@ release history; earlier releases remain available on
   candidate and evidence are kept. Pending notices about the task are
   withdrawn, its open questions are closed, and its members are told to stop.
   A task that is preparing its workspace or merging cannot be cancelled until
-  that finishes or is aborted. An older csquad reading a ledger with a
-  cancelled task treats it as unfinished, and a running runtime from an older
-  version is replaced after the upgrade. Master's instructions list the command
+  that finishes or is aborted. A runtime left running by an older version is
+  replaced after the upgrade. Do not downgrade once a task has been cancelled:
+  an older csquad treats the task as unfinished, keeps its owner occupied and
+  its dependents unclaimable, may send its members resume-work notices, and
+  drops the cancellation record when it rewrites the ledger. Master's instructions list the command
   and say that a cancelled task satisfies no dependency; running sessions
   receive them at their next eligible hook.
 - Master is told once when an in-progress task seems stalled: every member on

@@ -139,6 +139,12 @@ The task panel has two tabs: **Active** holds every unfinished phase, and
 **Done/Cancelled** (**Closed** when the pane is narrow) holds finished and
 cancelled tasks with distinct badges; a cancelled card shows its reason.
 
+Do not downgrade csquad once a task has been cancelled. An older version treats
+a cancelled task as unfinished: its owner stays occupied, its dependents cannot
+be claimed, a resume may tell its members to continue work, and the first
+ledger write drops the cancellation record. Upgrading replaces a runtime still
+running from an older version; nothing protects a downgrade.
+
 ## Brief report (removed)
 
 The task panel's **Brief report** button, its `b`/`r` keys and `task brief TASK`

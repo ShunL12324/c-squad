@@ -82,14 +82,19 @@ func TestOnlyThePinnedBuildDrivesRuntimeAndDelivery(t *testing.T) {
 	pinTo(t, st, p)
 	runAs(t, p.SHA256)
 	var id string
+	socket := filepath.Join(t.TempDir(), "no-server")
+	t.Cleanup(func() { _ = exec.Command("tmux", "-S", socket, "kill-server").Run() })
 	must(t, st.update(func(s *State) error {
-		s.Socket = filepath.Join(t.TempDir(), "no-server")
+		s.Socket = socket
 		id = s.message("master", "a", "", "hello", "").ID
 		return nil
 	}))
 	runAs(t, strings.Repeat("0", 64))
 	before := ledgerJSON(t, st)
 	must(t, st.startRuntime())
+	if _, err := os.Stat(socket); err == nil {
+		t.Fatal("another build started a runtime for the pinned team")
+	}
 	must(t, st.syncMessages())
 	if ledgerJSON(t, st) != before {
 		t.Fatal("another build changed the pinned team")

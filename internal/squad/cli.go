@@ -19,6 +19,7 @@ import (
 	"github.com/ShunL12324/c-squad/internal/pin"
 	"github.com/ShunL12324/c-squad/internal/preflight"
 	"github.com/ShunL12324/c-squad/internal/tmux"
+	"github.com/ShunL12324/c-squad/internal/update"
 )
 
 var validID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,40}$`)
@@ -78,6 +79,11 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 	if p[0] == "version" {
 		fmt.Println(buildinfo.String())
 		return nil
+	}
+	// update never operates on a team, so it is decided before any team is
+	// resolved and is never forwarded.
+	if p[0] == "update" {
+		return update.Run(update.Options{Check: o["check"] == "true", Yes: o["yes"] == "true", Teams: savedTeams})
 	}
 	if p[0] == "config" {
 		c, e := config.Load("")

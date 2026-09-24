@@ -11,6 +11,7 @@ import (
 	"github.com/ShunL12324/c-squad/internal/buildinfo"
 	"github.com/ShunL12324/c-squad/internal/filelock"
 	"github.com/ShunL12324/c-squad/internal/pin"
+	"github.com/ShunL12324/c-squad/internal/update"
 	"github.com/charmbracelet/x/term"
 )
 
@@ -217,4 +218,29 @@ func repinTeam(st *Store, yes bool) error {
 	}
 	fmt.Fprintf(os.Stderr, "csquad: team %s now uses csquad %s (%s…); start it with: csquad resume %s\n", s.ID, next.Version, next.SHA256[:12], s.ID)
 	return nil
+}
+
+// savedTeams lists the teams csquad can find for update's report, reading
+// only. Teams in other projects are not discoverable, which is why pinned
+// copies are never removed automatically.
+func savedTeams() []update.Team {
+	dirs, err := teamDirectories()
+	if err != nil {
+		return nil
+	}
+	var teams []update.Team
+	for _, dir := range dirs {
+		st, err := openStore(dir)
+		if err != nil {
+			continue
+		}
+		s, err := st.read()
+		_ = st.DB.Close()
+		if err != nil {
+			continue
+		}
+		p, pinned := teamPin(s)
+		teams = append(teams, update.Team{Name: s.ID, Active: s.Active, Pinned: pinned, Version: p.Version})
+	}
+	return teams
 }

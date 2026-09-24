@@ -43,6 +43,9 @@ type Member struct {
 	Processes    []process.Identity `json:"processes,omitempty"`
 	ProcessStart string             `json:"process_start,omitempty"`
 	Handoff      string             `json:"handoff,omitempty"`
+
+	// Set only on read projections when the runtime observation is too old.
+	ObservationStale bool `json:"observation_stale,omitempty"`
 }
 
 // Milestone tracks a reporting checkpoint and whether master approval gates further work.
@@ -190,6 +193,9 @@ type State struct {
 	Sequence    int                  `json:"sequence"`
 	Config      *config.Config       `json:"config,omitempty"`
 	RuntimeSeen string               `json:"runtime_seen,omitempty"`
+
+	// Set only on board read projections; never used as persisted runtime state.
+	ObservationStale bool `json:"observation_stale,omitempty"`
 }
 
 func now() string { return time.Now().UTC().Format(time.RFC3339Nano) }

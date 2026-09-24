@@ -32,7 +32,11 @@ func writeTable(out io.Writer, value any) error {
 		rows := [][]string{}
 		for _, id := range sortedKeys(data) {
 			m := data[id]
-			rows = append(rows, []string{id, string(m.State), string(m.Engine), instructionsSummary(m.Instructions), m.Cwd})
+			state := string(m.State)
+			if m.ObservationStale {
+				state += " (stale)"
+			}
+			rows = append(rows, []string{id, state, string(m.Engine), instructionsSummary(m.Instructions), m.Cwd})
 		}
 		return writeRows(out, []string{"MEMBER", "STATE", "ENGINE", "INSTRUCTIONS", "DIRECTORY"}, rows)
 	case map[string]*Task:

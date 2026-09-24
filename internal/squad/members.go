@@ -20,6 +20,7 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 		if e != nil {
 			return e
 		}
+		markObservationStaleness(s)
 		return queryOut(o, s.Members)
 	}
 	if p[0] == "profiles" {

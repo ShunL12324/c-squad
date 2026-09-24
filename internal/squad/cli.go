@@ -250,6 +250,7 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 		if e != nil {
 			return e
 		}
+		markObservationStaleness(s)
 		if o["full"] == "true" {
 			return queryOut(o, s)
 		}
@@ -261,7 +262,7 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 		if len(events) > 10 {
 			events = events[len(events)-10:]
 		}
-		return queryOut(o, map[string]any{"team": s.ID, "root": s.Root, "active": s.Active, "phase": s.Phase, "stop_reason": s.StopReason, "runtime_seen": s.RuntimeSeen, "members": s.Members, "tasks": s.Tasks, "questions": s.Questions, "recent_messages": messages, "recent_activity": events})
+		return queryOut(o, map[string]any{"team": s.ID, "root": s.Root, "active": s.Active, "phase": s.Phase, "stop_reason": s.StopReason, "runtime_seen": s.RuntimeSeen, "observation_stale": s.ObservationStale, "members": s.Members, "tasks": s.Tasks, "questions": s.Questions, "recent_messages": messages, "recent_activity": events})
 	}
 	if p[0] == "runtime" {
 		return st.runRuntime()

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ShunL12324/c-squad/internal/config"
 	"github.com/ShunL12324/c-squad/internal/process"
@@ -84,5 +85,25 @@ func TestBoardAndMemberListUseStoredObservation(t *testing.T) {
 	must(t, memberCommand(st, "master", []string{"list"}, options{}))
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
 		t.Fatalf("read launched a helper: %v", err)
+	}
+}
+
+func TestReadSnapshotMarksStaleObservation(t *testing.T) {
+	current := time.Now().UTC().Format(time.RFC3339Nano)
+	old := time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano)
+	s := &State{RuntimeSeen: current, Members: map[string]*Member{
+		"fresh":   {State: MemberStateWorking, ObservedAt: current},
+		"old":     {State: MemberStateIdle, ObservedAt: old},
+		"stopped": {State: MemberStateStopped},
+	}}
+	markObservationStaleness(s)
+	if !s.ObservationStale || s.Members["fresh"].ObservationStale || !s.Members["old"].ObservationStale || s.Members["stopped"].ObservationStale {
+		t.Fatalf("member observation ages were not distinguished: %+v", s.Members)
+	}
+	s.RuntimeSeen = old
+	s.Members["old"].ObservedAt = current
+	markObservationStaleness(s)
+	if !s.Members["fresh"].ObservationStale || !s.Members["old"].ObservationStale || s.Members["stopped"].ObservationStale {
+		t.Fatalf("dead runtime did not mark live members stale: %+v", s.Members)
 	}
 }

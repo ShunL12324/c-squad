@@ -3,12 +3,34 @@ package squad
 import (
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/ShunL12324/c-squad/internal/config"
 	"github.com/ShunL12324/c-squad/internal/process"
 )
 
 func (st *Store) refresh() error { _, err := st.observe(); return err }
+
+// markObservationStaleness annotates a read snapshot without running native
+// probes or updating the ledger. The runtime normally observes every two
+// seconds; 30 seconds gives slow passes room while revealing dead runtimes.
+func markObservationStaleness(s *State) {
+	cutoff := time.Now().Add(-30 * time.Second)
+	stale := func(value string) bool {
+		at, err := time.Parse(time.RFC3339Nano, value)
+		return err != nil || at.Before(cutoff)
+	}
+	runtimeStale := stale(s.RuntimeSeen)
+	s.ObservationStale = runtimeStale
+	for _, m := range s.Members {
+		m.ObservationStale = false
+		if m.State == MemberStateRemoved || m.State == MemberStateStopped {
+			continue
+		}
+		m.ObservationStale = runtimeStale || stale(m.ObservedAt)
+		s.ObservationStale = s.ObservationStale || m.ObservationStale
+	}
+}
 
 // observe refreshes member state and reports which members this pass actually
 // observed. A member missing from the result is unknown: a Claude session the
@@ -30,7 +52,9 @@ func (st *Store) observe() (map[string]bool, error) {
 	}
 	// The agents helper lists sessions for an account, not for a member. Cache
 	// only within this pass, and keep command and environment in the key: two
-	// profiles can point at different clients or Claude accounts.
+	// profiles can point at different clients or Claude accounts. The native
+	// agents listing is account-wide across working directories; a custom shell
+	// alias whose output depends on cwd must use a distinct profile environment.
 	helperOK := map[string]bool{}
 	claude := map[string]claudeEntry{}
 	cache := map[string]helperResult{}

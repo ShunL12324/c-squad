@@ -47,6 +47,9 @@ func TestMain(m *testing.M) {
 	}
 	code := m.Run()
 	_ = os.RemoveAll(dir)
+	if pinBuilds.dir != "" {
+		_ = os.RemoveAll(pinBuilds.dir)
+	}
 	os.Exit(code)
 }
 

@@ -246,9 +246,6 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 		return st.configureNavigation()
 	}
 	if p[0] == "board" {
-		if e = st.refresh(); e != nil {
-			return e
-		}
 		s, e = st.read()
 		if e != nil {
 			return e

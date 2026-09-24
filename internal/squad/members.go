@@ -16,9 +16,6 @@ func memberCommand(st *Store, actor string, p []string, o options) error {
 		return errors.New("member subcommand required")
 	}
 	if p[0] == "list" {
-		if e := st.refresh(); e != nil {
-			return e
-		}
 		s, e := st.read()
 		if e != nil {
 			return e

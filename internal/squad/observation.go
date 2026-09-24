@@ -19,27 +19,46 @@ func (st *Store) observe() (map[string]bool, error) {
 	if e != nil {
 		return nil, e
 	}
-	helperOK := map[string]bool{}
-	var claude []struct {
+	type claudeEntry struct {
 		SessionID string `json:"sessionId"`
 		Status    string `json:"status"`
 		Waiting   string `json:"waitingFor"`
 	}
+	type helperResult struct {
+		entries []claudeEntry
+		ok      bool
+	}
+	// The agents helper lists sessions for an account, not for a member. Cache
+	// only within this pass, and keep command and environment in the key: two
+	// profiles can point at different clients or Claude accounts.
+	helperOK := map[string]bool{}
+	claude := map[string]claudeEntry{}
+	cache := map[string]helperResult{}
+	cfg, cfgErr := s.effectiveConfig()
 	for _, member := range s.Members {
-		if member.Engine == config.Claude {
-			if out, err := s.engineHelper(member, "agents", "--json"); err == nil {
-				var entries []struct {
-					SessionID string `json:"sessionId"`
-					Status    string `json:"status"`
-					Waiting   string `json:"waitingFor"`
-				}
-				if json.Unmarshal([]byte(out), &entries) == nil {
-					helperOK[member.ID] = true
-					for _, entry := range entries {
-						if entry.SessionID == member.EngineID {
-							claude = append(claude, entry)
-						}
-					}
+		if member.Engine != config.Claude || cfgErr != nil {
+			continue
+		}
+		command, _ := cfg.ProfileCommand(member.Profile, member.Engine)
+		key, _ := json.Marshal(struct {
+			Command config.Command
+			Env     map[string]string
+		}{command, member.Env})
+		result, seen := cache[string(key)]
+		if !seen {
+			name, args, env := command.Invocation(member.Env, "", "agents", "--json")
+			out, err := process.RunEnv(member.Cwd, env, name, args...)
+			if err == nil && json.Unmarshal([]byte(out), &result.entries) == nil {
+				result.ok = true
+			}
+			cache[string(key)] = result
+		}
+		if result.ok {
+			helperOK[member.ID] = true
+			for _, entry := range result.entries {
+				if entry.SessionID == member.EngineID {
+					claude[member.ID] = entry
+					break
 				}
 			}
 		}
@@ -93,19 +112,17 @@ func (st *Store) observe() (map[string]bool, error) {
 					m.State = MemberStateIdle
 				}
 			}
-			for _, c := range claude {
-				if c.SessionID == m.EngineID {
-					known[m.ID] = helperOK[m.ID]
-					switch c.Status {
-					case "busy":
-						m.State = MemberStateWorking
-					case "idle":
-						if m.State != MemberStateWaitingMaster {
-							m.State = MemberStateIdle
-						}
-					case "waiting":
-						m.State = MemberState("waiting_" + strings.ReplaceAll(c.Waiting, " ", "_"))
+			if c, ok := claude[m.ID]; ok {
+				known[m.ID] = helperOK[m.ID]
+				switch c.Status {
+				case "busy":
+					m.State = MemberStateWorking
+				case "idle":
+					if m.State != MemberStateWaitingMaster {
+						m.State = MemberStateIdle
 					}
+				case "waiting":
+					m.State = MemberState("waiting_" + strings.ReplaceAll(c.Waiting, " ", "_"))
 				}
 			}
 			for _, q := range cur.Questions {

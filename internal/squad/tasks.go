@@ -132,12 +132,13 @@ func taskCommand(st *Store, actor string, p []string, o options) error {
 					t.Participants = append(t.Participants, id)
 				}
 				crossRepo := noticeCrossRepo(s, actor, t, m)
-				if newlyAssigned {
+				if newlyAssigned && id != actor {
 					text := assignedNotice(t)
 					if crossRepo != "" {
 						text += " WARNING: " + crossRepo
 					}
-					s.message(actor, id, t.ID, text, "")
+					notice := s.message(actor, id, t.ID, text, "")
+					notice.Report = &ReportReference{Kind: "assigned", Owner: owner}
 				}
 			}
 			t.Owner = owner

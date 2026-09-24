@@ -63,7 +63,8 @@ func (st *Store) prepareWorkspace(id string) error {
 		if t.Dispatch == DispatchModeOpen {
 			for id, m := range s.Members {
 				if id != "master" && m.State != MemberStateRemoved {
-					s.message("master", id, t.ID, availableNotice(t), "")
+					notice := s.message("master", id, t.ID, availableNotice(t), "")
+					notice.Report = &ReportReference{Kind: "available"}
 				}
 			}
 		}

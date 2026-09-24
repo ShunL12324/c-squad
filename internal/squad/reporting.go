@@ -3,6 +3,7 @@ package squad
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 )
 
@@ -14,6 +15,7 @@ type ReportReference struct {
 	Milestone  string `json:"milestone,omitempty"`
 	Question   string `json:"question,omitempty"`
 	Evidence   int    `json:"evidence,omitempty"` // One-based index in this submission.
+	Owner      string `json:"owner,omitempty"`    // Owner at dispatch time.
 }
 
 func evidenceReady(t *Task) bool {
@@ -44,6 +46,16 @@ func (s *State) reportCurrent(m *Message) bool {
 	if t == nil || t.State == TaskPhaseCancelled {
 		// Nothing about a cancelled task needs master or a member to act.
 		return false
+	}
+	switch r.Kind {
+	case "available":
+		return t.Dispatch == DispatchModeOpen && t.State == TaskPhaseReady && t.Owner == ""
+	case "assigned":
+		// A reviewer remains assigned through an owner handoff. Only the
+		// former owner's personal assignment becomes obsolete.
+		return !t.State.terminal() && slices.Contains(t.Participants, m.To) && (m.To != r.Owner || t.Owner == r.Owner)
+	case "cc":
+		return !t.State.terminal() && t.Owner == r.Owner && !slices.Contains(t.Participants, m.To)
 	}
 	// A recovery notification names no submission, so it answers before the
 	// review checks below. It stays current only while that task still needs
@@ -87,6 +99,14 @@ func (s *State) reportCurrent(m *Message) bool {
 
 func (s *State) expireReports() {
 	for _, m := range s.Messages {
+		// A dispatch notice already transported is history, even when its
+		// task later changes. Only undelivered snapshots need withdrawal.
+		if m.State == DeliveryStateSent && m.Report != nil {
+			switch m.Report.Kind {
+			case "available", "assigned", "cc":
+				continue
+			}
+		}
 		if m.State != DeliveryStateAcknowledged && m.State != DeliveryStateSuperseded && !s.reportCurrent(m) {
 			m.State = DeliveryStateSuperseded
 			m.Error = "superseded by current ledger state; retained for history"
@@ -158,7 +178,7 @@ func (s *State) queueRecoveryNotices() {
 func (s *State) reportText(m *Message) string {
 	// A recovery notification carries behaviour the ledger snapshot cannot
 	// express (preserve gates, do not repeat completed work), so keep its text.
-	if m.Report == nil || m.Report.Question != "" || m.Report.Kind == "recovery" || m.Report.Kind == "stall" {
+	if m.Report == nil || m.Report.Question != "" || m.Report.Kind == "recovery" || m.Report.Kind == "stall" || m.Report.Kind == "available" || m.Report.Kind == "assigned" || m.Report.Kind == "cc" {
 		return m.Text
 	}
 	t := s.Tasks[m.Task]

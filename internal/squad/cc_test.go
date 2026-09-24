@@ -59,7 +59,7 @@ func TestAssignCCInformsOnceWithoutParticipation(t *testing.T) {
 					t.Fatalf("cc text %q lacks %q", m.Text, want)
 				}
 			}
-			if m.State != DeliveryStatePending || m.Report != nil {
+			if m.State != DeliveryStatePending || m.Report == nil || m.Report.Kind != "cc" || m.Report.Owner != "a" {
 				t.Fatalf("cc must use the ordinary queue: %+v", m)
 			}
 		}
@@ -209,5 +209,20 @@ func TestAssignRepeatedToNotifiesOnce(t *testing.T) {
 	}
 	if count["a"] != 1 || count["b"] != 1 || len(s.Tasks["T1"].Participants) != 2 {
 		t.Fatalf("assignment notices %v, participants %v", count, s.Tasks["T1"].Participants)
+	}
+}
+
+func TestAssignMasterToSelfDoesNotNotify(t *testing.T) {
+	st := ccStore(t)
+	must(t, assign(st, options{"owner": "master", "to": "a"}))
+	s, err := st.read()
+	must(t, err)
+	if s.Tasks["T1"].Owner != "master" || !strings.Contains(strings.Join(s.Tasks["T1"].Participants, ","), "master") {
+		t.Fatalf("master assignment was not recorded: %+v", s.Tasks["T1"])
+	}
+	for _, m := range s.Messages {
+		if m.To == "master" {
+			t.Fatalf("self-assignment queued a notification: %+v", m)
+		}
 	}
 }

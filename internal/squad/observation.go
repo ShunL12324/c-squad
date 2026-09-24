@@ -2,7 +2,7 @@ package squad
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -82,11 +82,11 @@ func decodeClaudeAgents(out string, shell bool) ([]claudeEntry, error) {
 			offset += len(line)
 		}
 		if !found {
-			return nil, fmt.Errorf("Claude agents JSON array not found")
+			return nil, errors.New("claude agents JSON array not found")
 		}
 	}
 	if !strings.HasPrefix(strings.TrimSpace(payload), "[") {
-		return nil, fmt.Errorf("Claude agents response is not a JSON array")
+		return nil, errors.New("claude agents response is not a JSON array")
 	}
 	var entries []claudeEntry
 	if err := json.Unmarshal([]byte(payload), &entries); err != nil {

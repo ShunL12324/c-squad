@@ -118,9 +118,13 @@ func (i memberItem) Description() string {
 		status = label(member.State)
 		path = compactPath(cwd, width)
 		if member.Branch != "" {
-			git = tail(member.Branch, width)
-			if member.Worktree {
-				git = "wt"
+			room := width
+			if member.Worktree && width >= 6 {
+				room -= 3
+			}
+			git = tail(member.Branch, room)
+			if room < width {
+				git += " wt"
 			}
 		} else if member.Commit != "" {
 			git = tail(member.Commit, width)

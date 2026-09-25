@@ -732,8 +732,9 @@ func TestMemberListUsesStockThemeAndCompactMetadata(t *testing.T) {
 			}
 		}
 	}
-	if narrow := ansi.Strip(strings.Join(m.memberCard(1), "\n")); !strings.Contains(narrow, "Review") || !strings.Contains(narrow, "T441") {
-		t.Fatalf("narrow card hid status or assignment:\n%s", narrow)
+	if narrow := ansi.Strip(strings.Join(m.memberCard(1), "\n")); !strings.Contains(narrow, "Review") ||
+		!strings.Contains(narrow, "T441") || !strings.Contains(narrow, "…41 wt") {
+		t.Fatalf("narrow list item hid status, assignment or branch tail:\n%s", narrow)
 	}
 }
 

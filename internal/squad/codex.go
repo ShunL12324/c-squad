@@ -205,7 +205,7 @@ func (st *Store) startCodexInput(s *State, m *Member, msg *Message, message, att
 			return fmt.Errorf("first message waiting: member has an attached client; enter a first message or detach")
 		}
 	}
-	pane, err := tm(s, "capture-pane", "-p", "-t", agentPane(m))
+	pane, err := tm(s, "capture-pane", "-p", "-J", "-t", agentPane(m))
 	if err != nil {
 		return err
 	}
@@ -241,21 +241,13 @@ func (st *Store) startCodexInput(s *State, m *Member, msg *Message, message, att
 	// them. Wait briefly for our draft to appear before pressing Enter.
 	for i := 0; i < 8 && !codexOwnDraft(pane, marker); i++ {
 		time.Sleep(100 * time.Millisecond)
-		pane, err = tm(s, "capture-pane", "-p", "-t", agentPane(m))
+		pane, err = tm(s, "capture-pane", "-p", "-J", "-t", agentPane(m))
 		if err != nil {
 			return err
 		}
 	}
 	if !codexOwnDraft(pane, marker) {
 		return fmt.Errorf("first message waiting for its Codex draft to become visible")
-	}
-	latest, err := st.read()
-	if err != nil {
-		return err
-	}
-	current := latest.Members[m.ID]
-	if current == nil || current.Generation != m.Generation || current.State == MemberStateWorking || current.State == MemberStateInterrupted {
-		return fmt.Errorf("first message waiting: recipient changed or is working")
 	}
 	clients, err = tm(s, "list-clients", "-F", "#{session_name}")
 	if err != nil {
@@ -266,26 +258,59 @@ func (st *Store) startCodexInput(s *State, m *Member, msg *Message, message, att
 			return fmt.Errorf("first message waiting: member gained an attached client")
 		}
 	}
+	latest, err := st.read()
+	if err != nil {
+		return err
+	}
+	current := latest.Members[m.ID]
+	if current == nil || current.Generation != m.Generation || current.State == MemberStateWorking || current.State == MemberStateInterrupted {
+		return fmt.Errorf("first message waiting: recipient changed or is working")
+	}
+	currentMessage := (*Message)(nil)
+	for _, v := range latest.Messages {
+		if v.ID == msg.ID {
+			currentMessage = v
+			break
+		}
+	}
+	if currentMessage == nil || currentMessage.State != DeliveryStateSending || currentMessage.Attempt != attempt || currentMessage.BootstrapGeneration != m.Generation || !currentMessage.BootstrapTyped || !latest.reportCurrent(currentMessage) {
+		return fmt.Errorf("first message attempt became stale before submission")
+	}
 	_, err = tm(s, "send-keys", "-t", agentPane(m), "Enter")
 	return err
 }
 
-// Inspect only the current composer, after the last prompt glyph. A previous
-// submitted prompt can remain on screen above an empty composer.
+// Inspect only a visible current composer, after its last prompt glyph. -J
+// joins tmux-wrapped rows; a composer whose glyph scrolled off screen cannot
+// be proven current and must wait rather than risk Enter on historical output.
 func codexOwnDraft(pane, marker string) bool {
 	lines := strings.Split(strings.TrimRight(pane, "\n "), "\n")
 	footer := lines[max(0, len(lines)-12):]
-	if strings.Contains(strings.ToLower(strings.Join(footer, "\n")), "esc to interrupt") {
+	footerText := strings.Join(footer, "\n")
+	if strings.Contains(strings.ToLower(footerText), "esc to interrupt") {
 		return false
 	}
-	for i := len(footer) - 1; i >= 0; i-- {
-		line := strings.TrimSpace(footer[i])
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
 		if strings.HasPrefix(line, "›") {
-			return line != "› Ask Codex to do anything" && strings.Contains(strings.Join(footer[i:], "\n"), marker)
+			if line == "› Ask Codex to do anything" {
+				return false
+			}
+			composer := strings.Join(lines[i:], "\n")
+			end := strings.LastIndex(compactComposer(composer), compactComposer(marker))
+			if end < 0 {
+				return false
+			}
+			// A submitted prompt followed by ordinary output is historical.
+			// Native composer status follows the draft on the next line.
+			after := compactComposer(composer)[end+len(compactComposer(marker)):]
+			return len(after) < 120 && strings.Contains(after, "·") && !strings.Contains(after, "›")
 		}
 	}
 	return false
 }
+
+func compactComposer(s string) string { return strings.Join(strings.Fields(s), "") }
 
 // codexEmptyComposer recognizes the empty native input near the bottom of the
 // screen. Resumed conversations can scroll the startup banner out of view.

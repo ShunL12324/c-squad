@@ -349,6 +349,8 @@ func (st *Store) read() (*State, error) {
 
 // stateVersion is the schema version of the persisted ledger. Bump it together with
 // a matching one-time step in migrateLedger whenever a stored shape stops being read.
+// Optional bootstrap fields read old records as zero values, so they need no
+// migration; runtimeProtocol still changes to retire older ledger writers.
 const stateVersion = 4
 
 func legacyGeneratedNotice(text, generated string) bool {

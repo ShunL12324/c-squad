@@ -2,13 +2,13 @@
 ┌──────────────────┐┌──────────────────┐
 │      Active      ││       Done       │
 └──────────────────┘└──────────────────┘
-  3 active tasks                        
+  2 done tasks                          
 ╔══════════════════════════════════════╗
-║ T477   Working                       ║
+║ T470   Done                          ║
 ║                                      ║
-║ Reusable TUI controls                ║
-║ Owner  navigation-dev                ║
-║ Update Member badges + buttons       ║
+║ Publish v0.12.5                      ║
+║ Owner  master                        ║
+║ Update All channels verified         ║
 ║                                      ║
 ║╔════════════════════════════════════╗║
 ║║           View details  ›          ║║
@@ -17,11 +17,11 @@
 ╚══════════════════════════════════════╝
                                         
 ┌──────────────────────────────────────┐
-│ T480   Working                       │
+│ T302   Cancelled                     │
 │                                      │
-│ Keep header height fixed             │
+│ Release v0.12.3                      │
 │ Owner  master                        │
-│ Update Native resize review          │
+│ Update Superseded by v0.12.4         │
 │                                      │
 │┌────────────────────────────────────┐│
 ││           View details  ›          ││
@@ -29,18 +29,18 @@
 │                                      │
 └──────────────────────────────────────┘
                                         
-┌──────────────────────────────────────┐
-│ T481   Blocked                       │
-│                                      │
-│ Waiting for approval                 │
-│ Owner  master                        │
-│ Update Disabled-state example        │
-│                                      │
-│┌────────────────────────────────────┐│
-││          Awaiting approval         ││
-│└────────────────────────────────────┘│
-│                                      │
-└──────────────────────────────────────┘
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
                                         
                                         
                                         

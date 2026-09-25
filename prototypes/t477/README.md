@@ -8,22 +8,34 @@ cd prototypes/t477
 go run .                         # interactive, 32-column members + 40-column tasks
 go run . -panel members          # member pane only
 go run . -panel tasks            # task pane only
+go run . -panel members -member-width 28
+go run . -panel tasks -view done # includes cancelled tasks
 go run . -snapshot -panel both   # fixed 72×46 ANSI render, no terminal needed
+go run . -flow                   # Button handler callback trace
 ```
 
-The captured 32×46 and 40×46 renders are in `preview-members.ansi` and
-`preview-tasks.ansi`; text copies alongside them make spacing easy to inspect.
-The snapshot is a tcell simulation render of the same primitives as interactive
-mode. It does not simulate keyboard or pointer input.
+The captured 28×46 and 32×46 member renders are in `preview-members-28.ansi`
+and `preview-members.ansi`; 40×46 task Active and Done renders are in
+`preview-tasks.ansi` and `preview-tasks-done.ansi`. Text copies alongside them
+make spacing easy to inspect. The snapshot is a tcell simulation render of the
+same primitives as interactive mode. `preview-flow.txt` records Enter, click,
+and disabled behavior through the actual tview Button handlers.
 
 In interactive mode, Up/Down changes the focused member card; clicking a member
-card also changes focus. The `●` marks the current session independently of the
-double-line focus border. On the task side, Tab/Shift-Tab changes button focus;
-Enter or a mouse click activates the focused/clicked button and updates the
-status line. `q` quits. The real `tview.Button` owns its Enter, click, disabled,
-focus, and selected-callback behavior. The prototype only wires app-specific
-focus traversal and callbacks. Each member surface composes `tview.TextView`,
-`Box`, and `Flex`; tview does **not** supply a stock Card control.
+card also changes focus. Current session uses a blue border and darker filled
+background; keyboard focus uses a distinct double-line green border. State and
+task IDs are separate padded, colored chips, including Working, Idle, Blocked,
+No task, and two task IDs on one member. The labels remain readable without
+color. On the task side, Left/Right or clicking a stock Button tab changes
+Active/Done; Cancelled appears under Done. Tab/Shift-Tab changes action Button
+focus; Enter or a mouse click activates the focused/clicked action and updates
+the line below the tabs. The third Active card demonstrates the library's
+disabled Button state; it is a prototype example, not a product workflow.
+`q` quits. The real `tview.Button` owns its Enter, click, disabled, focus, and
+selected-callback behavior. The prototype only wires app-specific focus
+traversal and callbacks. Each member surface composes `tview.TextView`, `Box`,
+and `Flex`; tview does **not** supply a stock Card control. The tmux header
+height is outside this prototype and T477's implementation scope.
 
 ## Component choice
 

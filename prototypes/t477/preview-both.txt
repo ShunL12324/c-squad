@@ -1,46 +1,46 @@
-  MEMBERS    1 / 1                TASKS  /  In progress     Done        
-  Current: navigation-dev         2 active tasks                        
-                                                                        
-┌──────────────────────────────┐┌──────────────────────────────────────┐
-│ ◆ master                     ││ T477   Working                       │
-│ Working · Codex              ││                                      │
-│ Task T477 · UI direction     ││ Adopt reusable TUI controls          │
-│ Git main                     ││                                      │
-│ Dir ~/projects/c-squad       ││ Owner  navigation-dev                │
-└──────────────────────────────┘│ Update Button and card prototype     │
-                                │                                      │
-╔══════════════════════════════╗│┌────────────────────────────────────┐│
-║ ● navigation-dev             ║││           View details  ›          ││
-║ Working · Codex              ║│└────────────────────────────────────┘│
-║ Task T477 · prototype        ║│                                      │
-║ Git csquad/T477  wt          ║└──────────────────────────────────────┘
-║ Dir …/worktrees/T477         ║                                        
-╚══════════════════════════════╝┌──────────────────────────────────────┐
-                                │ T470   Done                          │
-┌──────────────────────────────┐│                                      │
-│ design-review                ││ Publish and verify v0.12.5           │
-│ Review · Codex               ││                                      │
-│ Task T451 · approved         ││ Owner  master                        │
-│ Git main                     ││ Update All channels verified         │
+  MEMBERS     1 / 1               TASKS                                 
+                                ┌──────────────────┐┌──────────────────┐
+┌──────────────────────────────┐│      Active      ││       Done       │
+│ ◆ master                     │└──────────────────┘└──────────────────┘
+│  Working   T477              │  3 active tasks                        
+│ Codex · UI direction         │┌──────────────────────────────────────┐
+│ Git main                     ││ T477   Working                       │
 │ Dir ~/projects/c-squad       ││                                      │
-└──────────────────────────────┘│┌────────────────────────────────────┐│
-                                ││           View details  ›          ││
-┌──────────────────────────────┐│└────────────────────────────────────┘│
-│ release-check                ││                                      │
-│ Idle · Codex                 │└──────────────────────────────────────┘
-│ No task                      │                                        
-│ Git main                     │  Tab focus · Enter/click activate      
-│ Dir ~/projects/c-squad       │                                        
-└──────────────────────────────┘                                        
-                                                                        
-  ↑↓ focus · click · q quit                                             
-                                                                        
-                                                                        
-                                                                        
-                                                                        
-                                                                        
-                                                                        
-                                                                        
+│                              ││ Reusable TUI controls                │
+└──────────────────────────────┘│ Owner  navigation-dev                │
+                                │ Update Member badges + buttons       │
+┌──────────────────────────────┐│                                      │
+│ navigation-dev               ││┌────────────────────────────────────┐│
+│  Working   T477   T480       │││           View details  ›          ││
+│ Codex · Cards + header       ││└────────────────────────────────────┘│
+│ Git csquad/T477 wt           ││                                      │
+│ Dir …/worktrees/T477         │└──────────────────────────────────────┘
+│                              │                                        
+└──────────────────────────────┘┌──────────────────────────────────────┐
+                                │ T480   Working                       │
+╔══════════════════════════════╗│                                      │
+║ design-review                ║│ Keep header height fixed             │
+║  Blocked   T451              ║│ Owner  master                        │
+║ Codex · Awaiting approval    ║│ Update Native resize review          │
+║ Git main                     ║│                                      │
+║ Dir ~/projects/c-squad       ║│┌────────────────────────────────────┐│
+║                              ║││           View details  ›          ││
+╚══════════════════════════════╝│└────────────────────────────────────┘│
+                                │                                      │
+┌──────────────────────────────┐└──────────────────────────────────────┘
+│ release-check                │                                        
+│  Idle   No task              │┌──────────────────────────────────────┐
+│ Codex · Available            ││ T481   Blocked                       │
+│ Git main                     ││                                      │
+│ Dir ~/projects/c-squad       ││ Waiting for approval                 │
+│                              ││ Owner  master                        │
+└──────────────────────────────┘│ Update Disabled-state example        │
+                                │                                      │
+                                │┌────────────────────────────────────┐│
+                                ││          Awaiting approval         ││
+                                │└────────────────────────────────────┘│
+                                │                                      │
+                                └──────────────────────────────────────┘
                                                                         
                                                                         
                                                                         

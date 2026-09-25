@@ -29,36 +29,31 @@ var (
 )
 
 type demo struct {
-	app     *tview.Application
-	root    tview.Primitive
-	members []*tview.TextView
-	buttons []*tview.Button
-	status  *tview.TextView
+	app         *tview.Application
+	root        tview.Primitive
+	panel, view string
+	leftWidth   int
+	members     []*tview.TextView
+	buttons     []*tview.Button
+	tabs        []*tview.Button
+	status      *tview.TextView
 }
 
-func newDemo(panel string) *demo {
-	d := &demo{app: tview.NewApplication()}
-	left := d.memberPanel()
-	right := d.taskPanel()
-	switch panel {
-	case "members":
-		d.root = left
-	case "tasks":
-		d.root = right
-	default:
-		d.root = tview.NewFlex().SetDirection(tview.FlexColumn).
-			AddItem(left, memberWidth, 0, true).
-			AddItem(right, 0, 1, false)
-	}
-	d.app.SetRoot(d.root, true).EnableMouse(true)
-	if panel == "tasks" {
-		d.app.SetFocus(d.buttons[0])
-	} else {
-		d.app.SetFocus(d.members[1])
-	}
+func newDemo(panel, view string, leftWidth int) *demo {
+	d := &demo{app: tview.NewApplication(), panel: panel, view: view, leftWidth: leftWidth}
+	d.rebuild()
+	d.app.EnableMouse(true)
 	d.app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyCtrlC || event.Rune() == 'q' {
 			d.app.Stop()
+			return nil
+		}
+		if d.panel != "members" && (event.Key() == tcell.KeyLeft || event.Key() == tcell.KeyRight) {
+			if event.Key() == tcell.KeyLeft {
+				d.switchView("active")
+			} else {
+				d.switchView("done")
+			}
 			return nil
 		}
 		if event.Key() == tcell.KeyUp || event.Key() == tcell.KeyDown {
@@ -81,31 +76,104 @@ func newDemo(panel string) *demo {
 	return d
 }
 
+func (d *demo) rebuild() {
+	d.members, d.buttons, d.tabs = nil, nil, nil
+	left := d.memberPanel()
+	right := d.taskPanel()
+	switch d.panel {
+	case "members":
+		d.root = left
+	case "tasks":
+		d.root = right
+	default:
+		d.root = tview.NewFlex().SetDirection(tview.FlexColumn).
+			AddItem(left, d.leftWidth, 0, true).
+			AddItem(right, 0, 1, false)
+	}
+	d.app.SetRoot(d.root, true)
+	if d.panel == "tasks" {
+		d.app.SetFocus(d.buttons[0])
+	} else {
+		// Keep current-session styling visible while another card has focus.
+		d.app.SetFocus(d.members[2])
+	}
+}
+
+func (d *demo) switchView(view string) {
+	if d.view == view {
+		return
+	}
+	d.view = view
+	d.rebuild()
+	if len(d.buttons) > 0 {
+		d.app.SetFocus(d.buttons[0])
+	}
+}
+
+type memberExample struct {
+	name, state, engine, summary, git, dir string
+	tasks                                  []string
+	current                                bool
+}
+
+type taskExample struct {
+	id, title, owner, state, update, action string
+	disabled                                bool
+}
+
+func chip(value, fg, bg string) string {
+	return "[" + fg + ":" + bg + ":b] " + value + " [-:-:-]"
+}
+
+func stateChip(state string) string {
+	switch state {
+	case "Working":
+		return chip(state, "#c8ffe3", "#245e48")
+	case "Blocked":
+		return chip(state, "#ffe6ae", "#70491c")
+	default:
+		return chip(state, "#eeeeee", "#555555")
+	}
+}
+
+func taskChips(tasks []string) string {
+	if len(tasks) == 0 {
+		return chip("No task", "#e5e5e5", "#484848")
+	}
+	var out []string
+	for _, task := range tasks {
+		out = append(out, chip(task, "#d7efff", "#305270"))
+	}
+	return strings.Join(out, " ")
+}
+
 func (d *demo) memberPanel() tview.Primitive {
 	panel := tview.NewFlex().SetDirection(tview.FlexRow)
 	panel.SetBackgroundColor(canvas)
-	header := tview.NewTextView().SetText("  MEMBERS    1 / 1\n  Current: navigation-dev")
+	header := tview.NewTextView().SetText("  MEMBERS     1 / 1")
 	header.SetTextColor(muted)
 	header.SetBackgroundColor(canvas)
-	panel.AddItem(header, 3, 0, false)
-	cards := []struct {
-		name, state, task, git, dir string
-		color, bg                   tcell.Color
-	}{
-		{"◆ master", "Working · Codex", "Task T477 · UI direction", "Git main", "Dir ~/projects/c-squad", accent, surface},
-		{"● navigation-dev", "Working · Codex", "Task T477 · prototype", "Git csquad/T477  wt", "Dir …/worktrees/T477", blue, selected},
-		{"design-review", "Review · Codex", "Task T451 · approved", "Git main", "Dir ~/projects/c-squad", accent, surface},
-		{"release-check", "Idle · Codex", "No task", "Git main", "Dir ~/projects/c-squad", muted, surface},
+	panel.AddItem(header, 2, 0, false)
+	cards := []memberExample{
+		{"◆ master", "Working", "Codex", "UI direction", "Git main", "Dir ~/projects/c-squad", []string{"T477"}, false},
+		{"navigation-dev", "Working", "Codex", "Cards + header", "Git csquad/T477 wt", "Dir …/worktrees/T477", []string{"T477", "T480"}, true},
+		{"design-review", "Blocked", "Codex", "Awaiting approval", "Git main", "Dir ~/projects/c-squad", []string{"T451"}, false},
+		{"release-check", "Idle", "Codex", "Available", "Git main", "Dir ~/projects/c-squad", nil, false},
 	}
-	for i, item := range cards {
+	for _, item := range cards {
 		body := tview.NewTextView().SetDynamicColors(true)
-		body.SetText(fmt.Sprintf(" [::b]%s[-:-:-]\n %s\n %s\n %s\n %s", item.name, item.state, item.task, item.git, item.dir))
+		body.SetText(fmt.Sprintf(" [::b]%s[-:-:-]\n %s %s\n %s · %s\n %s\n %s",
+			item.name, stateChip(item.state), taskChips(item.tasks), item.engine, item.summary, item.git, item.dir))
 		body.SetTextColor(text)
-		body.SetBackgroundColor(item.bg)
+		bg, edge := surface, muted
+		if item.current {
+			bg, edge = selected, blue
+		}
+		body.SetBackgroundColor(bg)
 		body.SetBorder(true)
-		body.SetBorderColor(item.color)
+		body.SetBorderColor(edge)
 		body.SetFocusFunc(func() { body.SetBorderColor(accent) })
-		body.SetBlurFunc(func() { body.SetBorderColor(item.color) })
+		body.SetBlurFunc(func() { body.SetBorderColor(edge) })
 		body.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 			if action == tview.MouseLeftDown {
 				d.app.SetFocus(body)
@@ -113,27 +181,56 @@ func (d *demo) memberPanel() tview.Primitive {
 			return action, event
 		})
 		d.members = append(d.members, body)
-		panel.AddItem(body, 7, 0, i == 1)
+		panel.AddItem(body, 8, 0, false)
 		panel.AddItem(nil, 1, 0, false)
 	}
-	footer := tview.NewTextView().SetText("  ↑↓ focus · click · q quit")
-	footer.SetTextColor(muted)
-	footer.SetBackgroundColor(canvas)
-	panel.AddItem(footer, 0, 1, false)
 	return panel
 }
 
 func (d *demo) taskPanel() tview.Primitive {
 	panel := tview.NewFlex().SetDirection(tview.FlexRow)
 	panel.SetBackgroundColor(canvas)
-	header := tview.NewTextView().SetText("  TASKS  /  In progress     Done\n  2 active tasks")
+	header := tview.NewTextView().SetText("  TASKS")
 	header.SetTextColor(muted)
 	header.SetBackgroundColor(canvas)
-	panel.AddItem(header, 3, 0, false)
-	data := []struct{ id, title, owner, state, update string }{
-		{"T477", "Adopt reusable TUI controls", "navigation-dev", "Working", "Button and card prototype"},
-		{"T470", "Publish and verify v0.12.5", "master", "Done", "All channels verified"},
+	panel.AddItem(header, 1, 0, false)
+	tabs := tview.NewFlex().SetDirection(tview.FlexColumn)
+	tabs.SetBackgroundColor(canvas)
+	for _, view := range []string{"active", "done"} {
+		name := "Active"
+		if view == "done" {
+			name = "Done"
+		}
+		button := tview.NewButton(name)
+		button.SetBorder(true)
+		button.SetBorderColor(muted)
+		button.SetStyle(tcell.StyleDefault.Foreground(muted).Background(surface))
+		if view == d.view {
+			button.SetStyle(tcell.StyleDefault.Foreground(accent).Background(selected).Bold(true))
+			button.SetBorderColor(accent)
+		}
+		selectedView := view
+		button.SetSelectedFunc(func() { d.switchView(selectedView) })
+		d.tabs = append(d.tabs, button)
+		tabs.AddItem(button, 0, 1, false)
 	}
+	panel.AddItem(tabs, 3, 0, false)
+	d.status = tview.NewTextView()
+	d.status.SetTextColor(muted)
+	d.status.SetBackgroundColor(canvas)
+	data := []taskExample{
+		{"T477", "Reusable TUI controls", "navigation-dev", "Working", "Member badges + buttons", "View details  ›", false},
+		{"T480", "Keep header height fixed", "master", "Working", "Native resize review", "View details  ›", false},
+		{"T481", "Waiting for approval", "master", "Blocked", "Disabled-state example", "Awaiting approval", true},
+	}
+	if d.view == "done" {
+		data = []taskExample{
+			{"T470", "Publish v0.12.5", "master", "Done", "All channels verified", "View details  ›", false},
+			{"T302", "Release v0.12.3", "master", "Cancelled", "Superseded by v0.12.4", "View details  ›", false},
+		}
+	}
+	d.status.SetText(fmt.Sprintf("  %d %s tasks", len(data), d.view))
+	panel.AddItem(d.status, 1, 0, false)
 	for i, task := range data {
 		card := tview.NewFlex().SetDirection(tview.FlexRow)
 		card.SetBackgroundColor(surface)
@@ -142,31 +239,37 @@ func (d *demo) taskPanel() tview.Primitive {
 		content := tview.NewTextView().SetDynamicColors(true)
 		content.SetBackgroundColor(surface)
 		content.SetTextColor(text)
-		content.SetText(fmt.Sprintf(" [#73d7af::b]%s[-:-:-]   %s\n\n [::b]%s[-:-:-]\n\n Owner  %s\n Update %s", task.id, task.state, task.title, task.owner, task.update))
-		card.AddItem(content, 7, 0, false)
-		button := tview.NewButton("View details  ›")
+		content.SetText(fmt.Sprintf(" [#73d7af::b]%s[-:-:-]   %s\n\n [::b]%s[-:-:-]\n Owner  %s\n Update %s", task.id, task.state, task.title, task.owner, task.update))
+		card.AddItem(content, 6, 0, false)
+		button := tview.NewButton(task.action)
 		button.SetStyle(tcell.StyleDefault.Foreground(accent).Background(selected))
 		button.SetActivatedStyle(tcell.StyleDefault.Foreground(canvas).Background(accent).Bold(true))
+		button.SetDisabledStyle(tcell.StyleDefault.Foreground(muted).Background(surface))
+		button.SetDisabled(task.disabled)
 		button.SetBorder(true)
-		button.SetBorderColor(accent)
+		button.SetBorderColor(muted)
 		id := task.id
 		button.SetSelectedFunc(func() { d.status.SetText("  Opened " + id + " via tview Button") })
 		button.SetExitFunc(func(key tcell.Key) {
+			step := 0
 			if key == tcell.KeyTab {
-				d.app.SetFocus(d.buttons[(i+1)%len(d.buttons)])
+				step = 1
 			} else if key == tcell.KeyBacktab {
-				d.app.SetFocus(d.buttons[(i+len(d.buttons)-1)%len(d.buttons)])
+				step = -1
+			}
+			for offset := 1; step != 0 && offset <= len(d.buttons); offset++ {
+				next := (i + step*offset + len(d.buttons)*2) % len(d.buttons)
+				if !d.buttons[next].IsDisabled() {
+					d.app.SetFocus(d.buttons[next])
+					break
+				}
 			}
 		})
 		d.buttons = append(d.buttons, button)
 		card.AddItem(button, 3, 0, i == 0)
-		panel.AddItem(card, 13, 0, false)
+		panel.AddItem(card, 12, 0, false)
 		panel.AddItem(nil, 1, 0, false)
 	}
-	d.status = tview.NewTextView().SetText("  Tab focus · Enter/click activate")
-	d.status.SetTextColor(muted)
-	d.status.SetBackgroundColor(canvas)
-	panel.AddItem(d.status, 0, 1, false)
 	return panel
 }
 
@@ -225,20 +328,72 @@ func colorSGR(color tcell.Color, foreground bool, fallback int) string {
 	return fmt.Sprintf("%d;5;%d", prefix, fallback)
 }
 
+// flow invokes the library's actual handlers on a simulated screen. This
+// gives a reproducible callback trace without a live terminal or product tests.
+func flow() error {
+	d := newDemo("tasks", "active", memberWidth)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		return err
+	}
+	defer screen.Fini()
+	screen.SetSize(taskWidth, panelHeight)
+	d.root.SetRect(0, 0, taskWidth, panelHeight)
+	d.root.Draw(screen)
+	fmt.Printf("initial: focused=%t unfocused=%t disabled=%t\n",
+		d.buttons[0].HasFocus(), !d.buttons[1].HasFocus(), d.buttons[2].IsDisabled())
+	focus := func(p tview.Primitive) { d.app.SetFocus(p) }
+	d.buttons[0].InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), focus)
+	fmt.Println("Enter:", strings.TrimSpace(d.status.GetText(true)))
+	click := func(b *tview.Button) {
+		x, y, _, _ := b.GetRect()
+		event := tcell.NewEventMouse(x+1, y+1, tcell.Button1, tcell.ModNone)
+		b.MouseHandler()(tview.MouseLeftDown, event, focus)
+		b.MouseHandler()(tview.MouseLeftClick, event, focus)
+	}
+	click(d.buttons[1])
+	fmt.Println("click:", strings.TrimSpace(d.status.GetText(true)))
+	before := d.status.GetText(true)
+	click(d.buttons[2])
+	d.buttons[2].InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), focus)
+	fmt.Printf("disabled click/Enter: callback unchanged=%t\n", before == d.status.GetText(true))
+	click(d.tabs[1])
+	fmt.Printf("Done tab click: view=%s, visible actions=%d\n", d.view, len(d.buttons))
+	return nil
+}
+
 func main() {
 	panel := flag.String("panel", "both", "members, tasks, or both")
+	view := flag.String("view", "active", "active or done task tab")
+	leftWidth := flag.Int("member-width", memberWidth, "member pane width (28 or 32 for review)")
 	preview := flag.Bool("snapshot", false, "render a 46-row snapshot without a terminal")
 	plain := flag.Bool("plain", false, "omit ANSI color from the snapshot")
+	showFlow := flag.Bool("flow", false, "show actual Button handler callbacks")
 	flag.Parse()
 	if *panel != "members" && *panel != "tasks" && *panel != "both" {
 		fmt.Fprintln(os.Stderr, "panel must be members, tasks, or both")
 		os.Exit(2)
 	}
-	d := newDemo(*panel)
+	if *view != "active" && *view != "done" {
+		fmt.Fprintln(os.Stderr, "view must be active or done")
+		os.Exit(2)
+	}
+	if *leftWidth < 28 || *leftWidth > 32 {
+		fmt.Fprintln(os.Stderr, "member-width must be between 28 and 32")
+		os.Exit(2)
+	}
+	if *showFlow {
+		if err := flow(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	d := newDemo(*panel, *view, *leftWidth)
 	if *preview {
-		width := memberWidth + taskWidth
+		width := *leftWidth + taskWidth
 		if *panel == "members" {
-			width = memberWidth
+			width = *leftWidth
 		} else if *panel == "tasks" {
 			width = taskWidth
 		}

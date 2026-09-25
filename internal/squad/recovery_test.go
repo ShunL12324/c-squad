@@ -344,7 +344,7 @@ func TestShutdownCommandSurvivesFormatCharactersInPaths(t *testing.T) {
 	fake := filepath.Join(root, "csquad #{session_name}")
 	must(t, os.WriteFile(fake, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$0.$$\"\nmv \"$0.$$\" "+shellQuote(capture)+"-$(date +%s%N)\n"), 0700))
 	socket := filepath.Join(tmp, "s")
-	_, e = process.Run("", "tmux", "-f", "/dev/null", "-S", socket, "new-session", "-d", "-s", "team-master", "sleep 0.5")
+	_, e = process.Run("", "tmux", "-f", "/dev/null", "-S", socket, "new-session", "-d", "-s", "team-master", "sleep 300")
 	must(t, e)
 	defer process.Run("", "tmux", "-S", socket, "kill-server")
 	must(t, st.update(func(s *State) error {
@@ -360,6 +360,15 @@ func TestShutdownCommandSurvivesFormatCharactersInPaths(t *testing.T) {
 	must(t, st.update(func(s *State) error { s.Members["master"].Pane = pane; return nil }))
 	must(t, installMasterHook(st))
 	must(t, requestShutdown(st, s, "reason #S;"))
+	// Trigger the exit only after the hook is installed; a fixed short sleep
+	// can expire during setup on a loaded CI runner.
+	pidText, e := tm(s, "display-message", "-p", "-t", pane, "#{pane_pid}")
+	must(t, e)
+	pid, e := strconv.Atoi(pidText)
+	must(t, e)
+	proc, e := os.FindProcess(pid)
+	must(t, e)
+	must(t, proc.Signal(syscall.SIGTERM))
 	want := map[string]bool{"request": false, "master_exit": false}
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
 		files, _ := filepath.Glob(capture + "-*")

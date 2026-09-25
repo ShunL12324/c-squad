@@ -4,6 +4,20 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
+## v0.12.5 — 2026-09-25
+
+### Changed
+
+- Refine the member roster with standard Bubbles list styling and compact
+  six-row items. Keep status, task, Git branch and directory metadata readable
+  at narrow widths, with distinct current-session and keyboard-focus markers.
+
+### Fixed
+
+- Keep the focused member visibly selected across independent mouse-wheel
+  pages. Align native mouse checks with rendered member titles instead of
+  fixed row offsets.
+
 ## v0.12.4 — 2026-09-25
 
 ### Changed

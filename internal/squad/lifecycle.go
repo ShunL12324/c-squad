@@ -217,6 +217,14 @@ func killMember(st *Store, id string) error {
 		if tagErr != nil && m.Pane == "" && m.RunnerPID == 0 {
 			return fmt.Errorf("refusing to stop unowned tmux session: %s", m.Session)
 		}
+		// Intentional shutdown must not start another asynchronous shutdown
+		// when the master process dies. That late hook can recreate lifecycle
+		// locks after stop returns and a caller removes the saved team.
+		if id == "master" {
+			if _, err := tm(s, "set-hook", "-wu", "-t", "="+m.Session+":", "pane-died"); err != nil {
+				return err
+			}
+		}
 		// Before the process tree stops: a pane without remain-on-exit takes
 		// its session, and every viewer with it, down as soon as it exits.
 		moveViewers(s, m)

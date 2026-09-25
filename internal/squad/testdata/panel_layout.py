@@ -137,6 +137,10 @@ try:
             for offset in range(1, 13):
                 os.write(fd, f"\x1b[<32;{x+offset};{y}M".encode())
                 drain(.005)
+            deadline = time.monotonic() + 1
+            while tm("show-options", "-wqv", "-t", master, "@csquad_dragging") != "1":
+                assert time.monotonic() < deadline, "native border drag was not processed"
+                drain(.005)
             os.write(fd, f"\x1b[<0;{x+12};{y}m".encode())
             # Writing to the PTY does not mean tmux has processed mouse release.
             # Wait for the release binding to finish saving geometry.

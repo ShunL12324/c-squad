@@ -136,7 +136,11 @@ func TestCustomCommandsAcrossLifecycle(t *testing.T) {
 				st, err := openStore(filepath.Join(root, "state", "teams", "custom"))
 				must(t, err)
 				defer st.DB.Close()
-				defer stop(st)
+				defer func() {
+					if err := stop(st); err != nil {
+						t.Errorf("stop test team: %v", err)
+					}
+				}()
 				cli("member", "add", "worker", "--instructions", "capture the launch")
 				waitLaunch := func(id string, generation int, engine config.Engine, wantPrefix []string, resumed bool) {
 					t.Helper()

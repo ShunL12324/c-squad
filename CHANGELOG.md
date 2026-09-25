@@ -8,6 +8,10 @@ release history; earlier releases remain available on
 
 ### Changed
 
+- Simplify the task panel to Active and Done tabs. Cancelled tasks appear under
+  Done with their own status badge. Make View Details fill the card width with
+  padded text, remove duplicate task-footer shortcuts, and remove the unused
+  `g` shortcut to Master.
 - Keep independent developers working in parallel, but have Master schedule
   testing after all related modules of a feature are complete and integrated.
   Developers report implementation readiness; reviewers focus on review;
@@ -27,6 +31,9 @@ release history; earlier releases remain available on
 
 ### Fixed
 
+- Avoid duplicate tmux client and pane-geometry queries during member switching,
+  reusing the validated source session and refreshing destination geometry only
+  when resizing or repairing its layout.
 - Do not generate self-assignment notices. Pending automatic availability,
   assignment and CC notices are checked against the current task before
   delivery, including owner handoffs and completed tasks. Existing unfinished

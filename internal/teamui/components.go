@@ -57,6 +57,14 @@ type memberItem struct {
 // FilterValue supplies the standard list item identity.
 func (i memberItem) FilterValue() string { return i.member.ID }
 
+// Match the default delegate's left inset (and its narrower compact inset).
+func (i memberItem) textWidth() int {
+	if i.width < 18 {
+		return max(1, i.width-5)
+	}
+	return max(1, i.width-6)
+}
+
 // Title supplies the member name to the stock delegate.
 func (i memberItem) Title() string {
 	name := clean(i.member.ID)
@@ -66,11 +74,10 @@ func (i memberItem) Title() string {
 	if i.current {
 		name = "● " + name
 	}
-	return line(name, max(1, i.width-6))
+	return line(name, i.textWidth())
 }
 
-// Description restores the card's information hierarchy while the stock
-// delegate still owns item height, clipping, cursor styling and pagination.
+// Description supplies compact domain metadata to the stock list item.
 func (i memberItem) Description() string {
 	member := i.member
 	engine := member.Engine
@@ -84,32 +91,37 @@ func (i memberItem) Description() string {
 	if cwd == "" {
 		cwd = "Not recorded"
 	}
-	width := max(1, i.width-6)
-	bg := surface
-	if i.current {
-		bg = selectedSurface
-	}
-	git := gitLine(member, width, bg)
-	if git == "" {
-		git = textStyle(strings.Repeat("─", width), "240", false)
-	}
-	task := textStyle("No assigned task", muted, false)
+	width := i.textWidth()
+	status := label(member.State) + " · " + engine
+	task := "No task"
 	if member.Tasks != "" {
-		color := member.Color
-		if color == "" {
-			color = accent
-		}
-		task = spread(textStyle("TASK", muted, false), textStyle(line(member.Tasks, max(1, width-6)), color, true), width, bg)
+		task = "Task " + clean(member.Tasks)
 	}
-	meta := spread(textStyle(engine, muted, false), badge(member.State), width, bg)
+	git := "Git —"
+	if member.Branch != "" || member.Commit != "" {
+		branch := member.Branch
+		if branch == "" {
+			branch = "detached " + member.Commit
+		}
+		room := max(1, width-4)
+		if member.Worktree && room > 4 {
+			room -= 3
+		}
+		git = "Git " + compactPath(branch, room)
+		if member.Worktree && width > 8 {
+			git += " wt"
+		}
+	}
 	path := "Dir " + compactPath(cwd, max(1, width-4))
 	if width < 12 {
-		// A narrow pane cannot fit both columns or a padded badge. Keep the
-		// values visible instead of truncating every row to its field label.
-		meta = label(member.State)
+		// Keep the values on narrow panes instead of showing clipped labels.
+		status = label(member.State)
 		path = compactPath(cwd, width)
 		if member.Branch != "" {
 			git = tail(member.Branch, width)
+			if member.Worktree {
+				git = "wt"
+			}
 		} else if member.Commit != "" {
 			git = tail(member.Commit, width)
 		}
@@ -119,11 +131,11 @@ func (i memberItem) Description() string {
 			task = "—"
 		}
 	}
-	return strings.Join([]string{meta, path, git, task, "", ""}, "\n")
+	return strings.Join([]string{line(status, width), line(task, width), line(git, width), line(path, width)}, "\n")
 }
 
-// The standard delegate owns text truncation, item layout and selection styling.
-// Our adapter supplies only per-member colors and the persistent session marker.
+// The standard delegate owns item height, clipping and focus styling. The
+// stable-ID shim keeps focus independent from mouse-wheel pagination.
 type memberDelegate struct {
 	list.DefaultDelegate
 	selected string
@@ -139,22 +151,16 @@ func (d memberDelegate) Render(w io.Writer, model list.Model, index int, item li
 	if color == "" {
 		color = accent
 	}
-	bg := surface
-	if i.current {
-		bg = selectedSurface
-	}
-	cardWidth := max(1, i.width-4)
 	style := d.DefaultDelegate
-	style.Styles.NormalTitle = style.Styles.NormalTitle.Width(cardWidth).
-		Background(lipgloss.Color(bg)).Foreground(lipgloss.Color(color)).Bold(true)
-	style.Styles.NormalDesc = style.Styles.NormalDesc.Width(cardWidth).
-		Background(lipgloss.Color(bg)).Foreground(lipgloss.Color(muted))
-	style.Styles.SelectedTitle = style.Styles.SelectedTitle.Width(max(1, cardWidth-1)).
-		Background(lipgloss.Color(bg)).BorderForeground(lipgloss.Color(color)).
+	style.Styles.NormalTitle = style.Styles.NormalTitle.Foreground(lipgloss.Color(foreground)).Bold(true)
+	if i.current {
+		style.Styles.NormalTitle = style.Styles.NormalTitle.Foreground(lipgloss.Color(color))
+	}
+	style.Styles.SelectedTitle = style.Styles.SelectedTitle.BorderForeground(lipgloss.Color(color)).
 		Foreground(lipgloss.Color(color)).Bold(true)
-	style.Styles.SelectedDesc = style.Styles.SelectedDesc.Width(max(1, cardWidth-1)).
-		Background(lipgloss.Color(bg)).BorderForeground(lipgloss.Color(color)).
-		Foreground(lipgloss.Color(muted))
+	style.Styles.NormalDesc = style.Styles.NormalDesc.Foreground(lipgloss.Color(muted))
+	style.Styles.SelectedDesc = style.Styles.SelectedDesc.BorderForeground(lipgloss.Color(color)).
+		Foreground(lipgloss.Color(foreground))
 	if i.width < 18 {
 		style.Styles.NormalTitle = style.Styles.NormalTitle.PaddingLeft(1)
 		style.Styles.NormalDesc = style.Styles.NormalDesc.PaddingLeft(1)

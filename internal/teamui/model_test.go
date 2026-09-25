@@ -537,7 +537,7 @@ func TestMemberCardShowsItsOwnGitState(t *testing.T) {
 		{name: "detached head", member: Member{ID: "dev", Cwd: "/repo", Commit: "4f2a1b9"}, want: "Git detached 4f2a1b9"},
 		{name: "linked worktree keeps the branch tail and the marker",
 			member: Member{ID: "dev", Cwd: "/repo", Branch: "csquad/csquad/T167", Worktree: true}, want: "wt", unwanted: "Git csquad/csquad/T167"},
-		{name: "outside git keeps the divider", member: Member{ID: "dev", Cwd: "/tmp/plain"}, want: "────", unwanted: "Git "},
+		{name: "outside git keeps a quiet placeholder", member: Member{ID: "dev", Cwd: "/tmp/plain"}, want: "Git —"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			m := model{kind: "members", width: 28, height: 40, data: Snapshot{Active: true, Members: []Member{tt.member}}}
@@ -549,7 +549,7 @@ func TestMemberCardShowsItsOwnGitState(t *testing.T) {
 				t.Fatalf("card unexpectedly contains %q:\n%s", tt.unwanted, card)
 			}
 			if len(m.memberCard(0)) != memberBlockRows {
-				t.Fatalf("card is %d rows, want %d: the Git line must reuse the divider's row", len(m.memberCard(0)), memberBlockRows)
+				t.Fatalf("item is %d rows, want %d", len(m.memberCard(0)), memberBlockRows)
 			}
 		})
 	}
@@ -690,7 +690,7 @@ func TestCurrentMemberCueSurvivesCursorMovement(t *testing.T) {
 	}
 }
 
-func TestMemberCardRestoresSurfaceAndMetadataHierarchy(t *testing.T) {
+func TestMemberListUsesStockThemeAndCompactMetadata(t *testing.T) {
 	previous := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.ANSI256)
 	defer lipgloss.SetColorProfile(previous)
@@ -701,19 +701,16 @@ func TestMemberCardRestoresSurfaceAndMetadataHierarchy(t *testing.T) {
 		}}}
 	current := strings.Join(m.memberCard(0), "\n")
 	selected := strings.Join(m.memberCard(1), "\n")
-	if !strings.Contains(current, "\x1b[48;5;237m") || !strings.Contains(selected, "\x1b[48;5;235m") {
-		t.Fatal("current and cursor cards lost their separate surfaces")
-	}
-	if !strings.Contains(selected, "48;5;238m") {
-		t.Fatal("state badge lost its contrasting background")
+	if strings.Contains(current, "\x1b[48;5;") || strings.Contains(selected, "\x1b[48;5;") {
+		t.Fatal("member list regained filled card surfaces or status badges")
 	}
 	plainCurrent, plainSelected := ansi.Strip(current), ansi.Strip(selected)
-	for _, want := range []string{"● ◆ master", "Working", "Dir /repo", "Git main"} {
+	for _, want := range []string{"● ◆ master", "Working · Codex", "No task", "Git main", "Dir /repo"} {
 		if !strings.Contains(plainCurrent, want) {
 			t.Fatalf("current card lost %q:\n%s", want, plainCurrent)
 		}
 	}
-	for _, want := range []string{"Claude Code", "Review", "TASK", "T441", "wt"} {
+	for _, want := range []string{"Review · Claude Code", "Task T441", "Git", "wt", "Dir"} {
 		if !strings.Contains(plainSelected, want) {
 			t.Fatalf("selected card lost %q:\n%s", want, plainSelected)
 		}
@@ -755,7 +752,7 @@ func TestRosterCursorStyleTracksMemberAcrossWheelPages(t *testing.T) {
 		}
 		return ""
 	}
-	if !strings.Contains(card(3), "│ member-03") || strings.Contains(card(4), "│") {
+	if !strings.Contains(card(3), "│ member-03") || strings.Contains(card(2), "│") {
 		t.Fatalf("middle worker lost cursor style on its page:\n%s", ansi.Strip(m.View()))
 	}
 	if master := card(0); !strings.Contains(master, "● ◆ master") || strings.Contains(master, "│") {
@@ -766,7 +763,7 @@ func TestRosterCursorStyleTracksMemberAcrossWheelPages(t *testing.T) {
 		t.Fatalf("wheel page moved or painted the off-page cursor:\n%s", ansi.Strip(m.View()))
 	}
 	m.scroll(-1)
-	if !strings.Contains(card(3), "│ member-03") || strings.Contains(card(4), "│") {
+	if !strings.Contains(card(3), "│ member-03") || strings.Contains(card(2), "│") {
 		t.Fatalf("cursor did not reappear after wheel page returned:\n%s", ansi.Strip(m.View()))
 	}
 	m.selected = 6

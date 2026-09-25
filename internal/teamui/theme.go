@@ -21,7 +21,7 @@ const (
 	muted            = "245"
 	accent           = "115"
 	memberHeaderRows = 3
-	memberBlockRows  = 8
+	memberBlockRows  = 6
 )
 
 func textStyle(text, color string, bold bool) string {
@@ -137,29 +137,6 @@ func (m model) memberCard(i int) []string {
 		rows[i] = "  " + rows[i]
 	}
 	return append(rows, "")
-}
-
-// gitLine names the branch of the member's OWN directory. Branch names are
-// hierarchical and their distinguishing segment is last, so an overlong one
-// keeps its tail, the way compactPath keeps a path's trailing components.
-func gitLine(member Member, width int, bg string) string {
-	value := member.Branch
-	if value == "" && member.Commit != "" {
-		value = "detached " + member.Commit
-	}
-	if value == "" {
-		return ""
-	}
-	const label = "Git "
-	room := max(1, width-len(label))
-	// A linked worktree is always marked: which checkout a member sits in is the
-	// confusion this line exists to remove, and a truncated branch still shows
-	// the segment that identifies it.
-	if member.Worktree && room > 4 {
-		left := textStyle(label, muted, false) + textStyle(tail(value, room-3), foreground, false)
-		return spread(left, textStyle("wt", muted, false), width, bg)
-	}
-	return textStyle(label, muted, false) + textStyle(tail(value, room), foreground, false)
 }
 
 func tail(s string, width int) string {

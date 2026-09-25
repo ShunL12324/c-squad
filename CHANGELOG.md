@@ -4,6 +4,25 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
+## v0.12.6 — 2026-09-25
+
+### Changed
+
+- Use tview controls for the member and task side panels, including real
+  buttons for task tabs, details, back and close actions. Keep full-width
+  detail actions with padding and Active/Done tabs with cancelled tasks in Done.
+- Display members on filled card surfaces with colored state and task chips.
+  Distinguish the current session from keyboard focus without a round dot;
+  adapt cards and actions to short panes while keeping Master pinned.
+
+### Fixed
+
+- Keep the workspace header at three rows during divider drags, member
+  switches and layout repair. Preserve sidebar width dragging and defer
+  header repair while the terminal layout is reflowing.
+- Keep keyboard focus and member activation aligned, scope mouse clicks to
+  the intended card, and escape external text in styled panel content.
+
 ## v0.12.5 — 2026-09-25
 
 ### Changed

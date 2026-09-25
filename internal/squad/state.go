@@ -152,6 +152,10 @@ type Message struct {
 	Attempt    string           `json:"attempt,omitempty"`
 	Attempts   int              `json:"attempts"`
 	RequestKey string           `json:"request_key,omitempty"`
+	// The first Codex turn uses the terminal until a native thread exists.
+	// Keep its generation and typing state so retries never paste it twice.
+	BootstrapGeneration int  `json:"bootstrap_generation,omitempty"`
+	BootstrapTyped      bool `json:"bootstrap_typed,omitempty"`
 }
 
 // Question records a member request to master and its blocking answer state.

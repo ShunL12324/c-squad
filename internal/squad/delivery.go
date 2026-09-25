@@ -90,6 +90,17 @@ func (st *Store) deliver(id string) error {
 					}
 					return nil
 				}
+				if member.Engine == config.Codex {
+					for _, earlier := range s.Messages {
+						if earlier.ID == v.ID {
+							break
+						}
+						if earlier.To == v.To && earlier.BootstrapGeneration == member.Generation && (earlier.State == DeliveryStatePending || earlier.State == DeliveryStateSending) {
+							v.Error = "waiting for earlier Codex startup prompt submission"
+							return nil
+						}
+					}
+				}
 				at, _ := time.Parse(time.RFC3339Nano, v.Attempt)
 				if v.State == DeliveryStatePending && v.Attempt != "" {
 					delay := time.Duration(1<<min(v.Attempts, 5)) * time.Second
@@ -110,6 +121,9 @@ func (st *Store) deliver(id string) error {
 				v.Attempts++
 				attempt = v.Attempt
 				recipientGen = member.Generation
+				if member.Engine == config.Codex && member.EngineID == "" && v.BootstrapGeneration == 0 {
+					v.BootstrapGeneration = member.Generation
+				}
 				claimed = true
 				return nil
 			}
@@ -207,13 +221,14 @@ func (st *Store) deliver(id string) error {
 			}
 		}
 	} else {
-		if m.EngineID == "" {
-			e = st.startCodexInput(s, m, text)
+		if msg.BootstrapGeneration == recipientGen && (msg.BootstrapTyped || m.EngineID == "") {
+			e = st.startCodexInput(s, m, msg, text, attempt)
 		} else {
 			_, e = s.engineHelper(m, "queue", "--thread", m.EngineID, "--message", text)
 		}
 	}
 	deliveryErr := e
+	bootstrap := m.Engine == config.Codex && msg.BootstrapGeneration == recipientGen && (msg.BootstrapTyped || m.EngineID == "")
 	// The outcome is a fact about the transport, not a write on the sender's
 	// behalf: a sender restarted meanwhile must not leave a delivered message in
 	// sending, where recovery would queue it again. The attempt and recipient
@@ -225,6 +240,11 @@ func (st *Store) deliver(id string) error {
 				if deliveryErr != nil {
 					v.State = DeliveryStatePending
 					v.Error = deliveryErr.Error()
+				} else if bootstrap {
+					// tmux accepted the keys, but only UserPromptSubmit proves Codex
+					// consumed the draft. The hook marks this message sent.
+					v.State = DeliveryStatePending
+					v.Error = "awaiting native Codex prompt submission"
 				} else {
 					v.State = DeliveryStateSent
 					v.Text = msg.Text

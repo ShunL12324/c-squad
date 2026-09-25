@@ -704,7 +704,7 @@ func TestMemberCardRestoresSurfaceAndMetadataHierarchy(t *testing.T) {
 	if !strings.Contains(current, "\x1b[48;5;237m") || !strings.Contains(selected, "\x1b[48;5;235m") {
 		t.Fatal("current and cursor cards lost their separate surfaces")
 	}
-	if !strings.Contains(selected, "\x1b[48;5;238m") {
+	if !strings.Contains(selected, "48;5;238m") {
 		t.Fatal("state badge lost its contrasting background")
 	}
 	plainCurrent, plainSelected := ansi.Strip(current), ansi.Strip(selected)

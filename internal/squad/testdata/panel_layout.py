@@ -154,6 +154,20 @@ try:
             saved = int(tm("show-options", "-wv", "-t", master, "@csquad_size_members"))
             assert actual == saved, f"native drag release left stale preference: {actual} != {saved}"
 
+        # A header divider must not enter tmux's native resize gesture.
+        header = next(row.split("|") for row in tm("list-panes", "-t", master,
+                      "-F", "#{pane_id}|#{@csquad_panel}|#{pane_bottom}").splitlines()
+                      if "|header|" in row)
+        x, y = 12, int(header[2]) + 2
+        os.write(fd, f"\x1b[<0;{x};{y}M".encode())
+        for offset in range(1, 7):
+            os.write(fd, f"\x1b[<32;{x};{y+offset}M".encode())
+            drain(.02)
+            assert tm("display-message", "-p", "-t", header[0], "#{pane_height}") == "3", "header expanded during drag"
+        os.write(fd, f"\x1b[<0;{x};{y+6}m".encode())
+        drain(.1)
+        assert tm("display-message", "-p", "-t", header[0], "#{pane_height}") == "3", "header drag changed height"
+        assert not tm("show-options", "-wqv", "-t", master, "@csquad_dragging"), "header drag entered resize mode"
         drag_members()
         immediate = layout(master)
         for target in ("layout-b", master):
@@ -220,7 +234,7 @@ try:
         while time.monotonic() < deadline:
             drain(.05)
             geometry = layout(newbie)
-            if f"header:{width}x5" in geometry and "members:35x" in geometry and "tasks:47x" in geometry:
+            if f"header:{width}x3" in geometry and "members:35x" in geometry and "tasks:47x" in geometry:
                 break
         else:
             raise AssertionError(f"resize lost freshly dragged dimensions: {geometry}")
@@ -269,7 +283,7 @@ try:
     narrow = click_and_watch(fd, client, newbie)
     for state in narrow:
         print("  narrow observed:", state)
-    assert "members:36x" in narrow[0] and "header:100x5" in narrow[0], f"narrow switch reset custom dimensions: {narrow}"
+    assert "members:36x" in narrow[0] and "header:100x3" in narrow[0], f"narrow switch reset custom dimensions: {narrow}"
     assert len(narrow) == 1, f"outer layout reflowed on a narrow client: {narrow}"
 
     print("PASS: no layout jump on the first click, automatic resizing preserved")

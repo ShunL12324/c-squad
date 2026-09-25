@@ -48,6 +48,9 @@ func (g panelGeometry) ready(view panelView) bool {
 	if h < 12 {
 		members, tasks = false, false
 	}
+	if g.panes["header"] != "" && g.dimensions["header"][1] != fixedHeaderHeight {
+		return false
+	}
 	return (g.panes["members"] != "") == members && (g.panes["tasks"] != "") == tasks && (g.panes["header"] != "") == (members || tasks)
 }
 
@@ -67,7 +70,7 @@ func savePanelDimensions(s *State, target string, dimensions map[string][2]int) 
 		}
 		n := d[0]
 		if role == "header" {
-			n = d[1]
+			n = fixedHeaderHeight
 		}
 		args = appendTmCommand(args, "set-option", "-w", "-t", target, "@csquad_size_"+role, strconv.Itoa(n))
 	}

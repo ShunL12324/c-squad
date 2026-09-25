@@ -1,0 +1,12 @@
+  TASKS                              ×
+      Active 2             Done 2
+  2 tasks  ·  1 / 2
+╔══════════════════════════════════════╗
+║  T477   Working                      ║
+║ Adopt real reusable TUI controls and ║
+║visible member cards                  ║
+║ Owner: navigation-dev                ║
+║                                      ║
+║            View details  ›           ║
+║                                      ║
+╚══════════════════════════════════════╝

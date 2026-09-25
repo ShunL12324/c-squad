@@ -1,8 +1,10 @@
 package teamui
 
 import (
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -12,6 +14,9 @@ func panelForTest(kind, current string, width, height int, data Snapshot) *sideP
 	p := &sidePanel{app: tview.NewApplication(), root: tview.NewFlex().SetDirection(tview.FlexRow),
 		kind: kind, current: current, data: data, width: width, height: height, selectedID: current}
 	p.reconcile()
+	if kind == "members" {
+		p.reveal(p.memberIndex(p.selectedID))
+	}
 	p.render()
 	return p
 }
@@ -57,12 +62,8 @@ func TestMemberCardsPinMasterAndPageEveryWorker(t *testing.T) {
 	if p.memberCards["master"] == nil {
 		t.Fatal("Master is not pinned")
 	}
-	if p.memberCards["worker-l"] != nil {
-		t.Fatal("initial page unexpectedly includes last worker")
-	}
-	p.move(1)
 	if p.memberCards["worker-l"] == nil || p.memberCards["master"] == nil {
-		t.Fatal("keyboard failed to reveal last worker with Master pinned")
+		t.Fatal("initial page failed to reveal current worker with Master pinned")
 	}
 	lastPage := p.page
 	p.mouse(tcell.NewEventMouse(0, 0, 0, 0), tview.MouseScrollUp)
@@ -81,6 +82,9 @@ func TestMemberCurrentAndFocusHaveDistinctCardStyles(t *testing.T) {
 	}
 	if current.GetBackgroundColor() != uiCurrent || focus.GetBackgroundColor() != uiCard {
 		t.Fatal("current and focus surfaces collapsed")
+	}
+	if current.GetBorderColor() != uiBlue || focus.GetBorderColor() != uiAccent {
+		t.Fatal("current border and focus border collapsed")
 	}
 	if strings.Contains(current.GetText(false), "●") {
 		t.Fatal("obsolete current-session dot returned")
@@ -112,4 +116,120 @@ func TestMemberDataCannotInjectTviewColorTags(t *testing.T) {
 			t.Fatalf("unescaped member text %q: %s", want, text)
 		}
 	}
+}
+
+func drawPanel(t *testing.T, p *sidePanel) []string {
+	t.Helper()
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer screen.Fini()
+	screen.SetSize(p.width, p.height)
+	p.root.SetRect(0, 0, p.width, p.height)
+	p.root.Draw(screen)
+	var lines []string
+	for y := 0; y < p.height; y++ {
+		var row strings.Builder
+		for x := 0; x < p.width; x++ {
+			r, _, _, _ := screen.GetContent(x, y)
+			if r == 0 {
+				r = ' '
+			}
+			row.WriteRune(r)
+		}
+		lines = append(lines, row.String())
+	}
+	return lines
+}
+
+func TestShortPanesKeepWorkerAndNativeTaskButtonVisible(t *testing.T) {
+	for _, height := range []int{12, 16, 20} {
+		members := panelForTest("members", "worker", 28, 46, Snapshot{Active: true, Members: []Member{{ID: "master", State: "idle"}, {ID: "other", State: "blocked"}, {ID: "worker", State: "working", Tasks: "T477"}}})
+		members.resize(28, height)
+		memberLines := drawPanel(t, members)
+		if card := members.memberCards["worker"]; card == nil {
+			t.Fatalf("height %d: selected worker missing", height)
+		} else if _, y, _, h := card.GetRect(); y+h > height {
+			t.Fatalf("height %d: worker card clipped at %d", height, y+h)
+		}
+		if !strings.Contains(strings.Join(memberLines, "\n"), "worker") {
+			t.Fatalf("height %d: worker title invisible", height)
+		}
+		for _, width := range []int{28, 40} {
+			tasks := panelForTest("tasks", "master", width, 46, Snapshot{Active: true, Tasks: []Task{{ID: "T477", Title: "A long task title wraps at narrow widths", State: "review", Owner: "worker"}}})
+			tasks.resize(width, height)
+			lines := drawPanel(t, tasks)
+			button := tasks.taskButtons["T477"]
+			if button == nil || button.IsDisabled() {
+				t.Fatalf("%dx%d: task button unavailable", width, height)
+			}
+			if _, y, _, h := button.GetRect(); y+h > height {
+				t.Fatalf("%dx%d: task button clipped at %d", width, height, y+h)
+			}
+			if !strings.Contains(strings.Join(lines, "\n"), "View details") {
+				t.Fatalf("%dx%d: button label invisible", width, height)
+			}
+		}
+	}
+}
+
+func TestPollingErrorRendersPlainTextInShortPane(t *testing.T) {
+	p := panelForTest("tasks", "master", 28, 12, Snapshot{Active: true, Tasks: []Task{{ID: "T1", State: "working"}}})
+	p.updateSnapshot(Snapshot{}, errors.New("[red] ledger unavailable"))
+	view := strings.Join(drawPanel(t, p), "\n")
+	if !strings.Contains(view, "[red] ledger") || strings.Contains(view, "[red[]") {
+		t.Fatalf("error did not render as plain text: %s", view)
+	}
+}
+
+func TestShortTaskWheelReachesLastAction(t *testing.T) {
+	p := panelForTest("tasks", "master", 40, 12, Snapshot{Active: true, Tasks: []Task{{ID: "T1"}, {ID: "T2"}, {ID: "T3"}}})
+	for range 2 {
+		p.mouse(tcell.NewEventMouse(0, 0, 0, 0), tview.MouseScrollDown)
+	}
+	if p.page != 2 || p.taskButtons["T3"] == nil {
+		t.Fatalf("last task unreachable: page %d", p.page)
+	}
+	lines := drawPanel(t, p)
+	if !strings.Contains(strings.Join(lines, "\n"), "View details") {
+		t.Fatal("last task action clipped")
+	}
+}
+
+func TestMemberTabThenEnterOpensFocusedCard(t *testing.T) {
+	p := panelForTest("members", "master", 28, 20, Snapshot{Active: true, Members: []Member{{ID: "master"}, {ID: "worker"}}})
+	opened := make(chan Action, 1)
+	p.act = func(a Action) (string, error) { opened <- a; return "opened", nil }
+	screen := tcell.NewSimulationScreen("UTF-8")
+	p.app.SetScreen(screen)
+	screen.SetSize(28, 20)
+	done := make(chan error, 1)
+	go func() { done <- p.app.Run() }()
+	defer func() { p.app.Stop(); <-done }()
+	p.app.QueueUpdateDraw(func() {
+		p.key(tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone))
+		if p.selectedID != "worker" {
+			t.Errorf("Tab did not select focused worker: %q", p.selectedID)
+		}
+		p.key(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
+	})
+	select {
+	case a := <-opened:
+		if a.Kind != "open" || a.Member != "worker" {
+			t.Fatalf("Enter opened wrong member: %+v", a)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Enter did not dispatch member action")
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		seen := false
+		p.app.QueueUpdate(func() { seen = p.errorText == "opened" })
+		if seen {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("member action callback did not complete")
 }

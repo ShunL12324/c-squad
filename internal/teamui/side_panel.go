@@ -25,6 +25,7 @@ type sidePanel struct {
 	completed     bool
 	detailID      string
 	page          int
+	userPaged     bool
 	errorText     string
 	memberCards   map[string]*tview.TextView
 	taskButtons   map[string]*tview.Button
@@ -55,11 +56,7 @@ func runSidePanel(kind, current string, load Source, act Handler) error {
 	p.app.SetAfterDrawFunc(func(screen tcell.Screen) {
 		width, height := screen.Size()
 		if width != p.width || height != p.height {
-			go p.app.QueueUpdateDraw(func() {
-				p.width, p.height = width, height
-				p.clampPage()
-				p.render()
-			})
+			go p.app.QueueUpdateDraw(func() { p.resize(width, height) })
 		}
 	})
 	data, err := load()
@@ -72,6 +69,9 @@ func runSidePanel(kind, current string, load Source, act Handler) error {
 		p.errorText = err.Error()
 	}
 	p.reconcile()
+	if p.kind == "members" {
+		p.reveal(p.memberIndex(p.selectedID))
+	}
 	p.render()
 	stopped := make(chan struct{})
 	go func() {
@@ -83,17 +83,7 @@ func runSidePanel(kind, current string, load Source, act Handler) error {
 				return
 			case <-ticker.C:
 				data, err := load()
-				p.app.QueueUpdateDraw(func() {
-					if err != nil {
-						p.errorText = err.Error()
-					} else if !data.Active {
-						p.app.Stop()
-					} else if !reflect.DeepEqual(data, p.data) || p.errorText != "" {
-						p.data, p.errorText = data, ""
-						p.reconcile()
-						p.render()
-					}
-				})
+				p.app.QueueUpdateDraw(func() { p.updateSnapshot(data, err) })
 			}
 		}
 	}()
@@ -102,7 +92,39 @@ func runSidePanel(kind, current string, load Source, act Handler) error {
 	return err
 }
 
+func (p *sidePanel) resize(width, height int) {
+	p.width, p.height = width, height
+	if p.userPaged {
+		p.clampPage()
+	} else if p.kind == "members" {
+		p.reveal(p.memberIndex(p.selectedID))
+	} else {
+		p.reveal(p.taskIndex(p.selectedID))
+	}
+	p.render()
+}
+
+func (p *sidePanel) updateSnapshot(data Snapshot, err error) {
+	if err != nil {
+		if p.errorText != err.Error() {
+			p.errorText = err.Error()
+			p.render()
+		}
+		return
+	}
+	if !data.Active {
+		p.app.Stop()
+		return
+	}
+	if !reflect.DeepEqual(data, p.data) || p.errorText != "" {
+		p.data, p.errorText = data, ""
+		p.reconcile()
+		p.render()
+	}
+}
+
 func (p *sidePanel) reconcile() {
+	prior := p.selectedID
 	if p.kind == "members" {
 		if p.memberIndex(p.selectedID) < 0 {
 			p.selectedID = p.current
@@ -121,6 +143,13 @@ func (p *sidePanel) reconcile() {
 		}
 	}
 	p.clampPage()
+	if prior != p.selectedID && !p.userPaged {
+		if p.kind == "members" {
+			p.reveal(p.memberIndex(p.selectedID))
+		} else {
+			p.reveal(p.taskIndex(p.selectedID))
+		}
+	}
 }
 
 func (p *sidePanel) visibleTasks() []Task {
@@ -159,14 +188,76 @@ func (p *sidePanel) taskIndex(id string) int {
 }
 
 func (p *sidePanel) perPage() int {
-	if p.kind == "members" {
-		available := p.height - 5
-		if p.memberFirst() == 1 {
-			available -= 10
-		}
-		return max(1, available/9)
+	errorRows := 0
+	if p.errorText != "" {
+		errorRows = 1
 	}
-	return max(1, (p.height-8)/15)
+	if p.kind == "members" {
+		card, gap := p.memberCardHeight(), p.memberGap()
+		reserved := p.memberTitleRows() + 1 // team page label
+		if p.memberFirst() == 1 {
+			reserved += card + gap
+			if p.height >= 18 {
+				reserved++
+			} // LEAD label
+		}
+		return max(1, (p.height-reserved-errorRows)/(card+gap))
+	}
+	heading, tabs, count := p.taskHeaderRows()
+	return max(1, (p.height-heading-tabs-count-errorRows)/(p.taskCardHeight()+p.taskGap()))
+}
+
+func (p *sidePanel) memberCardHeight() int {
+	if p.height < 18 {
+		return 4
+	}
+	if p.height < 30 {
+		return 6
+	}
+	return 8
+}
+func (p *sidePanel) memberGap() int {
+	if p.height < 18 {
+		return 0
+	}
+	return 1
+}
+func (p *sidePanel) memberTitleRows() int {
+	if p.height < 30 {
+		return 1
+	}
+	return 2
+}
+func (p *sidePanel) taskHeaderRows() (heading, tabs, count int) {
+	if p.height < 18 {
+		return 1, 1, 1
+	}
+	if p.height < 24 {
+		return 1, 2, 1
+	}
+	return 2, 3, 2
+}
+func (p *sidePanel) taskCardHeight() int {
+	errorRows := 0
+	if p.errorText != "" {
+		errorRows = 1
+	}
+	if p.height < 18 {
+		return max(5, p.height-3-errorRows)
+	}
+	if p.height == 18 && errorRows == 1 {
+		return 12
+	}
+	return 13
+}
+func (p *sidePanel) taskGap() int {
+	if p.height < 18 {
+		return 0
+	}
+	if p.height < 24 {
+		return 1
+	}
+	return 2
 }
 
 func (p *sidePanel) pageCount() int {
@@ -206,7 +297,17 @@ func (p *sidePanel) key(event *tcell.EventKey) *tcell.EventKey {
 				index--
 			}
 			index = (index + len(p.focusOrder)) % len(p.focusOrder)
-			p.app.SetFocus(p.focusOrder[index])
+			next := p.focusOrder[index]
+			if p.kind == "members" {
+				for id, card := range p.memberCards {
+					if card == next {
+						p.selectedID = id
+						p.render()
+						return nil
+					}
+				}
+			}
+			p.app.SetFocus(next)
 		}
 		return nil
 	}
@@ -224,10 +325,12 @@ func (p *sidePanel) key(event *tcell.EventKey) *tcell.EventKey {
 	}
 	switch event.Key() {
 	case tcell.KeyPgDn:
+		p.userPaged = true
 		p.page = min(p.page+1, p.pageCount()-1)
 		p.render()
 		return nil
 	case tcell.KeyPgUp:
+		p.userPaged = true
 		p.page = max(0, p.page-1)
 		p.render()
 		return nil
@@ -276,6 +379,7 @@ func (p *sidePanel) mouse(event *tcell.EventMouse, action tview.MouseAction) (*t
 		return event, action
 	}
 	if action == tview.MouseScrollDown || action == tview.MouseScrollUp {
+		p.userPaged = true
 		if action == tview.MouseScrollDown {
 			p.page++
 		} else {
@@ -289,6 +393,7 @@ func (p *sidePanel) mouse(event *tcell.EventMouse, action tview.MouseAction) (*t
 }
 
 func (p *sidePanel) move(delta int) {
+	p.userPaged = false
 	if p.kind == "members" {
 		if len(p.data.Members) == 0 {
 			return
@@ -315,6 +420,7 @@ func (p *sidePanel) filter(done bool) {
 		return
 	}
 	p.completed, p.page, p.detailID = done, 0, ""
+	p.userPaged = false
 	p.selectedID = ""
 	p.reconcile()
 	p.render()
@@ -327,6 +433,7 @@ func (p *sidePanel) activateMember() {
 	id := p.selectedID
 	// A session keeps its own member selected after switching away.
 	p.selectedID = p.current
+	p.userPaged = false
 	p.reveal(p.memberIndex(p.current))
 	p.render()
 	p.action(Action{Kind: "open", Member: id})
@@ -374,7 +481,7 @@ func (p *sidePanel) render() {
 		p.renderTasks()
 	}
 	if p.errorText != "" {
-		p.root.AddItem(textRow("  "+safeLine(p.errorText), uiWarning), 1, 0, false)
+		p.root.AddItem(textRow("  "+plainLine(p.errorText), uiWarning), 1, 0, false)
 	}
 	p.app.SetRoot(p.root, true)
 	if p.kind == "members" {
@@ -398,15 +505,17 @@ func textRow(text string, color tcell.Color) *tview.TextView {
 	return v
 }
 
-func safeLine(s string) string {
+func plainLine(s string) string {
 	s = strings.Map(func(r rune) rune {
 		if r == '\n' || r == '\r' || r == '\t' || r < 32 || r == 127 {
 			return ' '
 		}
 		return r
 	}, clean(s))
-	return tview.Escape(s)
+	return s
 }
+
+func safeLine(s string) string { return tview.Escape(plainLine(s)) }
 
 func safeBody(s string) string {
 	rows := strings.Split(clean(s), "\n")
@@ -509,14 +618,25 @@ func (p *sidePanel) memberCard(member Member) *tview.TextView {
 	}
 	card.SetBorderColor(border)
 	card.SetWrap(false)
-	card.SetText(strings.Join([]string{
+	lines := []string{
 		" [::b]" + safeLine(member.ID) + "[-:-:-]",
 		" " + stateChip(member.State),
 		firstTask,
 		secondTask,
 		git,
 		path,
-	}, "\n"))
+	}
+	switch p.memberCardHeight() {
+	case 4:
+		lines = []string{lines[0], lines[1] + firstTask}
+	case 6:
+		last := git
+		if secondTask != "" {
+			last = secondTask
+		}
+		lines = []string{lines[0], lines[1], firstTask, last}
+	}
+	card.SetText(strings.Join(lines, "\n"))
 	id := member.ID
 	card.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 		if action == tview.MouseLeftClick || action == tview.MouseLeftDoubleClick {
@@ -531,19 +651,25 @@ func (p *sidePanel) memberCard(member Member) *tview.TextView {
 }
 
 func (p *sidePanel) renderMembers() {
-	p.root.AddItem(textRow("  MEMBERS", uiText), 2, 0, false)
+	p.root.AddItem(textRow("  MEMBERS", uiText), p.memberTitleRows(), 0, false)
 	first := p.memberFirst()
 	if first == 1 {
-		p.root.AddItem(textRow("  LEAD", uiMuted), 1, 0, false)
-		p.root.AddItem(p.memberCard(p.data.Members[0]), 8, 0, false)
-		p.root.AddItem(nil, 1, 0, false)
+		if p.height >= 18 {
+			p.root.AddItem(textRow("  LEAD", uiMuted), 1, 0, false)
+		}
+		p.root.AddItem(p.memberCard(p.data.Members[0]), p.memberCardHeight(), 0, false)
+		if p.memberGap() > 0 {
+			p.root.AddItem(nil, p.memberGap(), 0, false)
+		}
 	}
 	p.root.AddItem(textRow(fmt.Sprintf("  TEAM  %d / %d", p.page+1, p.pageCount()), uiMuted), 1, 0, false)
 	start := first + p.page*p.perPage()
 	end := min(len(p.data.Members), start+p.perPage())
 	for _, member := range p.data.Members[start:end] {
-		p.root.AddItem(p.memberCard(member), 8, 0, false)
-		p.root.AddItem(nil, 1, 0, false)
+		p.root.AddItem(p.memberCard(member), p.memberCardHeight(), 0, false)
+		if p.memberGap() > 0 {
+			p.root.AddItem(nil, p.memberGap(), 0, false)
+		}
 	}
 	if len(p.data.Members) == 0 {
 		p.root.AddItem(textRow("  No members", uiMuted), 2, 0, false)
@@ -572,13 +698,14 @@ func styledButton(label string, active bool, selected func()) *tview.Button {
 }
 
 func (p *sidePanel) renderTasks() {
+	headingRows, tabRows, countRows := p.taskHeaderRows()
 	row := tview.NewFlex().SetDirection(tview.FlexColumn)
 	row.SetBackgroundColor(uiCanvas)
 	row.AddItem(textRow("  TASKS", uiText), 0, 1, false)
 	closeButton := styledButton("×", false, func() { p.action(Action{Kind: "close"}) })
 	p.focusOrder = append(p.focusOrder, closeButton)
 	row.AddItem(closeButton, 5, 0, false)
-	p.root.AddItem(row, 2, 0, false)
+	p.root.AddItem(row, headingRows, 0, false)
 	tabs := tview.NewFlex().SetDirection(tview.FlexColumn)
 	tabs.SetBackgroundColor(uiCanvas)
 	activeCount, doneCount := 0, 0
@@ -593,9 +720,9 @@ func (p *sidePanel) renderTasks() {
 	p.tabs[1] = styledButton(fmt.Sprintf("Done %d", doneCount), p.completed, func() { p.filter(true) })
 	p.focusOrder = append(p.focusOrder, p.tabs[0], p.tabs[1])
 	tabs.AddItem(p.tabs[0], 0, 1, false).AddItem(p.tabs[1], 0, 1, false)
-	p.root.AddItem(tabs, 3, 0, false)
+	p.root.AddItem(tabs, tabRows, 0, false)
 	tasks := p.visibleTasks()
-	p.root.AddItem(textRow(fmt.Sprintf("  %d tasks  ·  %d / %d", len(tasks), p.page+1, p.pageCount()), uiMuted), 2, 0, false)
+	p.root.AddItem(textRow(fmt.Sprintf("  %d tasks  ·  %d / %d", len(tasks), p.page+1, p.pageCount()), uiMuted), countRows, 0, false)
 	start := p.page * p.perPage()
 	end := min(len(tasks), start+p.perPage())
 	for _, task := range tasks[start:end] {
@@ -644,8 +771,10 @@ func (p *sidePanel) renderTasks() {
 		p.taskButtons[id] = button
 		p.focusOrder = append(p.focusOrder, button)
 		card.AddItem(button, 3, 0, false)
-		p.root.AddItem(card, 13, 0, false)
-		p.root.AddItem(nil, 2, 0, false)
+		p.root.AddItem(card, p.taskCardHeight(), 0, false)
+		if p.taskGap() > 0 {
+			p.root.AddItem(nil, p.taskGap(), 0, false)
+		}
 	}
 	if len(tasks) == 0 {
 		p.root.AddItem(textRow("  No tasks in this view", uiMuted), 3, 0, false)
@@ -666,10 +795,15 @@ func (p *sidePanel) renderDetail() {
 	closeButton := styledButton("×", false, func() { p.action(Action{Kind: "close"}) })
 	p.focusOrder = append(p.focusOrder, closeButton)
 	row.AddItem(closeButton, 5, 0, false)
-	p.root.AddItem(row, 2, 0, false)
+	headingRows, _, _ := p.taskHeaderRows()
+	p.root.AddItem(row, headingRows, 0, false)
 	backButton := styledButton("‹ Back to tasks", false, func() { p.detailID = ""; p.render() })
 	p.focusOrder = append(p.focusOrder, backButton)
-	p.root.AddItem(backButton, 3, 0, false)
+	backRows := 3
+	if p.height < 18 {
+		backRows = 1
+	}
+	p.root.AddItem(backButton, backRows, 0, false)
 	lines := []string{
 		" " + chip(task.ID, "#d7efff", "#305270") + " " + stateChip(task.State), "",
 		" [::b]" + safeLine(task.Title) + "[-:-:-]", "", " Owner: " + safeLine(task.Owner), "",

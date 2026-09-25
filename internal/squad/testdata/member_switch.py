@@ -4,7 +4,7 @@ The sidebar pane is created with split-window -d and every navigation selects th
 engine pane, so the panel almost never holds focus. These bindings live in the
 team's tmux root table, which is consumed before the pane sees the key.
 """
-import errno, fcntl, os, pty, select, signal, struct, subprocess, sys, termios, time
+import errno, fcntl, os, pty, re, select, signal, struct, subprocess, sys, termios, time
 
 socket, master, first, last = sys.argv[1:5]
 height = int(sys.argv[5]) if len(sys.argv) > 5 else 40
@@ -51,18 +51,19 @@ def panel(session, view):
 
 
 def owner_highlighted(session, member):
-    """The session's own sidebar keeps its owner card visible."""
+    """The owner's card is focused and retains its current-session surface."""
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
-        screen = tm("capture-pane", "-p", "-t", panel(session, "members"))
-        for row in screen.splitlines():
+        screen = tm("capture-pane", "-p", "-e", "-t", panel(session, "members"))
+        for colored in screen.splitlines():
+            row = re.sub(r"\x1b\[[0-9;]*m", "", colored)
             # The right gutter may show a scrollbar independently of the
-            # owner's stripe on the left. It is not part of the member name.
+            # owner's card on the left. It is not part of the member name.
             title = row.rstrip().rstrip("│┃║").strip()
-            if not title.startswith(("│", "┃", "║")):
+            if not title.startswith("║"):
                 continue
             title = title[1:].strip()
-            if title.removeprefix("◆").strip() == member:
+            if title.removeprefix("◆").strip() == member and "\x1b[48;5;238m" in colored:
                 return True
         drain(.05)
     print(f"Missing owner highlight for {member!r} in {session}:\n{screen}", flush=True)

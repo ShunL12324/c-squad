@@ -41,10 +41,11 @@ height is outside this prototype and T477's implementation scope.
 ## Production preview
 
 `current-members-28.{ansi,txt}`, `current-members-32.{ansi,txt}`,
+`current-members-28x12.{ansi,txt}`, `current-tasks-40x12.{ansi,txt}`,
 `current-tasks-40.{ansi,txt}`, `current-tasks-done-40.{ansi,txt}`, and
 `current-task-detail-40.{ansi,txt}` are
-captures of the production `teamui.Run`
-renderer in isolated tmux panes at 28×46, 32×46, and 40×46. Their labels and
+captures of the production `teamui.Run` renderer in isolated tmux panes at
+28×12, 40×12, 28×46, 32×46, and 40×46. Their labels and
 statuses use selected current team ledger values on 2026-09-26: Master, navigation-dev,
 observation-dev, active T477/T480, done T470, and cancelled T302. The root
 module was compiled into a temporary preview binary; no live team pane or

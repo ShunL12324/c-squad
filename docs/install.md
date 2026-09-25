@@ -100,6 +100,17 @@ sudo apt remove csquad
 The repository tracks the current stable release. It is a third-party source,
 not part of Ubuntu's or Debian's official archive.
 
+### tmux pane-exit compatibility on Linux
+
+Some Linux tmux builds with libutempter can miss a `pane-died` hook when a pane
+exits during a utmp update. This can delay C Squad's response to an engine or
+Master exit. [tmux issue #4559](https://github.com/tmux/tmux/issues/4559) was
+fixed upstream in [tmux 3.6](https://github.com/tmux/tmux/commit/fa5f3cef3d651b0eb9abfa77fc37ccade81679b5).
+Use tmux 3.6 or later, or a distribution build that backports that fix, for
+reliable pane-exit hooks when libutempter is enabled. Check `tmux -V` and your
+distribution's patch notes; an older version number alone does not establish
+whether the fix is present. C Squad does not replace your system tmux.
+
 Alternatively, download a `.deb` from [GitHub Releases](https://github.com/ShunL12324/c-squad/releases/latest) and install it locally:
 
 ```sh

@@ -44,7 +44,8 @@ jobs:
         with:
           go-version: '1.26.0'
           cache: true
-      - run: sudo apt-get update && sudo apt-get install -y tmux apt-utils
+      - name: Install pinned tmux with libutempter
+        run: bash scripts/install-ci-tmux.sh apt-utils
       - run: make check
       - uses: goreleaser/goreleaser-action@v7
         with:

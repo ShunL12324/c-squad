@@ -4,13 +4,16 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
-## v0.12.3 — 2026-09-25
+## v0.12.4 — 2026-09-25
 
 ### Changed
 
 - Use standard Bubbles list, delegate, paginator and viewport components for
   member navigation and task scrolling. Preserve the pinned Master, a separate
   current-session marker, mouse actions and narrow-terminal layouts.
+- Run Linux CI and release checks with pinned tmux 3.6 and libutempter enabled,
+  covering the upstream fix for missed pane-exit notifications. Document the
+  compatibility limit of older tmux builds that use libutempter.
 
 ### Fixed
 

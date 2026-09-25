@@ -639,9 +639,10 @@ func (p *sidePanel) memberCard(member Member) *tview.TextView {
 	card.SetText(strings.Join(lines, "\n"))
 	id := member.ID
 	card.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
-		if action == tview.MouseLeftClick || action == tview.MouseLeftDoubleClick {
+		if event != nil && card.InRect(event.Position()) && (action == tview.MouseLeftClick || action == tview.MouseLeftDoubleClick) {
 			p.selectedID = id
 			p.activateMember()
+			return tview.MouseConsumed, nil
 		}
 		return action, event
 	})
@@ -757,9 +758,10 @@ func (p *sidePanel) renderTasks() {
 		}
 		body.SetText(strings.Join(cardLines, "\n"))
 		body.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
-			if action == tview.MouseLeftClick || action == tview.MouseLeftDoubleClick {
+			if event != nil && body.InRect(event.Position()) && (action == tview.MouseLeftClick || action == tview.MouseLeftDoubleClick) {
 				p.selectedID = id
 				p.render()
+				return tview.MouseConsumed, nil
 			}
 			return action, event
 		})

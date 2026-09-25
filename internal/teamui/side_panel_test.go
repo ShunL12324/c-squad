@@ -233,3 +233,83 @@ func TestMemberTabThenEnterOpensFocusedCard(t *testing.T) {
 	}
 	t.Fatal("member action callback did not complete")
 }
+
+func TestRootMouseClickOpensOnlyLaterMember(t *testing.T) {
+	p := panelForTest("members", "master", 32, 46, Snapshot{Active: true, Members: []Member{
+		{ID: "master"}, {ID: "first"}, {ID: "second"},
+	}})
+	opened := make(chan Action, 2)
+	p.act = func(a Action) (string, error) { opened <- a; return "opened", nil }
+	screen := tcell.NewSimulationScreen("UTF-8")
+	p.app.SetScreen(screen)
+	screen.SetSize(32, 46)
+	done := make(chan error, 1)
+	go func() { done <- p.app.Run() }()
+	defer func() { p.app.Stop(); <-done }()
+	p.app.QueueUpdateDraw(func() {
+		p.root.SetRect(0, 0, 32, 46)
+		p.root.Draw(screen)
+		card := p.memberCards["second"]
+		if card == nil {
+			t.Error("later member card is not visible")
+			return
+		}
+		x, y, _, _ := card.GetRect()
+		consumed, _ := p.root.MouseHandler()(tview.MouseLeftClick,
+			tcell.NewEventMouse(x+2, y+1, tcell.ButtonPrimary, 0), p.app.SetFocus)
+		if !consumed {
+			t.Error("member click propagated after card rebuild")
+		}
+	})
+	select {
+	case a := <-opened:
+		if a.Kind != "open" || a.Member != "second" {
+			t.Fatalf("later card click opened wrong member: %+v", a)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("later card click did not open a member")
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		seen := false
+		p.app.QueueUpdate(func() { seen = p.errorText == "opened" })
+		if seen {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("member click callback did not complete")
+}
+
+func TestRootMouseClickSelectsOnlyLaterTaskAndButton(t *testing.T) {
+	p := panelForTest("tasks", "master", 40, 46, Snapshot{Active: true, Tasks: []Task{
+		{ID: "T1", Title: "First"}, {ID: "T2", Title: "Second"},
+	}})
+	drawPanel(t, p)
+	var body *tview.TextView
+	for i := 0; i < p.root.GetItemCount(); i++ {
+		card, ok := p.root.GetItem(i).(*tview.Flex)
+		if !ok || card.GetItemCount() != 2 || card.GetItem(1) != p.taskButtons["T2"] {
+			continue
+		}
+		body, _ = card.GetItem(0).(*tview.TextView)
+		break
+	}
+	if body == nil {
+		t.Fatal("later task body is not visible")
+	}
+	x, y, _, _ := body.GetRect()
+	consumed, _ := p.root.MouseHandler()(tview.MouseLeftClick,
+		tcell.NewEventMouse(x+2, y+1, tcell.ButtonPrimary, 0), p.app.SetFocus)
+	if !consumed || p.selectedID != "T2" || p.detailID != "" {
+		t.Fatalf("later task body click propagated or selected another task: consumed=%t selected=%q detail=%q", consumed, p.selectedID, p.detailID)
+	}
+	drawPanel(t, p)
+	button := p.taskButtons["T2"]
+	x, y, _, _ = button.GetRect()
+	consumed, _ = p.root.MouseHandler()(tview.MouseLeftClick,
+		tcell.NewEventMouse(x+2, y+1, tcell.ButtonPrimary, 0), p.app.SetFocus)
+	if !consumed || p.selectedID != "T2" || p.detailID != "T2" {
+		t.Fatalf("later task button click activated another card: consumed=%t selected=%q detail=%q", consumed, p.selectedID, p.detailID)
+	}
+}

@@ -63,7 +63,8 @@ def owner_highlighted(session, member):
             if not title.startswith("║"):
                 continue
             title = title[1:].strip()
-            if title.removeprefix("◆").strip() == member and "\x1b[48;5;238m" in colored:
+            current_surface = re.search(r"\x1b\[[0-9;]*48;5;238(?:;|m)", colored)
+            if title == member and current_surface:
                 return True
         drain(.05)
     print(f"Missing owner highlight for {member!r} in {session}:\n{screen}", flush=True)

@@ -44,13 +44,20 @@ def sessions():
 def card(session, member):
     """Pointer coordinates of a member's sidebar card, once it has rendered."""
     name = member.split("-")[-1]
+
+    def title(line):
+        text = line.strip().rstrip("│┃║").strip()
+        for border in ("│", "┃", "║"):
+            text = text.removeprefix(border).strip()
+        return text.removeprefix("◆").strip()
+
     deadline = time.monotonic() + 5
     while True:
         rows = tm("list-panes", "-t", session, "-F", "#{pane_id}|#{@csquad_panel}|#{pane_left}|#{pane_top}")
         panel = next((row.split("|") for row in rows.splitlines() if "|members|" in row), None)
         if panel:
             screen = tm("capture-pane", "-p", "-t", panel[0]).splitlines()
-            row = next((i for i, text in enumerate(screen) if text.strip().endswith(name)), None)
+            row = next((i for i, text in enumerate(screen) if title(text) == name), None)
             if row is not None:
                 # tmux mouse coordinates are 1-based; capture rows are not.
                 return int(panel[2]) + 5, int(panel[3]) + row + 1

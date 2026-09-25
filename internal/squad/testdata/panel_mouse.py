@@ -39,6 +39,26 @@ def sessions():
     return dict(row.split("|") for row in tm("list-clients", "-F", "#{client_name}|#{session_name}").splitlines())
 
 
+def member_title(line):
+    title = line.strip().rstrip("│┃").strip()
+    for marker in ("│", "●", "◆"):
+        title = title.removeprefix(marker).strip()
+    return title
+
+
+def member_row(pane, member):
+    # Use the rendered title as the hit target. The stock list can change its
+    # item height without changing this fixture's mouse coordinates.
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        screen = tm("capture-pane", "-p", "-t", pane)
+        for index, line in enumerate(screen.splitlines()):
+            if member_title(line) == member:
+                return index
+        drain(.02)
+    raise AssertionError(f"member title {member!r} not rendered: {screen}")
+
+
 try:
     for _ in range(2):
         fd, slave = pty.openpty()
@@ -62,7 +82,7 @@ try:
         tm("select-pane", "-t", panes[""][0])
         # A previous click from the other client must not steal this click.
         tm("set-option", "-p", "-t", sidebar[0], "@csquad_client", observer)
-        x, y = int(sidebar[2]) + 5, int(sidebar[3]) + 15
+        x, y = int(sidebar[2]) + 5, int(sidebar[3]) + member_row(sidebar[0], "a") + 1
         os.write(fd, f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline and sessions()[client] != worker:
@@ -76,10 +96,10 @@ try:
     # visited session must highlight its owner, not the last outgoing target.
     for attempt in range(8):
         target = master if sessions()[client] == worker else worker
-        index = 0 if target == master else 1
+        name = "master" if target == master else "a"
         rows = tm("list-panes", "-t", sessions()[client], "-F", "#{pane_id}|#{@csquad_panel}|#{pane_left}|#{pane_top}")
         sidebar = next(row.split("|") for row in rows.splitlines() if "|members|" in row)
-        x, y = int(sidebar[2])+5, int(sidebar[3])+5+index*10
+        x, y = int(sidebar[2])+5, int(sidebar[3])+member_row(sidebar[0], name)+1
         os.write(fd, f"\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m".encode())
         deadline = time.monotonic()+2
         while time.monotonic()<deadline and sessions()[client]!=target:
@@ -88,9 +108,9 @@ try:
         drain(.1)
         panels = tm("list-panes", "-t", target, "-F", "#{pane_id}|#{@csquad_panel}")
         pane = next(row.split("|")[0] for row in panels.splitlines() if row.endswith("|members"))
-        name = "master" if target==master else "a"
         screen = tm("capture-pane", "-p", "-t", pane)
-        assert any("│" in line and line.replace("│", "").replace("◆", "").strip()==name for line in screen.splitlines()), f"stale highlight after switching to {name}: {screen}"
+        assert any(line.strip().startswith("│") and "●" in line and member_title(line)==name
+                   for line in screen.splitlines()), f"stale highlight after switching to {name}: {screen}"
     os.write(fd, b"\x1b[1;3D\x1b[1;3C")
     drain(.2)
     assert sessions()[client] == worker, "Alt-arrow still switches members"

@@ -1,0 +1,46 @@
+  MEMBERS    1 / 1              
+  Current: navigation-dev       
+                                
+┌──────────────────────────────┐
+│ ◆ master                     │
+│ Working · Codex              │
+│ Task T477 · UI direction     │
+│ Git main                     │
+│ Dir ~/projects/c-squad       │
+└──────────────────────────────┘
+                                
+╔══════════════════════════════╗
+║ ● navigation-dev             ║
+║ Working · Codex              ║
+║ Task T477 · prototype        ║
+║ Git csquad/T477  wt          ║
+║ Dir …/worktrees/T477         ║
+╚══════════════════════════════╝
+                                
+┌──────────────────────────────┐
+│ design-review                │
+│ Review · Codex               │
+│ Task T451 · approved         │
+│ Git main                     │
+│ Dir ~/projects/c-squad       │
+└──────────────────────────────┘
+                                
+┌──────────────────────────────┐
+│ release-check                │
+│ Idle · Codex                 │
+│ No task                      │
+│ Git main                     │
+│ Dir ~/projects/c-squad       │
+└──────────────────────────────┘
+                                
+  ↑↓ focus · click · q quit     
+                                
+                                
+                                
+                                
+                                
+                                
+                                
+                                
+                                
+                                

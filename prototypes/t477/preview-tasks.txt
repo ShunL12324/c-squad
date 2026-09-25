@@ -1,0 +1,46 @@
+  TASKS  /  In progress     Done        
+  2 active tasks                        
+                                        
+╔══════════════════════════════════════╗
+║ T477   Working                       ║
+║                                      ║
+║ Adopt reusable TUI controls          ║
+║                                      ║
+║ Owner  navigation-dev                ║
+║ Update Button and card prototype     ║
+║                                      ║
+║╔════════════════════════════════════╗║
+║║           View details  ›          ║║
+║╚════════════════════════════════════╝║
+║                                      ║
+╚══════════════════════════════════════╝
+                                        
+┌──────────────────────────────────────┐
+│ T470   Done                          │
+│                                      │
+│ Publish and verify v0.12.5           │
+│                                      │
+│ Owner  master                        │
+│ Update All channels verified         │
+│                                      │
+│┌────────────────────────────────────┐│
+││           View details  ›          ││
+│└────────────────────────────────────┘│
+│                                      │
+└──────────────────────────────────────┘
+                                        
+  Tab focus · Enter/click activate      
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        

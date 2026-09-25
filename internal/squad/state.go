@@ -152,6 +152,10 @@ type Message struct {
 	Attempt    string           `json:"attempt,omitempty"`
 	Attempts   int              `json:"attempts"`
 	RequestKey string           `json:"request_key,omitempty"`
+	// The first Codex turn uses the terminal until a native thread exists.
+	// Keep its generation and typing state so retries never paste it twice.
+	BootstrapGeneration int  `json:"bootstrap_generation,omitempty"`
+	BootstrapTyped      bool `json:"bootstrap_typed,omitempty"`
 }
 
 // Question records a member request to master and its blocking answer state.
@@ -345,6 +349,8 @@ func (st *Store) read() (*State, error) {
 
 // stateVersion is the schema version of the persisted ledger. Bump it together with
 // a matching one-time step in migrateLedger whenever a stored shape stops being read.
+// Optional bootstrap fields read old records as zero values, so they need no
+// migration; runtimeProtocol still changes to retire older ledger writers.
 const stateVersion = 4
 
 func legacyGeneratedNotice(text, generated string) bool {

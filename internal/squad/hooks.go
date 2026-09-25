@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ShunL12324/c-squad/internal/config"
 	"github.com/ShunL12324/c-squad/internal/prompts"
 )
 
@@ -77,6 +78,18 @@ func hookInput(st *Store, actor string, gen int, input io.Reader) error {
 			m.State = MemberStateInterrupted
 		case "SessionEnd":
 			m.State = MemberStateStopped
+		}
+		if event == "UserPromptSubmit" && m.Engine == config.Codex {
+			prompt := str("prompt")
+			for _, msg := range s.Messages {
+				if msg.To != actor || msg.BootstrapGeneration != gen || !msg.BootstrapTyped || msg.State != DeliveryStateSending && msg.State != DeliveryStatePending {
+					continue
+				}
+				if strings.HasPrefix(prompt, "[C-Squad message_id="+msg.ID+" ") && strings.HasSuffix(strings.TrimSpace(prompt), codexBootstrapMarker(msg.ID)) {
+					msg.State = DeliveryStateSent
+					msg.Error = ""
+				}
+			}
 		}
 		if event == "Stop" {
 			last := str("last_assistant_message")

@@ -26,6 +26,8 @@ func (m *Message) resetDelivery() {
 	m.Attempt = ""
 	m.Attempts = 0
 	m.Error = ""
+	m.BootstrapGeneration = 0
+	m.BootstrapTyped = false
 }
 
 // abandonDelivery closes a message whose recipient was removed. Leaving it

@@ -187,10 +187,15 @@ func tomlValue(v any) (string, error) {
 	}
 }
 
+func codexBootstrapMarker(id string) string { return "[C-Squad startup " + id + "]" }
+
 // Codex defers creating a thread until the first real user message. Bootstrap
-// that message only in a verified, unattended empty composer. Subsequent
-// messages use the native queue. Never type into an attached user's terminal.
-func (st *Store) startCodexInput(s *State, m *Member, message string) error {
+// only an unattended composer. The marker lets a later retry press Enter only
+// for the exact draft we typed; it never pastes a second copy.
+func (st *Store) startCodexInput(s *State, m *Member, msg *Message, message, attempt string) error {
+	if m.State == MemberStateWorking || m.State == MemberStateInterrupted {
+		return fmt.Errorf("first message waiting: Codex recipient is already in a turn")
+	}
 	clients, err := tm(s, "list-clients", "-F", "#{session_name}")
 	if err != nil {
 		return err
@@ -200,23 +205,112 @@ func (st *Store) startCodexInput(s *State, m *Member, message string) error {
 			return fmt.Errorf("first message waiting: member has an attached client; enter a first message or detach")
 		}
 	}
-	pane, err := tm(s, "capture-pane", "-p", "-t", agentPane(m))
+	pane, err := tm(s, "capture-pane", "-p", "-J", "-t", agentPane(m))
 	if err != nil {
 		return err
 	}
-	if !codexEmptyComposer(pane) {
-		return fmt.Errorf("first message waiting for native empty Codex composer")
+	marker := codexBootstrapMarker(msg.ID)
+	if !msg.BootstrapTyped && !codexOwnDraft(pane, marker) {
+		if !codexEmptyComposer(pane) {
+			return fmt.Errorf("first message waiting for native empty Codex composer")
+		}
+		// Use literal keys so task text cannot become tmux key names. The marker
+		// stays at the visible end of long drafts for safe retry identification.
+		message = strings.ReplaceAll(message, "\n", " ") + " " + marker
+		if _, err = tm(s, "send-keys", "-t", agentPane(m), "-l", "--", message); err != nil {
+			return err
+		}
 	}
-	// The JSON envelope escapes message control characters; use literal keys so
-	// incoming task text cannot become tmux key names or shell commands.
-	message = strings.ReplaceAll(message, "\n", " ")
-	if _, err = tm(s, "send-keys", "-t", agentPane(m), "-l", "--", message); err != nil {
+	marked := false
+	if err = st.update(func(s *State) error {
+		for _, v := range s.Messages {
+			if v.ID == msg.ID && v.State == DeliveryStateSending && v.Attempt == attempt && s.Members[v.To] != nil && s.Members[v.To].Generation == m.Generation {
+				v.BootstrapTyped = true
+				v.Text = msg.Text
+				marked = true
+			}
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
-	time.Sleep(100 * time.Millisecond)
+	if !marked {
+		return fmt.Errorf("first message attempt invalidated before submission")
+	}
+	// tmux accepting keys is not proof that Codex has rendered or submitted
+	// them. Wait briefly for our draft to appear before pressing Enter.
+	for i := 0; i < 8 && !codexOwnDraft(pane, marker); i++ {
+		time.Sleep(100 * time.Millisecond)
+		pane, err = tm(s, "capture-pane", "-p", "-J", "-t", agentPane(m))
+		if err != nil {
+			return err
+		}
+	}
+	if !codexOwnDraft(pane, marker) {
+		return fmt.Errorf("first message waiting for its Codex draft to become visible")
+	}
+	clients, err = tm(s, "list-clients", "-F", "#{session_name}")
+	if err != nil {
+		return err
+	}
+	for _, session := range strings.Split(clients, "\n") {
+		if session == m.Session {
+			return fmt.Errorf("first message waiting: member gained an attached client")
+		}
+	}
+	latest, err := st.read()
+	if err != nil {
+		return err
+	}
+	current := latest.Members[m.ID]
+	if current == nil || current.Generation != m.Generation || current.State == MemberStateWorking || current.State == MemberStateInterrupted {
+		return fmt.Errorf("first message waiting: recipient changed or is working")
+	}
+	currentMessage := (*Message)(nil)
+	for _, v := range latest.Messages {
+		if v.ID == msg.ID {
+			currentMessage = v
+			break
+		}
+	}
+	if currentMessage == nil || currentMessage.State != DeliveryStateSending || currentMessage.Attempt != attempt || currentMessage.BootstrapGeneration != m.Generation || !currentMessage.BootstrapTyped || !latest.reportCurrent(currentMessage) {
+		return fmt.Errorf("first message attempt became stale before submission")
+	}
 	_, err = tm(s, "send-keys", "-t", agentPane(m), "Enter")
 	return err
 }
+
+// Inspect only a visible current composer, after its last prompt glyph. -J
+// joins tmux-wrapped rows; a composer whose glyph scrolled off screen cannot
+// be proven current and must wait rather than risk Enter on historical output.
+func codexOwnDraft(pane, marker string) bool {
+	lines := strings.Split(strings.TrimRight(pane, "\n "), "\n")
+	footer := lines[max(0, len(lines)-12):]
+	footerText := strings.Join(footer, "\n")
+	if strings.Contains(strings.ToLower(footerText), "esc to interrupt") {
+		return false
+	}
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(line, "›") {
+			if line == "› Ask Codex to do anything" {
+				return false
+			}
+			composer := strings.Join(lines[i:], "\n")
+			end := strings.LastIndex(compactComposer(composer), compactComposer(marker))
+			if end < 0 {
+				return false
+			}
+			// A submitted prompt followed by ordinary output is historical.
+			// Native composer status follows the draft on the next line.
+			after := compactComposer(composer)[end+len(compactComposer(marker)):]
+			return len(after) < 120 && strings.Contains(after, "·") && !strings.Contains(after, "›")
+		}
+	}
+	return false
+}
+
+func compactComposer(s string) string { return strings.Join(strings.Fields(s), "") }
 
 // codexEmptyComposer recognizes the empty native input near the bottom of the
 // screen. Resumed conversations can scroll the startup banner out of view.

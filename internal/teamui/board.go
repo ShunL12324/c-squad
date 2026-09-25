@@ -61,21 +61,22 @@ func milestoneLines(milestones []Milestone, width, limit int) []string {
 	return lines
 }
 
-const backLabel = " ‹ Back to tasks "
+const backLabel = "  ‹ Back to tasks  "
 
 // detailRow lays out the detail header actions and the cells that trigger them,
 // so the renderer and the mouse hit test read one result.
-func detailRow() (string, []cardButton) {
-	back := ansi.StringWidth(backLabel)
-	return "  " + paint(backLabel, accent, true), []cardButton{{action: "back", row: taskFilterRow, start: 2, end: 2 + back}}
+func detailRow(width int) (string, []cardButton) {
+	back := min(ansi.StringWidth(backLabel), max(1, width-4))
+	return "  " + paint(ansi.Truncate(backLabel, back, "…"), accent, true),
+		[]cardButton{{action: "back", row: taskFilterRow, start: 2, end: 2 + back}}
 }
 
 func (m model) boardView() []string {
 	if m.detail && m.count() > 0 {
 		task := m.tasks()[m.selected]
-		header, _ := detailRow()
+		header, _ := detailRow(m.width)
 		lines := []string{"", m.boardHeading("TASK DETAILS"), "", header, "", ""}
-		return append(lines, m.details(m.detailBody(task), m.height-taskHeaderRows-2)...)
+		return append(lines, m.details(m.detailBody(task), m.taskAvailable())...)
 	}
 	lines := []string{"", m.boardHeading("TASKS"), "", m.taskFilters(), "", ""}
 	cards, _ := m.taskCards()
@@ -103,7 +104,7 @@ func (m model) maxOffset() int {
 	if m.kind != "tasks" {
 		return 0
 	}
-	available := max(0, m.height-taskHeaderRows-2)
+	available := m.taskAvailable()
 	if m.detail && m.count() > 0 {
 		return max(0, len(m.detailLines(m.detailBody(m.tasks()[m.selected])))-available)
 	}
@@ -123,15 +124,6 @@ func (m model) boardHeading(title string) string {
 // other phase, including any a newer ledger adds, stays under Active.
 func finished(state string) bool {
 	return state == "done" || state == "cancelled"
-}
-
-// finishedLabel names the second tab in full when the segment holds it, and
-// otherwise by a word short enough not to be cut mid-label.
-func finishedLabel(count, width int) string {
-	if label := fmt.Sprintf("Done/Cancelled %d", count); ansi.StringWidth(label) <= width {
-		return label
-	}
-	return fmt.Sprintf("Closed %d", count)
 }
 
 // tasks keeps all task interactions in the same filtered index space.
@@ -186,5 +178,9 @@ func (m model) taskFilters() string {
 	// otherwise inherit the terminal's own background instead of the canvas.
 	gutter := lipgloss.NewStyle().Background(lipgloss.Color(canvas)).Render("  ")
 	return gutter + filterSegment(fmt.Sprintf("Active %d", len(m.data.Tasks)-done), left, !m.completed) +
-		filterSegment(finishedLabel(done, right), right, m.completed) + gutter
+		filterSegment(fmt.Sprintf("Done %d", done), right, m.completed) + gutter
+}
+
+func (m model) taskAvailable() int {
+	return max(0, m.height-taskHeaderRows-len(m.footer()))
 }

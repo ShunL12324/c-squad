@@ -145,14 +145,18 @@ func TestMemberNamesKeepTheirColumn(t *testing.T) {
 	}
 }
 
-func TestFooterButtonHitTargets(t *testing.T) {
-	m := model{kind: "tasks", detail: true, width: 28, height: 40}
-	b := m.footerButtons()[0]
-	for _, x := range []int{b.start, b.end - 1} {
-		next, cmd := m.Update(tea.MouseMsg{X: x, Y: m.height - 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-		if cmd != nil || next.(model).detail {
-			t.Fatal("Back button did not return to cards")
-		}
+func TestTaskDetailsUseHeaderBackWithoutFooter(t *testing.T) {
+	m := model{kind: "tasks", detail: true, width: 28, height: 40, data: Snapshot{Tasks: []Task{{ID: "T1", Title: "Research"}}}}
+	if footer := m.footer(); len(footer) != 0 {
+		t.Fatalf("task detail still has a footer: %q", footer)
+	}
+	next, cmd := m.Update(tea.MouseMsg{X: 3, Y: taskFilterRow, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if cmd != nil || next.(model).detail {
+		t.Fatal("header Back button did not return to cards")
+	}
+	list := next.(model)
+	if footer := list.footer(); len(footer) != 0 {
+		t.Fatalf("task list still has a footer: %q", footer)
 	}
 }
 

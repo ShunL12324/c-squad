@@ -75,12 +75,6 @@ func (m model) updateKey(v tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.kind == "tasks" {
 			return m, m.open()
 		}
-	case "g":
-		// Master is offered, never opened for the user: asking about one
-		// card should not move someone who is working through several.
-		if m.kind == "tasks" {
-			return m, m.action(Action{Kind: "open", Member: "master"})
-		}
 	case "down", "j":
 		if m.kind == "tasks" && m.detail {
 			m.offset = min(m.offset+1, m.maxOffset())
@@ -111,18 +105,7 @@ func (m model) updateMouse(v tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	switch v.Button {
 	case tea.MouseButtonLeft:
-		if v.Y >= m.height-2 {
-			if v.Y == m.height-1 {
-				for _, button := range m.footerButtons() {
-					if v.X >= button.start && v.X < button.end && v.X < m.width {
-						switch button.action {
-						case "back":
-							m.detail, m.offset = false, 0
-							return m, nil
-						}
-					}
-				}
-			}
+		if v.Y >= m.height-len(m.footer()) {
 			return m, nil
 		}
 		if m.kind == "members" {

@@ -19,4 +19,4 @@ jobs:
           cache: true
       - run: sudo apt-get update && sudo apt-get install -y tmux
       # TEMPORARY T294 signal-mask diagnostic; restore the full checks before release.
-      - run: go test -race ./internal/squad -run '^TestShutdownCommandSurvivesFormatCharactersInPaths$' -count=1 -v
+      - run: go test -race ./internal/squad -count=1 -v

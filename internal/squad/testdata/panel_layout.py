@@ -138,6 +138,12 @@ try:
                 os.write(fd, f"\x1b[<32;{x+offset};{y}M".encode())
                 drain(.005)
             os.write(fd, f"\x1b[<0;{x+12};{y}m".encode())
+            # Writing to the PTY does not mean tmux has processed mouse release.
+            # Wait for the release binding to finish saving geometry.
+            deadline = time.monotonic() + 1
+            while tm("show-options", "-wqv", "-t", master, "@csquad_dragging"):
+                assert time.monotonic() < deadline, "native border release was not processed"
+                drain(.005)
             actual = int(tm("display-message", "-p", "-t", members[0], "#{pane_width}"))
             print("native drag actual/pref:", actual, tm("show-options", "-wv", "-t", master, "@csquad_size_members"), flush=True)
             assert actual > int(members[4]), "native border drag did not resize"

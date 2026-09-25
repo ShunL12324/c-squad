@@ -344,7 +344,9 @@ func TestShutdownCommandSurvivesFormatCharactersInPaths(t *testing.T) {
 	fake := filepath.Join(root, "csquad #{session_name}")
 	must(t, os.WriteFile(fake, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$0.$$\"\nmv \"$0.$$\" "+shellQuote(capture)+"-$(date +%s%N)\n"), 0700))
 	socket := filepath.Join(tmp, "s")
-	_, e = process.Run("", "tmux", "-f", "/dev/null", "-S", socket, "new-session", "-d", "-s", "team-master", "sleep 300")
+	// tmux executes a shell command. Replace that shell with sleep so pane_pid
+	// names the process whose exit must emit pane-died.
+	_, e = process.Run("", "tmux", "-f", "/dev/null", "-S", socket, "new-session", "-d", "-s", "team-master", "exec sleep 300")
 	must(t, e)
 	defer process.Run("", "tmux", "-S", socket, "kill-server")
 	must(t, st.update(func(s *State) error {
@@ -369,6 +371,18 @@ func TestShutdownCommandSurvivesFormatCharactersInPaths(t *testing.T) {
 	proc, e := os.FindProcess(pid)
 	must(t, e)
 	must(t, proc.Signal(syscall.SIGTERM))
+	// Observe the actual pane death before judging hook delivery. Otherwise a
+	// surviving shell/child process looks like a missing pane-died callback.
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		dead, err := tm(s, "display-message", "-p", "-t", pane, "#{pane_dead}")
+		must(t, err)
+		if dead == "1" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("signaled pane PID %d but pane did not exit", pid)
+		}
+	}
 	want := map[string]bool{"request": false, "master_exit": false}
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
 		files, _ := filepath.Glob(capture + "-*")

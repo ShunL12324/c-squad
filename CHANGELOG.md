@@ -4,6 +4,43 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
+## v0.12.1 — 2026-09-25
+
+### Changed
+
+- Keep independent developers working in parallel, but have Master schedule
+  testing after all related modules of a feature are complete and integrated.
+  Developers report implementation readiness; reviewers focus on review;
+  testing is an explicit assignment to a developer or tester. Startup and
+  recovery instructions discourage tests after every small edit and repeated
+  runs by different members. Related tasks can share one integrated candidate
+  and its exact-commit test results, with approval and merge performed one task
+  at a time. Required review and test evidence remain in place.
+- Clarify that owners may integrate assigned branches inside their own task
+  worktrees; only Master approves and merges tasks into the target branch.
+  Prefer completion notifications over long fixed sleeps and ignore obsolete
+  task notices without sending another acknowledgment.
+- `board` and `member list` read stored runtime observations instead of waiting
+  for synchronous probes. Results flag observations older than 30 seconds.
+  Claude session listings are shared within one observation pass when command,
+  environment and working-directory requirements are compatible.
+
+### Fixed
+
+- Do not generate self-assignment notices. Pending automatic availability,
+  assignment and CC notices are checked against the current task before
+  delivery, including owner handoffs and completed tasks. Existing unfinished
+  notices are migrated conservatively using their generated formats; ordinary
+  member messages are preserved.
+- Keep routine automatic reports for a working Codex recipient in C-Squad's
+  outbox so obsolete reports can expire before entering the native queue.
+  Direct messages, questions and failure reports are not held. A stale activity
+  timestamp allows delivery after five minutes without a hook update; messages
+  already handed to Codex cannot be withdrawn.
+- Separate structured observation output from shell diagnostics. Shell-mode
+  Claude helpers can emit startup lines before a complete JSON array; direct
+  invocations and trailing non-JSON output remain strictly validated.
+
 ## v0.12.0 — 2026-09-24
 
 ### Added

@@ -21,6 +21,10 @@ func panelForTest(kind, current string, width, height int, data Snapshot) *sideP
 	return p
 }
 
+func focusForTest(p *sidePanel) func(tview.Primitive) {
+	return func(primitive tview.Primitive) { p.app.SetFocus(primitive) }
+}
+
 func TestSidePanelUsesNativeButtonsAndPreservesTaskDetail(t *testing.T) {
 	p := panelForTest("tasks", "master", 40, 46, Snapshot{Active: true, Tasks: []Task{
 		{ID: "T1", Title: "[red] literal", State: "blocked", Owner: "dev", Progress: "[blue] update", Detail: "[green] details", Milestones: []Milestone{{Name: "[yellow] Review", State: "awaiting_approval", Gate: true}}},
@@ -30,7 +34,7 @@ func TestSidePanelUsesNativeButtonsAndPreservesTaskDetail(t *testing.T) {
 	if button == nil || button.IsDisabled() {
 		t.Fatal("blocked work must still have an enabled tview Button")
 	}
-	button.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), p.app.SetFocus)
+	button.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), focusForTest(p))
 	if p.detailID != "T1" || p.detailText == nil {
 		t.Fatal("native Enter did not open task details")
 	}
@@ -47,7 +51,7 @@ func TestSidePanelUsesNativeButtonsAndPreservesTaskDetail(t *testing.T) {
 	}
 	button = p.taskButtons["T2"]
 	button.SetRect(0, 0, 38, 3)
-	button.MouseHandler()(tview.MouseLeftClick, tcell.NewEventMouse(5, 1, tcell.ButtonPrimary, 0), p.app.SetFocus)
+	button.MouseHandler()(tview.MouseLeftClick, tcell.NewEventMouse(5, 1, tcell.ButtonPrimary, 0), focusForTest(p))
 	if p.detailID != "T2" {
 		t.Fatal("native Button click did not open cancelled task details")
 	}
@@ -256,7 +260,7 @@ func TestRootMouseClickOpensOnlyLaterMember(t *testing.T) {
 		}
 		x, y, _, _ := card.GetRect()
 		consumed, _ := p.root.MouseHandler()(tview.MouseLeftClick,
-			tcell.NewEventMouse(x+2, y+1, tcell.ButtonPrimary, 0), p.app.SetFocus)
+			tcell.NewEventMouse(x+2, y+1, tcell.ButtonPrimary, 0), focusForTest(p))
 		if !consumed {
 			t.Error("member click propagated after card rebuild")
 		}
@@ -300,7 +304,7 @@ func TestRootMouseClickSelectsOnlyLaterTaskAndButton(t *testing.T) {
 	}
 	x, y, _, _ := body.GetRect()
 	consumed, _ := p.root.MouseHandler()(tview.MouseLeftClick,
-		tcell.NewEventMouse(x+2, y+1, tcell.ButtonPrimary, 0), p.app.SetFocus)
+		tcell.NewEventMouse(x+2, y+1, tcell.ButtonPrimary, 0), focusForTest(p))
 	if !consumed || p.selectedID != "T2" || p.detailID != "" {
 		t.Fatalf("later task body click propagated or selected another task: consumed=%t selected=%q detail=%q", consumed, p.selectedID, p.detailID)
 	}
@@ -308,7 +312,7 @@ func TestRootMouseClickSelectsOnlyLaterTaskAndButton(t *testing.T) {
 	button := p.taskButtons["T2"]
 	x, y, _, _ = button.GetRect()
 	consumed, _ = p.root.MouseHandler()(tview.MouseLeftClick,
-		tcell.NewEventMouse(x+2, y+1, tcell.ButtonPrimary, 0), p.app.SetFocus)
+		tcell.NewEventMouse(x+2, y+1, tcell.ButtonPrimary, 0), focusForTest(p))
 	if !consumed || p.selectedID != "T2" || p.detailID != "T2" {
 		t.Fatalf("later task button click activated another card: consumed=%t selected=%q detail=%q", consumed, p.selectedID, p.detailID)
 	}

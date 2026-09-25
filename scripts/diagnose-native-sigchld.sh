@@ -105,12 +105,14 @@ required=(
 for item in "${required[@]}"; do
   read -r event fields <<< "$item"
   schema=$(sudo -n timeout --signal=TERM --kill-after=2s 10s bpftrace -lv "tracepoint:$event" 2>&1) || {
-    echo "T400 diagnostic unavailable: $event: $schema" >&2
+    echo "T400 diagnostic unavailable: $event schema query failed" >&2
+    printf '%.2048s\n' "$schema" >&2
     exit 2
   }
   for field in $fields; do
-    if ! grep -Eq "[[:space:]*]${field}([;[:space:]]|$)" <<< "$schema"; then
+    if ! grep -Eq "[[:space:]*]${field}(\[[0-9]+\])?([;[:space:]]|$)" <<< "$schema"; then
       echo "T400 diagnostic unavailable: $event lacks $field" >&2
+      printf '%.2048s\n' "$schema" >&2
       exit 2
     fi
   done

@@ -299,7 +299,7 @@ func (st *Store) navigate(client, direction, index string) error {
 		if e != nil || n < 0 || n >= len(members) {
 			return fmt.Errorf("invalid member index")
 		}
-		return st.switchMember(s, members[n], client)
+		return st.switchMember(s, members[n], client, current)
 	}
 	delta := 1
 	if direction == "previous" {
@@ -308,7 +308,7 @@ func (st *Store) navigate(client, direction, index string) error {
 		return fmt.Errorf("invalid direction")
 	}
 	target := live[(at+delta+len(live))%len(live)]
-	return st.switchMember(s, target, client)
+	return st.switchMember(s, target, client, current)
 }
 func (st *Store) clearNavigation(s *State) {
 	root, prefix := navigationTables(st)

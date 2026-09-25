@@ -279,13 +279,12 @@ func teamWindowSize(s *State) (string, string) {
 // or fallback sizing; fitting before the switch avoids visible reflow while
 // waiting for the asynchronous layout hook.
 // It reports whether it pinned the window, which the caller has to undo.
-func (st *Store) fitSession(s *State, m *Member, client string) (bool, error) {
+func (st *Store) fitSession(s *State, m *Member, source string) (bool, error) {
 	unlock, err := filelock.Acquire(st.Dir, "panels", false)
 	if err != nil {
 		return false, err
 	}
 	defer unlock()
-	source := clientSession(s, client)
 	if source == "" {
 		return false, nil
 	}
@@ -329,15 +328,16 @@ func (st *Store) fitSession(s *State, m *Member, client string) (bool, error) {
 		if err := st.configurePanelState(s, m.ID); err != nil {
 			return pinned, err
 		}
+		// Configuration or a resize can replace panes and their dimensions.
+		destination, err = readPanelGeometry(s, m.Pane)
+		if err != nil {
+			return pinned, err
+		}
 	}
-	return pinned, applyPanelDimensions(s, m.Pane, g.dimensions)
+	return pinned, applyPanelDimensions(s, m.Pane, g.dimensions, destination)
 }
 
-func applyPanelDimensions(s *State, target string, dimensions map[string][2]int) error {
-	g, err := readPanelGeometry(s, target)
-	if err != nil {
-		return err
-	}
+func applyPanelDimensions(s *State, target string, dimensions map[string][2]int, g panelGeometry) error {
 	args := []string{"set-option", "-w", "-t", target, "@csquad_layout_active", "1"}
 	for _, role := range []string{"header", "members", "tasks"} {
 		d, ok := dimensions[role]
@@ -398,8 +398,8 @@ func (st *Store) rememberPanelLayout(owner string) error {
 }
 
 // switchMember is shared by pointer navigation, prefix indices and next/previous.
-func (st *Store) switchMember(s *State, m *Member, client string) (result error) {
-	pinned, err := st.fitSession(s, m, client)
+func (st *Store) switchMember(s *State, m *Member, client, source string) (result error) {
+	pinned, err := st.fitSession(s, m, source)
 	if pinned {
 		// Also release a pin on any failure before or during the switch.
 		defer func() {

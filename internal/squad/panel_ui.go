@@ -76,7 +76,7 @@ func (st *Store) runPanel(owner, view string, popup bool) error {
 			}
 			client = candidates[0]
 		}
-		return "", st.switchMember(s, m, client)
+		return "", st.switchMember(s, m, client, host.Session)
 	})
 }
 

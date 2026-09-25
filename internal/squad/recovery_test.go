@@ -1,8 +1,6 @@
 package squad
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -365,7 +363,6 @@ func TestShutdownCommandSurvivesFormatCharactersInPaths(t *testing.T) {
 	must(t, e)
 	must(t, st.update(func(s *State) error { s.Members["master"].Pane = pane; return nil }))
 	must(t, installMasterHook(st))
-	must(t, requestShutdown(st, s, "reason #S;"))
 	// Trigger the exit only after the hook is installed; a fixed short sleep
 	// can expire during setup on a loaded CI runner.
 	pidText, e := tm(s, "display-message", "-p", "-t", pane, "#{pane_pid}")
@@ -394,14 +391,6 @@ func TestShutdownCommandSurvivesFormatCharactersInPaths(t *testing.T) {
 	}
 	proc, e := os.FindProcess(pid)
 	must(t, e)
-	trace := startTmuxExitTrace(t, tmp, serverPID)
-	if trace != nil {
-		defer func() {
-			if err := trace.stop(); err != nil {
-				t.Errorf("stop isolated tmux tracer: %v", err)
-			}
-		}()
-	}
 	must(t, proc.Signal(syscall.SIGTERM))
 	// Observe the actual pane death before judging hook delivery. Otherwise a
 	// surviving shell/child process looks like a missing pane-died callback.
@@ -416,198 +405,55 @@ func TestShutdownCommandSurvivesFormatCharactersInPaths(t *testing.T) {
 		}
 	}
 	want := map[string]bool{"request": false, "master_exit": false}
-	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
-		files, _ := filepath.Glob(capture + "-*")
-		for _, file := range files {
-			b, _ := os.ReadFile(file)
-			args := strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
-			if len(args) < 2 || args[0] != "--team" || args[1] != st.Dir {
-				t.Fatalf("shutdown argv = %q, want --team %q", args, st.Dir)
-			}
-			switch args[len(args)-1] {
-			case "reason #S;":
-				want["request"] = true
-			case "master_exit":
-				want["master_exit"] = true
-			default:
-				t.Fatalf("reason changed: %q", args)
-			}
-		}
-		if want["request"] && want["master_exit"] {
-			return
-		}
-		if time.Now().After(deadline) {
-			inspect := func(args ...string) string {
-				out, err := tm(s, args...)
-				if err != nil {
-					return fmt.Sprintf("%v: %v", args, err)
+	waitFor := func(reason string) {
+		t.Helper()
+		for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+			files, _ := filepath.Glob(capture + "-*")
+			for _, file := range files {
+				b, _ := os.ReadFile(file)
+				args := strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
+				if len(args) < 2 || args[0] != "--team" || args[1] != st.Dir {
+					t.Fatalf("shutdown argv = %q, want --team %q", args, st.Dir)
 				}
-				return out
-			}
-			partial, _ := filepath.Glob(fake + ".*")
-			postPaneProc, postServerProc := linuxProcStatus(pid), linuxProcStatus(serverPID)
-			hooks := inspect("show-hooks", "-w", "-t", "=team-master:")
-			paneState := inspect("display-message", "-p", "-t", pane, "#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_dead_time}|#{pane_pid}")
-			paneOutput := inspect("capture-pane", "-p", "-t", pane)
-			serverEvents, serverLog := tmuxPaneExitLog(tmp, pane)
-			if trace != nil {
-				if err := trace.stop(); err != nil {
-					t.Errorf("stop isolated tmux tracer: %v", err)
+				switch args[len(args)-1] {
+				case "reason #S;":
+					want["request"] = true
+				case "master_exit":
+					want["master_exit"] = true
+				default:
+					t.Fatalf("reason changed: %q", args)
 				}
 			}
-			traceLines := tmuxTraceExcerpt(trace)
-			t.Fatalf("shutdown not requested with the exact path: %v; pre_signal=%q; pre_process=%q; pre_remain=%q; pre_server_pid=%q; pre_pane_proc=%v; pre_server_proc=%v; pane_proc=%v; server_proc=%v; hooks=%q; pane_state=%q; pane=%q; server_events=%q; server_log=%q; strace=%q; captures=%v; partial=%v",
-				want,
-				preSignal, preProcess, preRemain,
-				serverPIDText,
-				prePaneProc, preServerProc, postPaneProc, postServerProc,
-				hooks, paneState, paneOutput,
-				serverEvents, serverLog, traceLines, files, partial)
-		}
-	}
-}
-
-// This opt-in trace attaches only to the isolated tmux server, after hook
-// setup. Tracing the pane child would change its exit notification path.
-type tmuxExitTrace struct {
-	cmd       *exec.Cmd
-	done      chan error
-	path      string
-	tracerPID int
-	stopped   bool
-}
-
-func startTmuxExitTrace(t *testing.T, dir string, serverPID int) *tmuxExitTrace {
-	t.Helper()
-	if os.Getenv("CSQUAD_TEST_STRACE_TMUX") != "1" {
-		return nil
-	}
-	if runtime.GOOS != "linux" || serverPID <= 0 {
-		t.Fatal("tmux strace diagnostic requires an isolated Linux server PID")
-	}
-	path := filepath.Join(dir, "tmux-server-syscalls.log")
-	cmd := exec.Command("sudo", "-n", "strace", "-ttt", "-qq", "-s", "128",
-		"-e", "trace=wait4,waitid,rt_sigaction,rt_sigprocmask,rt_sigreturn",
-		"-e", "signal=SIGCHLD", "-o", path, "-p", strconv.Itoa(serverPID))
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("start isolated tmux strace: %v", err)
-	}
-	trace := &tmuxExitTrace{cmd: cmd, done: make(chan error, 1), path: path}
-	go func() { trace.done <- cmd.Wait() }()
-	attached := false
-	defer func() {
-		if !attached {
-			_ = trace.stop()
-		}
-	}()
-	for deadline := time.Now().Add(2 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-		if tracerPID := linuxTracerPID(serverPID); tracerPID > 0 {
-			trace.tracerPID = tracerPID
-			attached = true
-			t.Logf("isolated tmux strace attached: server_pid=%d tracer_pid=%d; ptrace may change event timing", serverPID, tracerPID)
-			return trace
-		}
-		select {
-		case err := <-trace.done:
-			trace.stopped = true
-			t.Fatalf("isolated tmux strace exited before attachment: %v; stderr=%q", err, boundedTraceLine(stderr.String(), 300))
-		default:
-		}
-		if time.Now().After(deadline) {
-			if err := trace.stop(); err != nil {
-				t.Fatalf("isolated tmux strace did not attach within 2s; stop: %v", err)
+			if want[reason] {
+				return
 			}
-			t.Fatal("isolated tmux strace did not attach within 2s")
+			if time.Now().After(deadline) {
+				inspect := func(args ...string) string {
+					out, err := tm(s, args...)
+					if err != nil {
+						return fmt.Sprintf("%v: %v", args, err)
+					}
+					return out
+				}
+				partial, _ := filepath.Glob(fake + ".*")
+				serverEvents, serverLog := tmuxPaneExitLog(tmp, pane)
+				t.Fatalf("shutdown not requested with the exact path for %q: %v; pre_signal=%q; pre_process=%q; pre_remain=%q; pre_server_pid=%q; pre_pane_proc=%v; pre_server_proc=%v; pane_proc=%v; server_proc=%v; hooks=%q; pane_state=%q; pane=%q; server_events=%q; server_log=%q; captures=%v; partial=%v",
+					reason, want,
+					preSignal, preProcess, preRemain,
+					serverPIDText,
+					prePaneProc, preServerProc, linuxProcStatus(pid), linuxProcStatus(serverPID),
+					inspect("show-hooks", "-w", "-t", "=team-master:"),
+					inspect("display-message", "-p", "-t", pane, "#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_dead_time}|#{pane_pid}"),
+					inspect("capture-pane", "-p", "-t", pane),
+					serverEvents, serverLog, files, partial)
+			}
 		}
 	}
-}
-
-func linuxTracerPID(pid int) int {
-	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid))
-	if err != nil {
-		return 0
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if value, ok := strings.CutPrefix(line, "TracerPid:"); ok {
-			tracerPID, _ := strconv.Atoi(strings.TrimSpace(value))
-			return tracerPID
-		}
-	}
-	return 0
-}
-
-func (trace *tmuxExitTrace) stop() error {
-	if trace == nil || trace.stopped {
-		return nil
-	}
-	pid := trace.tracerPID
-	if pid == 0 {
-		pid = trace.cmd.Process.Pid
-		runSudoTraceSignal("pkill", "-INT", "-P", strconv.Itoa(pid))
-	}
-	runSudoTraceSignal("kill", "-INT", strconv.Itoa(pid))
-	select {
-	case <-trace.done:
-		trace.stopped = true
-		return nil
-	case <-time.After(2 * time.Second):
-	}
-	runSudoTraceSignal("pkill", "-KILL", "-P", strconv.Itoa(trace.cmd.Process.Pid))
-	runSudoTraceSignal("kill", "-KILL", strconv.Itoa(pid))
-	_ = trace.cmd.Process.Kill()
-	select {
-	case <-trace.done:
-		trace.stopped = true
-		return nil
-	case <-time.After(2 * time.Second):
-		return fmt.Errorf("tracer PID %d did not exit", pid)
-	}
-}
-
-func runSudoTraceSignal(args ...string) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	_ = exec.CommandContext(ctx, "sudo", append([]string{"-n"}, args...)...).Run()
-}
-
-func tmuxTraceExcerpt(trace *tmuxExitTrace) []string {
-	if trace == nil {
-		return nil
-	}
-	data, err := os.ReadFile(trace.path)
-	if err != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		data, err = exec.CommandContext(ctx, "sudo", "-n", "cat", trace.path).Output()
-		if err != nil {
-			return []string{fmt.Sprintf("isolated strace unavailable: %v", err)}
-		}
-	}
-	const maxLines, maxLineLen = 60, 240
-	var lines []string
-	for _, line := range strings.Split(string(data), "\n") {
-		if !strings.Contains(line, "SIGCHLD") &&
-			!strings.Contains(line, "wait4(") && !strings.Contains(line, "waitid(") &&
-			!strings.Contains(line, "rt_sigaction(") &&
-			!strings.Contains(line, "rt_sigprocmask(") &&
-			!strings.Contains(line, "rt_sigreturn(") {
-			continue
-		}
-		lines = append(lines, boundedTraceLine(line, maxLineLen))
-		if len(lines) > maxLines {
-			lines = lines[1:]
-		}
-	}
-	return lines
-}
-
-func boundedTraceLine(line string, maxLen int) string {
-	if len(line) > maxLen {
-		return line[:maxLen] + "..."
-	}
-	return line
+	// The hook must independently pass its exact path and reason before the
+	// direct request creates another run-shell child in this server.
+	waitFor("master_exit")
+	must(t, requestShutdown(st, s, "reason #S;"))
+	waitFor("request")
 }
 
 // Read only the process and signal fields needed to diagnose a missing

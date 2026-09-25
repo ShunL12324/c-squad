@@ -347,7 +347,7 @@ func TestShutdownCommandSurvivesFormatCharactersInPaths(t *testing.T) {
 	socket := filepath.Join(tmp, "s")
 	// tmux executes a shell command. Replace that shell with sleep so pane_pid
 	// names the process whose exit must emit pane-died.
-	_, e = process.Run("", "tmux", "-f", "/dev/null", "-S", socket, "new-session", "-d", "-s", "team-master", "exec sleep 300")
+	_, e = process.Run(tmp, "tmux", "-vv", "-f", "/dev/null", "-S", socket, "new-session", "-d", "-s", "team-master", "exec sleep 300")
 	must(t, e)
 	defer process.Run("", "tmux", "-S", socket, "kill-server")
 	must(t, st.update(func(s *State) error {
@@ -369,6 +369,18 @@ func TestShutdownCommandSurvivesFormatCharactersInPaths(t *testing.T) {
 	must(t, e)
 	pid, e := strconv.Atoi(pidText)
 	must(t, e)
+	preSignal, preErr := tm(s, "display-message", "-p", "-t", pane, "#{pane_dead}|#{pane_pid}")
+	if preErr != nil {
+		preSignal = preErr.Error()
+	}
+	preProcess, preProcessErr := process.Run("", "ps", "-p", pidText, "-o", "pid=,ppid=,stat=,comm=")
+	if preProcessErr != nil {
+		preProcess = preProcessErr.Error()
+	}
+	preRemain, preRemainErr := tm(s, "show-options", "-wv", "-t", "=team-master:", "remain-on-exit")
+	if preRemainErr != nil {
+		preRemain = preRemainErr.Error()
+	}
 	proc, e := os.FindProcess(pid)
 	must(t, e)
 	must(t, proc.Signal(syscall.SIGTERM))
@@ -414,12 +426,48 @@ func TestShutdownCommandSurvivesFormatCharactersInPaths(t *testing.T) {
 				return out
 			}
 			partial, _ := filepath.Glob(fake + ".*")
-			t.Fatalf("shutdown not requested with the exact path: %v; hooks=%q; pane_state=%q; pane=%q; server=%q; captures=%v; partial=%v",
+			t.Fatalf("shutdown not requested with the exact path: %v; pre_signal=%q; pre_process=%q; pre_remain=%q; hooks=%q; pane_state=%q; pane=%q; server_log=%q; captures=%v; partial=%v",
 				want,
+				preSignal, preProcess, preRemain,
 				inspect("show-hooks", "-w", "-t", "=team-master:"),
-				inspect("display-message", "-p", "-t", pane, "#{pane_dead} #{pane_dead_signal} #{pane_pid}"),
+				inspect("display-message", "-p", "-t", pane, "#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_dead_time}|#{pane_pid}"),
 				inspect("capture-pane", "-p", "-t", pane),
-				inspect("show-messages"), files, partial)
+				tmuxPaneExitLog(tmp, pane), files, partial)
 		}
 	}
+}
+
+// Report only bounded pane-exit and hook-dispatch lines from the isolated
+// tmux server. The full -vv log can contain unrelated terminal data.
+func tmuxPaneExitLog(dir, pane string) []string {
+	logs, _ := filepath.Glob(filepath.Join(dir, "tmux-server-*.log"))
+	const maxLines, maxLineLen = 40, 400
+	var relevant []string
+	for _, name := range logs {
+		data, err := os.ReadFile(name)
+		if err != nil {
+			relevant = append(relevant, fmt.Sprintf("%s: %v", filepath.Base(name), err))
+			continue
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			if !strings.Contains(line, pane+" exited") &&
+				!strings.Contains(line, pane+" error") &&
+				!strings.Contains(line, "pane-died") &&
+				!strings.Contains(line, "notify_insert_hook") &&
+				!strings.Contains(line, "notify_callback") {
+				continue
+			}
+			if len(line) > maxLineLen {
+				line = line[:maxLineLen] + "..."
+			}
+			relevant = append(relevant, line)
+			if len(relevant) > maxLines {
+				relevant = relevant[1:]
+			}
+		}
+	}
+	if len(logs) == 0 {
+		return []string{"tmux server log unavailable"}
+	}
+	return relevant
 }

@@ -2,6 +2,7 @@ package squad
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"os/exec"
@@ -405,7 +406,20 @@ func TestShutdownCommandSurvivesFormatCharactersInPaths(t *testing.T) {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("shutdown not requested with the exact path: %v", want)
+			inspect := func(args ...string) string {
+				out, err := tm(s, args...)
+				if err != nil {
+					return fmt.Sprintf("%v: %v", args, err)
+				}
+				return out
+			}
+			partial, _ := filepath.Glob(fake + ".*")
+			t.Fatalf("shutdown not requested with the exact path: %v; hooks=%q; pane_state=%q; pane=%q; server=%q; captures=%v; partial=%v",
+				want,
+				inspect("show-hooks", "-w", "-t", "=team-master:"),
+				inspect("display-message", "-p", "-t", pane, "#{pane_dead} #{pane_dead_signal} #{pane_pid}"),
+				inspect("capture-pane", "-p", "-t", pane),
+				inspect("show-messages"), files, partial)
 		}
 	}
 }

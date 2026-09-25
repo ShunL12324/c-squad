@@ -17,9 +17,11 @@ jobs:
         with:
           go-version: '1.26.0'
           cache: true
-      - run: sudo apt-get update && sudo apt-get install -y tmux
+      - run: sudo apt-get update && sudo apt-get install -y tmux strace
       # TEMPORARY T363 diagnostic: restore the original checks before release.
       - run: uname -sr
       - run: tmux -V
       - run: go version
       - run: go test -race ./internal/squad -run '^TestShutdownCommandSurvivesFormatCharactersInPaths$' -count=20 -failfast -v
+        env:
+          CSQUAD_TEST_STRACE_TMUX: '1'

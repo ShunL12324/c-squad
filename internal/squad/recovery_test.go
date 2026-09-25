@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -369,6 +370,9 @@ func TestShutdownCommandSurvivesFormatCharactersInPaths(t *testing.T) {
 	must(t, e)
 	pid, e := strconv.Atoi(pidText)
 	must(t, e)
+	prePaneProc := linuxProcStatus(pid)
+	serverPID, _ := strconv.Atoi(prePaneProc["PPid"])
+	preServerProc := linuxProcStatus(serverPID)
 	preSignal, preErr := tm(s, "display-message", "-p", "-t", pane, "#{pane_dead}|#{pane_pid}")
 	if preErr != nil {
 		preSignal = preErr.Error()
@@ -426,15 +430,40 @@ func TestShutdownCommandSurvivesFormatCharactersInPaths(t *testing.T) {
 				return out
 			}
 			partial, _ := filepath.Glob(fake + ".*")
-			t.Fatalf("shutdown not requested with the exact path: %v; pre_signal=%q; pre_process=%q; pre_remain=%q; hooks=%q; pane_state=%q; pane=%q; server_log=%q; captures=%v; partial=%v",
+			t.Fatalf("shutdown not requested with the exact path: %v; pre_signal=%q; pre_process=%q; pre_remain=%q; pre_pane_proc=%v; pre_server_proc=%v; pane_proc=%v; server_proc=%v; hooks=%q; pane_state=%q; pane=%q; server_log=%q; captures=%v; partial=%v",
 				want,
 				preSignal, preProcess, preRemain,
+				prePaneProc, preServerProc, linuxProcStatus(pid), linuxProcStatus(serverPID),
 				inspect("show-hooks", "-w", "-t", "=team-master:"),
 				inspect("display-message", "-p", "-t", pane, "#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_dead_time}|#{pane_pid}"),
 				inspect("capture-pane", "-p", "-t", pane),
 				tmuxPaneExitLog(tmp, pane), files, partial)
 		}
 	}
+}
+
+// Read only the process and signal fields needed to diagnose a missing
+// SIGCHLD. A nil result means the process is gone or /proc is unavailable.
+func linuxProcStatus(pid int) map[string]string {
+	if runtime.GOOS != "linux" || pid <= 0 {
+		return nil
+	}
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid))
+	if err != nil {
+		return nil
+	}
+	fields := make(map[string]string)
+	for _, line := range strings.Split(string(data), "\n") {
+		key, value, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		switch key {
+		case "Pid", "PPid", "State", "SigBlk", "SigIgn", "SigCgt", "SigPnd", "ShdPnd":
+			fields[key] = strings.TrimSpace(value)
+		}
+	}
+	return fields
 }
 
 // Report only bounded pane-exit and hook-dispatch lines from the isolated

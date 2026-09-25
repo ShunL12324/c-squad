@@ -9,6 +9,8 @@ import (
 	"github.com/ShunL12324/c-squad/internal/teamui"
 )
 
+const fixedHeaderHeight = 3
+
 type panelView string
 
 const (
@@ -74,6 +76,7 @@ func (st *Store) configurePanelState(s *State, owners ...string) (result error) 
 			continue
 		}
 		for option, value := range map[string]string{
+			"@csquad_size_header":      strconv.Itoa(fixedHeaderHeight),
 			"pane-border-status":       "off",
 			"pane-border-style":        "fg=colour238,bg=colour234",
 			"pane-active-border-style": "fg=colour238,bg=colour234",
@@ -133,6 +136,9 @@ func (st *Store) configurePanelState(s *State, owners ...string) (result error) 
 					return e
 				}
 				saved, _ := tm(s, "show-options", "-wv", "-t", m.Pane, "@csquad_size_"+f[1])
+				if f[1] == "header" {
+					saved = strconv.Itoa(fixedHeaderHeight)
+				}
 				if n, err := strconv.Atoi(saved); err == nil && n > 0 {
 					axis := "-x"
 					if f[1] == "header" {
@@ -169,6 +175,9 @@ func (st *Store) configurePanelState(s *State, owners ...string) (result error) 
 				args = []string{"split-window", "-d", "-v", "-f", "-b", "-t", m.Pane, "-l", "3", "-P", "-F", "#{pane_id}"}
 			}
 			saved, _ := tm(s, "show-options", "-wv", "-t", m.Pane, "@csquad_size_"+view)
+			if view == "header" {
+				saved = strconv.Itoa(fixedHeaderHeight)
+			}
 			if n, err := strconv.Atoi(saved); err == nil && n > 0 {
 				if view == "header" {
 					args[8] = strconv.Itoa(min(n, height-2))
@@ -347,7 +356,7 @@ func applyPanelDimensions(s *State, target string, dimensions map[string][2]int,
 		}
 		axis, n, current := "-x", d[0], g.dimensions[role][0]
 		if role == "header" {
-			axis, n, current = "-y", d[1], g.dimensions[role][1]
+			axis, n, current = "-y", fixedHeaderHeight, g.dimensions[role][1]
 		}
 		args = appendTmCommand(args, "set-option", "-w", "-t", target, "@csquad_size_"+role, strconv.Itoa(n))
 		if n != current {
@@ -388,11 +397,18 @@ func (st *Store) rememberPanelLayout(owner string) error {
 		}
 		size := f[1]
 		if f[0] == "header" {
-			size = f[2]
+			size = strconv.Itoa(fixedHeaderHeight)
 		}
 		if _, err := tm(s, "set-option", "-w", "-t", m.Pane, "@csquad_size_"+f[0], size); err != nil {
 			return err
 		}
+	}
+	g, err := readPanelGeometry(s, m.Pane)
+	if err != nil {
+		return err
+	}
+	if g.panes["header"] != "" && g.dimensions["header"][1] != fixedHeaderHeight {
+		return applyPanelDimensions(s, m.Pane, map[string][2]int{"header": {0, fixedHeaderHeight}}, g)
 	}
 	return nil
 }

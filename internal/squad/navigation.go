@@ -127,11 +127,8 @@ func (st *Store) configureNavigation() error {
 	// Native mouse motion bypasses after-resize-pane after its first frame.
 	// Save in tmux's release event itself, before a resize can reflow the panes.
 	var remember []string
-	for _, role := range []string{"members", "tasks", "header"} {
+	for _, role := range []string{"members", "tasks"} {
 		axis := "pane_width"
-		if role == "header" {
-			axis = "pane_height"
-		}
 		size := "#{P:#{?#{==:#{@csquad_panel}," + role + "},#{" + axis + "},}}"
 		command := "set-option -wF -t = @csquad_size_" + role + " " + shellQuote(size)
 		remember = append(remember, "if-shell -F -t = "+shellQuote(size)+" "+shellQuote(command))
@@ -147,7 +144,7 @@ func (st *Store) configureNavigation() error {
 			if fallback == "" {
 				fallback = "resize-pane -M"
 			}
-			command = "set-option -w -t = @csquad_dragging 1 ; " + fallback
+			command = "if-shell -F -t = " + shellQuote("#{!=:#{@csquad_panel},header}") + " " + shellQuote("set-option -w -t = @csquad_dragging 1 ; "+fallback)
 		} else {
 			save := strings.Join(remember, " ; ") + " ; set-option -wu -t = @csquad_dragging"
 			command = "if-shell -F -t = '#{@csquad_dragging}' " + shellQuote(save)

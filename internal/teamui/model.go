@@ -25,11 +25,13 @@ type Task struct {
 	Milestones                                             []Milestone
 }
 
+// Milestone describes one task checkpoint and whether it gates completion.
 type Milestone struct {
 	Name, State string
 	Gate        bool
 }
 
+// Snapshot is the team state displayed by a panel at one point in time.
 type Snapshot struct {
 	Team    string
 	Members []Member
@@ -38,8 +40,13 @@ type Snapshot struct {
 	Active  bool
 }
 
+// Action requests a panel operation for a member or task.
 type Action struct{ Kind, Member, Task string }
+
+// Source loads the latest team snapshot for a panel.
 type Source func() (Snapshot, error)
+
+// Handler performs a panel action and returns a status message.
 type Handler func(Action) (string, error)
 
 // Run owns only its pane's terminal. The header has no input controls; the
@@ -65,8 +72,11 @@ type headerSnapshot struct {
 }
 type headerTick time.Time
 
+// Init starts the header's snapshot read loop.
 func (m headerModel) Init() tea.Cmd { return m.read }
 func (m headerModel) read() tea.Msg { d, e := m.load(); return headerSnapshot{d, e} }
+
+// Update applies size and snapshot messages to the header.
 func (m headerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch v := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -84,6 +94,8 @@ func (m headerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	return m, nil
 }
+
+// View renders the current header snapshot.
 func (m headerModel) View() string { return workspaceHeader(m.data.Team, m.current, m.width, m.height) }
 
 func clean(s string) string {

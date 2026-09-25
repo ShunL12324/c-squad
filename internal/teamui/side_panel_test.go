@@ -113,7 +113,7 @@ func TestButtonTreatsSecondPhysicalClickAsActivation(t *testing.T) {
 
 func TestMemberDataCannotInjectTviewColorTags(t *testing.T) {
 	id := "[red] dev"
-	p := panelForTest("members", id, 32, 24, Snapshot{Active: true, Members: []Member{{ID: id, Cwd: "[blue] /tmp", Tasks: "[yellow] T1"}}})
+	p := panelForTest("members", id, 32, 46, Snapshot{Active: true, Members: []Member{{ID: id, Cwd: "[blue] /tmp", Tasks: "[yellow] T1"}}})
 	text := p.memberCards[id].GetText(false)
 	for _, want := range []string{"[red[] dev", "[blue[] /tmp", "[yellow[] T1"} {
 		if !strings.Contains(text, want) {

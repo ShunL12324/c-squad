@@ -355,7 +355,7 @@ func applyPanelDimensions(s *State, target string, dimensions map[string][2]int,
 		}
 	}
 	args = appendTmCommand(args, "set-option", "-w", "-t", target, "@csquad_layout_active", "0")
-	_, err = tm(s, args...)
+	_, err := tm(s, args...)
 	if err != nil {
 		_, _ = tm(s, "set-option", "-w", "-t", target, "@csquad_layout_active", "0")
 	}

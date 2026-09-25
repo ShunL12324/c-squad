@@ -6,45 +6,105 @@ if [[ $(uname -s) != Linux ]]; then
   echo 'T400 diagnostic unsupported: Linux tracepoints required' >&2
   exit 2
 fi
-for tool in bpftrace sudo timeout setsid; do
+for tool in bpftrace sudo timeout setsid stdbuf; do
   command -v "$tool" >/dev/null || { echo "T400 diagnostic unavailable: $tool" >&2; exit 2; }
 done
 
 trace=$(mktemp)
 program=$(mktemp)
 testlog=$(mktemp)
-tracer_pid=
+root_pidfile=$(mktemp)
+wrapper_pid=
+# The root-owned timeout is the new session's leader. Its PID, process start
+# tick, and PGID are checked before any group signal, so sudo's own process
+# group and unrelated runner processes cannot be targeted.
+root_tracer() {
+  sudo -n bash -c '
+    set -euo pipefail
+    read -r pid start < "$1"
+    [[ $pid =~ ^[0-9]+$ && $start =~ ^[0-9]+$ ]] || exit 2
+    [[ -r /proc/$pid/stat ]] || exit 1
+    actual=$(awk "{print \$22}" "/proc/$pid/stat")
+    [[ $actual == "$start" ]] || exit 2
+    pgid=$(ps -o pgid= -p "$pid" | tr -d " ")
+    [[ $pgid == "$pid" ]] || exit 2
+    cmd=$(tr "\0" " " < "/proc/$pid/cmdline")
+    [[ -z $cmd || $cmd == *"$2"* ]] || exit 2
+    case $3 in
+      check) exit 0 ;;
+      int) kill -INT -- "-$pid" ;;
+      kill) kill -KILL -- "-$pid" ;;
+      *) exit 2 ;;
+    esac
+  ' bash "$root_pidfile" "$program" "$1"
+}
 stop_tracer() {
-  if [[ -n $tracer_pid ]]; then
-    kill -INT -- "-$tracer_pid" 2>/dev/null || true
-    for _ in {1..20}; do
-      kill -0 "$tracer_pid" 2>/dev/null || break
-      sleep 0.1
+  if [[ -n $wrapper_pid ]]; then
+    root_tracer int || return 2
+    for _ in {1..50}; do
+      if root_tracer check; then
+        sleep 0.1
+        continue
+      else
+        check_status=$?
+        (( check_status == 1 )) || return 2
+        break
+      fi
     done
-    kill -KILL -- "-$tracer_pid" 2>/dev/null || true
-    wait "$tracer_pid" 2>/dev/null || true
-    tracer_pid=
+    if root_tracer check; then
+      root_tracer kill || return 2
+      for _ in {1..50}; do
+        if root_tracer check; then
+          sleep 0.1
+          continue
+        else
+          check_status=$?
+          (( check_status == 1 )) || return 2
+          break
+        fi
+      done
+    else
+      check_status=$?
+      (( check_status == 1 )) || return 2
+    fi
+    if root_tracer check; then
+      echo 'T400 diagnostic cleanup failed: root tracer group still alive' >&2
+      return 2
+    else
+      check_status=$?
+      (( check_status == 1 )) || return 2
+    fi
+    read -r group_pid _ < "$root_pidfile"
+    if sudo -n kill -0 -- "-$group_pid" 2>/dev/null; then
+      echo 'T400 diagnostic cleanup failed: root tracer group has survivors' >&2
+      return 2
+    fi
+    wait "$wrapper_pid" 2>/dev/null || true
+    wrapper_pid=
   fi
 }
 cleanup() {
-  stop_tracer
-  rm -f "$trace" "$program" "$testlog"
+  rc=$?
+  trap - EXIT
+  stop_tracer || rc=2
+  rm -f "$trace" "$program" "$testlog" "$root_pidfile"
+  exit "$rc"
 }
 trap cleanup EXIT
 
 # Check the runner's actual kernel event schema before compiling. An absent
 # field or denied BPF access is a diagnostic limitation, never a test pass.
 required=(
-  'signal:signal_generate: sig pid comm result'
-  'signal:signal_deliver: sig'
-  'syscalls:sys_enter_wait4: upid'
-  'syscalls:sys_exit_wait4: ret'
-  'syscalls:sys_enter_waitid: which upid'
-  'syscalls:sys_exit_waitid: ret'
+  'signal:signal_generate sig pid comm result'
+  'signal:signal_deliver sig'
+  'syscalls:sys_enter_wait4 upid'
+  'syscalls:sys_exit_wait4 ret'
+  'syscalls:sys_enter_waitid which upid'
+  'syscalls:sys_exit_waitid ret'
 )
 for item in "${required[@]}"; do
   read -r event fields <<< "$item"
-  schema=$(sudo -n bpftrace -lv "tracepoint:$event" 2>&1) || {
+  schema=$(sudo -n timeout --signal=TERM --kill-after=2s 10s bpftrace -lv "tracepoint:$event" 2>&1) || {
     echo "T400 diagnostic unavailable: $event: $schema" >&2
     exit 2
   }
@@ -80,12 +140,15 @@ tracepoint:syscalls:sys_exit_waitid /comm == "tmux: server"/
 BPF
 
 # One tracer for the whole focused invocation; no ptrace or per-fixture attach.
-setsid sudo -n timeout --signal=INT --kill-after=5s 210s bpftrace -q "$program" > "$trace" 2>&1 &
-tracer_pid=$!
+sudo -n setsid bash -c '
+  printf "%s %s\n" "$$" "$(awk "{print \$22}" "/proc/$$/stat")" > "$1"
+  exec timeout --signal=INT --kill-after=5s 210s stdbuf -oL -eL bpftrace -q "$2"
+' bash "$root_pidfile" "$program" > "$trace" 2>&1 &
+wrapper_pid=$!
 ready=0
 for _ in {1..150}; do
   if grep -qx T400_TRACE_READY "$trace"; then ready=1; break; fi
-  if ! kill -0 "$tracer_pid" 2>/dev/null; then break; fi
+  if ! kill -0 "$wrapper_pid" 2>/dev/null; then break; fi
   sleep 0.1
 done
 if (( ! ready )); then
@@ -97,7 +160,7 @@ echo "T400 tracer ready: $(uname -sr); $(tmux -V); $(go version)"
 
 status=0
 timeout --signal=TERM --kill-after=5s 180s go test -race ./internal/squad -run '^TestShutdownCommandSurvivesFormatCharactersInPaths$' -count=20 -failfast -v > "$testlog" 2>&1 || status=$?
-if ! kill -0 "$tracer_pid" 2>/dev/null; then
+if ! root_tracer check; then
   echo 'T400 diagnostic incomplete: tracer exited during focused test' >&2
   head -c 4096 "$trace" >&2
   exit 2

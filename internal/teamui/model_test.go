@@ -739,3 +739,40 @@ func TestMemberCardRestoresSurfaceAndMetadataHierarchy(t *testing.T) {
 		t.Fatalf("narrow card hid status or assignment:\n%s", narrow)
 	}
 }
+
+func TestRosterCursorStyleTracksMemberAcrossWheelPages(t *testing.T) {
+	m := model{kind: "members", width: 32, height: 34, current: "master", selected: 3,
+		data: Snapshot{Active: true, Members: rosterOf(7)}}
+	m.remember()
+	m.reveal()
+	card := func(index int) string {
+		t.Helper()
+		rows, hits := m.memberCards()
+		for _, hit := range hits {
+			if hit.index == index {
+				return ansi.Strip(strings.Join(rows[hit.start:hit.end+1], "\n"))
+			}
+		}
+		return ""
+	}
+	if !strings.Contains(card(3), "│ member-03") || strings.Contains(card(4), "│") {
+		t.Fatalf("middle worker lost cursor style on its page:\n%s", ansi.Strip(m.View()))
+	}
+	if master := card(0); !strings.Contains(master, "● ◆ master") || strings.Contains(master, "│") {
+		t.Fatalf("pinned current Master took the keyboard cursor:\n%s", master)
+	}
+	m.scroll(1)
+	if m.selectedID != "member-03" || card(3) != "" || strings.Contains(card(5), "│") || strings.Contains(card(6), "│") {
+		t.Fatalf("wheel page moved or painted the off-page cursor:\n%s", ansi.Strip(m.View()))
+	}
+	m.scroll(-1)
+	if !strings.Contains(card(3), "│ member-03") || strings.Contains(card(4), "│") {
+		t.Fatalf("cursor did not reappear after wheel page returned:\n%s", ansi.Strip(m.View()))
+	}
+	m.selected = 6
+	m.remember()
+	m.reveal()
+	if !strings.Contains(card(6), "│ member-06") || strings.Contains(card(5), "│") {
+		t.Fatalf("last worker lost cursor style:\n%s", ansi.Strip(m.View()))
+	}
+}

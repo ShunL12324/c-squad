@@ -64,9 +64,9 @@ func (i memberItem) Title() string {
 		name = "◆ " + name
 	}
 	if i.current {
-		return "● " + name
+		name = "● " + name
 	}
-	return name
+	return line(name, max(1, i.width-6))
 }
 
 // Description restores the card's information hierarchy while the stock
@@ -161,9 +161,14 @@ func (d memberDelegate) Render(w io.Writer, model list.Model, index int, item li
 		style.Styles.SelectedTitle = style.Styles.SelectedTitle.PaddingLeft(0)
 		style.Styles.SelectedDesc = style.Styles.SelectedDesc.PaddingLeft(0)
 	}
-	if i.member.ID != d.selected {
-		// The pinned Master is rendered in a one-item list; its stock index is
-		// always zero, even when the actual keyboard cursor is elsewhere.
+	if i.member.ID == d.selected {
+		// Mouse wheel pages independently of the keyboard cursor. A rebuilt
+		// list can show the selected member on a page other than its native
+		// cursor index, so apply the stock selected styles by stable member ID.
+		style.Styles.NormalTitle = style.Styles.SelectedTitle
+		style.Styles.NormalDesc = style.Styles.SelectedDesc
+	} else {
+		// The pinned Master is a one-item list whose native index is zero.
 		style.Styles.SelectedTitle = style.Styles.NormalTitle
 		style.Styles.SelectedDesc = style.Styles.NormalDesc
 	}

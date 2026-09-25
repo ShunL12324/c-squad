@@ -371,9 +371,13 @@ func TestShutdownCommandSurvivesFormatCharactersInPaths(t *testing.T) {
 	pid, e := strconv.Atoi(pidText)
 	must(t, e)
 	prePaneProc := linuxProcStatus(pid)
-	serverPID, _ := strconv.Atoi(prePaneProc["PPid"])
+	serverPIDText, serverPIDErr := tm(s, "display-message", "-p", "-t", pane, "#{pid}")
+	if serverPIDErr != nil {
+		serverPIDText = serverPIDErr.Error()
+	}
+	serverPID, _ := strconv.Atoi(serverPIDText)
 	preServerProc := linuxProcStatus(serverPID)
-	t.Logf("pre-signal tmux server /proc status: %v", preServerProc)
+	t.Logf("pre-signal tmux server PID=%q; pane /proc status=%v; server /proc status=%v", serverPIDText, prePaneProc, preServerProc)
 	preSignal, preErr := tm(s, "display-message", "-p", "-t", pane, "#{pane_dead}|#{pane_pid}")
 	if preErr != nil {
 		preSignal = preErr.Error()
@@ -431,9 +435,10 @@ func TestShutdownCommandSurvivesFormatCharactersInPaths(t *testing.T) {
 				return out
 			}
 			partial, _ := filepath.Glob(fake + ".*")
-			t.Fatalf("shutdown not requested with the exact path: %v; pre_signal=%q; pre_process=%q; pre_remain=%q; pre_pane_proc=%v; pre_server_proc=%v; pane_proc=%v; server_proc=%v; hooks=%q; pane_state=%q; pane=%q; server_log=%q; captures=%v; partial=%v",
+			t.Fatalf("shutdown not requested with the exact path: %v; pre_signal=%q; pre_process=%q; pre_remain=%q; pre_server_pid=%q; pre_pane_proc=%v; pre_server_proc=%v; pane_proc=%v; server_proc=%v; hooks=%q; pane_state=%q; pane=%q; server_log=%q; captures=%v; partial=%v",
 				want,
 				preSignal, preProcess, preRemain,
+				serverPIDText,
 				prePaneProc, preServerProc, linuxProcStatus(pid), linuxProcStatus(serverPID),
 				inspect("show-hooks", "-w", "-t", "=team-master:"),
 				inspect("display-message", "-p", "-t", pane, "#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_dead_time}|#{pane_pid}"),

@@ -435,7 +435,8 @@ func TestShutdownCommandSurvivesFormatCharactersInPaths(t *testing.T) {
 				return out
 			}
 			partial, _ := filepath.Glob(fake + ".*")
-			t.Fatalf("shutdown not requested with the exact path: %v; pre_signal=%q; pre_process=%q; pre_remain=%q; pre_server_pid=%q; pre_pane_proc=%v; pre_server_proc=%v; pane_proc=%v; server_proc=%v; hooks=%q; pane_state=%q; pane=%q; server_log=%q; captures=%v; partial=%v",
+			serverEvents, serverLog := tmuxPaneExitLog(tmp, pane)
+			t.Fatalf("shutdown not requested with the exact path: %v; pre_signal=%q; pre_process=%q; pre_remain=%q; pre_server_pid=%q; pre_pane_proc=%v; pre_server_proc=%v; pane_proc=%v; server_proc=%v; hooks=%q; pane_state=%q; pane=%q; server_events=%q; server_log=%q; captures=%v; partial=%v",
 				want,
 				preSignal, preProcess, preRemain,
 				serverPIDText,
@@ -443,7 +444,7 @@ func TestShutdownCommandSurvivesFormatCharactersInPaths(t *testing.T) {
 				inspect("show-hooks", "-w", "-t", "=team-master:"),
 				inspect("display-message", "-p", "-t", pane, "#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}|#{pane_dead_time}|#{pane_pid}"),
 				inspect("capture-pane", "-p", "-t", pane),
-				tmuxPaneExitLog(tmp, pane), files, partial)
+				serverEvents, serverLog, files, partial)
 		}
 	}
 }
@@ -472,37 +473,51 @@ func linuxProcStatus(pid int) map[string]string {
 	return fields
 }
 
-// Report only bounded pane-exit and hook-dispatch lines from the isolated
-// tmux server. The full -vv log can contain unrelated terminal data.
-func tmuxPaneExitLog(dir, pane string) []string {
+// Report bounded child-exit events separately from hook-dispatch lines so
+// later hook output cannot evict the signal/reap evidence. The full -vv log
+// can contain unrelated terminal data.
+func tmuxPaneExitLog(dir, pane string) (events, hooks []string) {
 	logs, _ := filepath.Glob(filepath.Join(dir, "tmux-server-*.log"))
-	const maxLines, maxLineLen = 40, 400
-	var relevant []string
+	const maxEvents, maxHooks, maxLineLen = 40, 40, 400
 	for _, name := range logs {
 		data, err := os.ReadFile(name)
 		if err != nil {
-			relevant = append(relevant, fmt.Sprintf("%s: %v", filepath.Base(name), err))
+			events = append(events, fmt.Sprintf("%s: %v", filepath.Base(name), err))
+			if len(events) > maxEvents {
+				events = events[1:]
+			}
 			continue
 		}
 		for _, line := range strings.Split(string(data), "\n") {
-			if !strings.Contains(line, pane+" exited") &&
-				!strings.Contains(line, pane+" error") &&
-				!strings.Contains(line, "pane-died") &&
-				!strings.Contains(line, "notify_insert_hook") &&
-				!strings.Contains(line, "notify_callback") {
+			childEvent := strings.Contains(line, "server_signal:") ||
+				strings.Contains(line, "job died ") ||
+				strings.Contains(line, pane+" exited") ||
+				strings.Contains(line, pane+" error")
+			hookEvent := strings.Contains(line, "pane-died") ||
+				strings.Contains(line, "notify_insert_hook") ||
+				strings.Contains(line, "notify_callback")
+			if !childEvent && !hookEvent {
 				continue
 			}
 			if len(line) > maxLineLen {
 				line = line[:maxLineLen] + "..."
 			}
-			relevant = append(relevant, line)
-			if len(relevant) > maxLines {
-				relevant = relevant[1:]
+			if childEvent {
+				events = append(events, line)
+				if len(events) > maxEvents {
+					events = events[1:]
+				}
+			}
+			if hookEvent {
+				hooks = append(hooks, line)
+				if len(hooks) > maxHooks {
+					hooks = hooks[1:]
+				}
 			}
 		}
 	}
 	if len(logs) == 0 {
-		return []string{"tmux server log unavailable"}
+		return []string{"tmux server log unavailable"}, nil
 	}
-	return relevant
+	return events, hooks
 }

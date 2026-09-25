@@ -49,8 +49,9 @@ func (m model) memberFirst() int {
 }
 
 type memberItem struct {
-	member Member
-	width  int
+	member  Member
+	width   int
+	current bool
 }
 
 // FilterValue supplies the standard list item identity.
@@ -85,6 +86,9 @@ func (i memberItem) Description() string {
 	task := "No assigned task"
 	if member.Tasks != "" {
 		task = "Task " + clean(member.Tasks)
+	}
+	if i.current {
+		engine = "● " + engine
 	}
 	return strings.Join([]string{engine + " · " + label(member.State), "Dir " + compactPath(cwd, max(1, i.width-10)), git, task, "", ""}, "\n")
 }
@@ -127,7 +131,7 @@ func rosterDelegate(selected string) memberDelegate {
 func (m model) memberList() list.Model {
 	items := make([]list.Item, 0, max(0, m.count()-m.memberFirst()))
 	for _, member := range m.data.Members[m.memberFirst():] {
-		items = append(items, memberItem{member: member, width: m.width})
+		items = append(items, memberItem{member: member, width: m.width, current: member.ID == m.current})
 	}
 	l := list.New(items, rosterDelegate(m.selectedID), max(1, m.width-4), m.rows()*memberBlockRows)
 	l.SetShowTitle(false)
@@ -140,4 +144,33 @@ func (m model) memberList() list.Model {
 	l.Paginator.Type = paginator.Arabic
 	l.Paginator.Page = min(m.pages.Page, max(0, l.Paginator.TotalPages-1))
 	return l
+}
+
+// moveMember lets the standard list handle cursor bounds and page transitions.
+// Only the separately pinned Master needs an application-level boundary.
+func (m *model) moveMember(delta int) {
+	if m.count() == 0 {
+		return
+	}
+	first := m.memberFirst()
+	if first == 1 && (m.selected == 0 || m.selected == 1 && delta < 0) {
+		if delta > 0 && m.count() > 1 {
+			m.selected = 1
+		} else {
+			m.selected = 0
+		}
+		m.remember()
+		m.reveal()
+		return
+	}
+	l := m.memberList()
+	l.Select(max(0, m.selected-first))
+	direction := tea.KeyDown
+	if delta < 0 {
+		direction = tea.KeyUp
+	}
+	l, _ = l.Update(tea.KeyMsg{Type: direction})
+	m.selected = l.Index() + first
+	m.pages = l.Paginator
+	m.remember()
 }

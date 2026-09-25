@@ -617,7 +617,8 @@ team keeps running. Button labels include their keyboard shortcuts.
 
 Master stays pinned above the member list, marked with a diamond. The roster uses
 the standard Bubbles list and item styles; its page indicator shows when more
-members are available. The wheel changes pages without changing the selected
+members are available. A ● beside the engine marks the current session even
+when the keyboard cursor moves elsewhere. The wheel changes pages without changing the selected
 member. Task cards and details use the Bubbles viewport for scrolling.
 
 Colors and spacing are small Lip Gloss overrides. Bubbles does not provide a

@@ -130,6 +130,10 @@ func (m model) rows() int {
 	return max(1, (m.height-4)/8)
 }
 func (m *model) move(delta int) {
+	if m.kind == "members" {
+		m.moveMember(delta)
+		return
+	}
 	m.selected = max(0, min(m.count()-1, m.selected+delta))
 	m.viewport.GotoTop()
 	m.remember()

@@ -664,3 +664,26 @@ func TestDetailScrollBoundFollowsResizeAndContent(t *testing.T) {
 	update(snapshotMsg{data: Snapshot{Active: true, Tasks: []Task{task}}})
 	firstKMoves("after the details shrank")
 }
+
+func TestCurrentMemberCueSurvivesCursorMovement(t *testing.T) {
+	m := model{kind: "members", current: "master", selectedID: "master", width: 40, height: 40, data: Snapshot{Active: true, Members: []Member{{ID: "master", Engine: "codex"}, {ID: "dev", Engine: "codex"}}}}
+	m.move(1)
+	if m.selectedID != "dev" {
+		t.Fatal("standard list did not move cursor")
+	}
+	current := ansi.Strip(strings.Join(m.memberCard(0), "\n"))
+	other := ansi.Strip(strings.Join(m.memberCard(1), "\n"))
+	if !strings.Contains(current, "● Codex") || strings.Contains(other, "● Codex") {
+		t.Fatal("current-session cue followed cursor")
+	}
+	for range 8 {
+		m.move(1)
+	}
+	if m.selectedID != "dev" {
+		t.Fatal("list cursor wrapped past end")
+	}
+	m.move(-1)
+	if m.selectedID != "master" {
+		t.Fatal("cannot return to pinned Master")
+	}
+}

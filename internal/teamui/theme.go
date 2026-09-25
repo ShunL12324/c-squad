@@ -126,7 +126,7 @@ func (m model) memberBlocks() []string { rows, _ := m.memberCards(); return rows
 
 func (m model) memberCard(i int) []string {
 	var out strings.Builder
-	item := memberItem{member: m.data.Members[i], width: m.width}
+	item := memberItem{member: m.data.Members[i], width: m.width, current: m.data.Members[i].ID == m.current}
 	l := list.New([]list.Item{item}, rosterDelegate(m.selectedID), max(1, m.width-4), memberBlockRows)
 	rosterDelegate(m.selectedID).Render(&out, l, 0, item)
 	rows := strings.Split(out.String(), "\n")

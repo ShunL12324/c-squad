@@ -215,6 +215,13 @@ try:
                          "-F", "#{@csquad_panel}|#{pane_id}").splitlines())
     for role, axis, size in (("members", "-x", "32"), ("tasks", "-x", "43"), ("header", "-y", "4")):
         tm("resize-pane", "-t", initial_panes[role], axis, size)
+    # The fixed header repairs explicit resize-pane too. Capture the baseline
+    # after that hook completes, so a pending repair is not mistaken for a
+    # first-visit layout change.
+    deadline = time.monotonic() + 5
+    while tm("display-message", "-p", "-t", initial_panes["header"], "#{pane_height}") != "3":
+        assert time.monotonic() < deadline, f"header resize was not repaired: {layout(master)}"
+        drain(.02)
     initial_custom = layout(master)
     before = layout(newbie)
     print("new member layout before the click:", before)

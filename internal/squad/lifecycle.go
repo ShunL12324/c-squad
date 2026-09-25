@@ -220,7 +220,7 @@ func killMember(st *Store, id string) error {
 		// Intentional shutdown must not start another asynchronous shutdown
 		// when the master process dies. That late hook can recreate lifecycle
 		// locks after stop returns and a caller removes the saved team.
-		if id == "master" {
+		if id == "master" && !s.Active {
 			if _, err := tm(s, "set-hook", "-wu", "-t", "="+m.Session+":", "pane-died"); err != nil {
 				return err
 			}

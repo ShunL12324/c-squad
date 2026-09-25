@@ -1,0 +1,46 @@
+  MEMBERS
+
+  LEAD
+┌──────────────────────────────┐
+│ master                       │
+│  Idle                        │
+│  T477                        │
+│  T480                        │
+│ Codex  main                  │
+│ ~/projects/c-squad           │
+└──────────────────────────────┘
+
+  TEAM  1 / 1
+╔══════════════════════════════╗
+║ navigation-dev               ║
+║  Working                     ║
+║  T477                        ║
+║                              ║
+║ Codex  csquad/csquad-1/T477  ║
+║ …/worktrees/T477             ║
+╚══════════════════════════════╝
+
+┌──────────────────────────────┐
+│ observation-dev              │
+│  Idle                        │
+│  No task                     │
+│                              │
+│ Codex  main                  │
+│ ~/projects/c-squad           │
+└──────────────────────────────┘
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

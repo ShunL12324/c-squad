@@ -1,0 +1,46 @@
+  TASK DETAILS
+                                     ×
+
+             ‹ Back to tasks
+
+╔══════════════════════════════════════╗
+║  T477   Working                      ║
+║                                      ║
+║ Adopt real reusable TUI controls and ║
+║visible member cards                  ║
+║                                      ║
+║ Owner: navigation-dev                ║
+║                                      ║
+║ MILESTONES  1/3                      ║
+║ ✓ prototype · approval gate  Approved║
+║ ○ implementation  Pending            ║
+║ ○ validation  Pending                ║
+║                                      ║
+║ LATEST UPDATE                        ║
+║ Production tview side-panel port     ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+║                                      ║
+╚══════════════════════════════════════╝

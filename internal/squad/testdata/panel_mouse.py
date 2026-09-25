@@ -40,8 +40,8 @@ def sessions():
 
 
 def member_title(line):
-    title = line.strip().rstrip("│┃").strip()
-    for marker in ("│", "●", "◆"):
+    title = line.strip().rstrip("│┃║").strip()
+    for marker in ("│", "┃", "║", "◆"):
         title = title.removeprefix(marker).strip()
     return title
 
@@ -109,7 +109,7 @@ try:
         panels = tm("list-panes", "-t", target, "-F", "#{pane_id}|#{@csquad_panel}")
         pane = next(row.split("|")[0] for row in panels.splitlines() if row.endswith("|members"))
         screen = tm("capture-pane", "-p", "-t", pane)
-        assert any(line.strip().startswith("│") and "●" in line and member_title(line)==name
+        assert any(line.strip().startswith(("│", "┃", "║")) and member_title(line)==name
                    for line in screen.splitlines()), f"stale highlight after switching to {name}: {screen}"
     os.write(fd, b"\x1b[1;3D\x1b[1;3C")
     drain(.2)

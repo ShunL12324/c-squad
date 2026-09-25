@@ -1,7 +1,8 @@
 # T477 component prototype
 
-This is an isolated terminal prototype. It leaves the shipped Bubble Tea panels
-and the root `go.mod` unchanged.
+This directory preserves the isolated terminal prototype used for the
+component decision. The production side-panel port now lives in
+`internal/teamui/side_panel.go` and the root module pins tview v0.42.0.
 
 ```sh
 cd prototypes/t477
@@ -36,6 +37,21 @@ selected-callback behavior. The prototype only wires app-specific focus
 traversal and callbacks. Each member surface composes `tview.TextView`, `Box`,
 and `Flex`; tview does **not** supply a stock Card control. The tmux header
 height is outside this prototype and T477's implementation scope.
+
+## Production preview
+
+`current-members-28.{ansi,txt}`, `current-members-32.{ansi,txt}`,
+`current-tasks-40.{ansi,txt}`, `current-tasks-done-40.{ansi,txt}`, and
+`current-task-detail-40.{ansi,txt}` are
+captures of the production `teamui.Run`
+renderer in isolated tmux panes at 28×46, 32×46, and 40×46. Their labels and
+statuses use selected current team ledger values on 2026-09-26: Master, navigation-dev,
+observation-dev, active T477/T480, done T470, and cancelled T302. The root
+module was compiled into a temporary preview binary; no live team pane or
+member process was modified. ANSI captures retain background and chip color;
+text captures expose spacing. The product uses one tview event loop per side
+pane; the header remains a separate Bubble Tea read-only pane. The production
+task button remains enabled for every state, including Blocked and Review.
 
 ## Component choice
 

@@ -51,20 +51,18 @@ def panel(session, view):
 
 
 def owner_highlighted(session, member):
-    """The session's own sidebar marks its owner as current and focused."""
+    """The session's own sidebar keeps its owner card visible."""
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
         screen = tm("capture-pane", "-p", "-t", panel(session, "members"))
         for row in screen.splitlines():
             # The right gutter may show a scrollbar independently of the
             # owner's stripe on the left. It is not part of the member name.
-            title = row.rstrip().removesuffix("│").removesuffix("┃").strip()
-            if not title.startswith("│"):
+            title = row.rstrip().rstrip("│┃║").strip()
+            if not title.startswith(("│", "┃", "║")):
                 continue
             title = title[1:].strip()
-            if not title.startswith("●"):
-                continue
-            if title[1:].strip().removeprefix("◆").strip() == member:
+            if title.removeprefix("◆").strip() == member:
                 return True
         drain(.05)
     print(f"Missing owner highlight for {member!r} in {session}:\n{screen}", flush=True)

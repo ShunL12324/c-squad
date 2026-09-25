@@ -18,5 +18,7 @@ jobs:
           go-version: '1.26.0'
           cache: true
       - run: sudo apt-get update && sudo apt-get install -y tmux
-      # TEMPORARY T294 signal-mask diagnostic; restore the full checks before release.
-      - run: go test -race ./internal/squad -count=1 -v
+      - run: make check
+      - run: python3 scripts/test-release-notes.py
+      - run: python3 scripts/test-release-workflow.py
+      - run: python3 scripts/test-release-guard.py

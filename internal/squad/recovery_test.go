@@ -373,6 +373,7 @@ func TestShutdownCommandSurvivesFormatCharactersInPaths(t *testing.T) {
 	prePaneProc := linuxProcStatus(pid)
 	serverPID, _ := strconv.Atoi(prePaneProc["PPid"])
 	preServerProc := linuxProcStatus(serverPID)
+	t.Logf("pre-signal tmux server /proc status: %v", preServerProc)
 	preSignal, preErr := tm(s, "display-message", "-p", "-t", pane, "#{pane_dead}|#{pane_pid}")
 	if preErr != nil {
 		preSignal = preErr.Error()

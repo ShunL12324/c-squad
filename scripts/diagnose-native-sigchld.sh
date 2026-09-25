@@ -10,10 +10,13 @@ for tool in bpftrace sudo timeout setsid stdbuf; do
   command -v "$tool" >/dev/null || { echo "T400 diagnostic unavailable: $tool" >&2; exit 2; }
 done
 
-trace=$(mktemp)
-program=$(mktemp)
-testlog=$(mktemp)
-root_pidfile=$(mktemp)
+workdir=$(mktemp -d)
+trace=$workdir/trace
+program=$workdir/program
+testlog=$workdir/testlog
+# Root creates this file; precreating it under sticky /tmp can be denied by
+# protected_regular even to root when its owner is the runner.
+root_pidfile=$workdir/root.pid
 wrapper_pid=
 # The root-owned timeout is the new session's leader. Its PID, process start
 # tick, and PGID are checked before any group signal, so sudo's own process
@@ -40,7 +43,28 @@ root_tracer() {
 }
 stop_tracer() {
   if [[ -n $wrapper_pid ]]; then
-    root_tracer int || return 2
+    if [[ ! -s $root_pidfile ]]; then
+      # The root launcher exits before execing bpftrace if identity creation
+      # failed. Reap only a wrapper already confirmed exited; never guess a
+      # privileged child PID or signal a process group without identity.
+      for _ in {1..30}; do
+        wrapper_state=$(ps -o stat= -p "$wrapper_pid" 2>/dev/null || true)
+        if [[ -z $wrapper_state || $wrapper_state == Z* ]]; then
+          wait "$wrapper_pid" 2>/dev/null || true
+          wrapper_pid=
+          return 0
+        fi
+        sleep 0.1
+      done
+      echo 'T400 diagnostic cleanup unconfirmed: root launcher has no identity file' >&2
+      return 2
+    fi
+    if root_tracer check; then
+      root_tracer int || return 2
+    else
+      check_status=$?
+      (( check_status == 1 )) || return 2
+    fi
     for _ in {1..50}; do
       if root_tracer check; then
         sleep 0.1
@@ -86,8 +110,12 @@ stop_tracer() {
 cleanup() {
   rc=$?
   trap - EXIT
-  stop_tracer || rc=2
-  rm -f "$trace" "$program" "$testlog" "$root_pidfile"
+  if stop_tracer; then
+    rm -rf -- "$workdir"
+  else
+    rc=2
+    echo "T400 diagnostic artifacts retained for cleanup inspection: $workdir" >&2
+  fi
   exit "$rc"
 }
 trap cleanup EXIT
@@ -121,10 +149,10 @@ done
 cat > "$program" <<'BPF'
 BEGIN { printf("T400_TRACE_READY\n"); }
 tracepoint:signal:signal_generate
-/args->sig == 17 && str(args->comm) == "tmux: server"/
+/args->sig == 17 && args->comm == "tmux: server"/
 {
   printf("GEN ns=%llu sender_pid=%d sender_comm=%s target_pid=%d target_comm=%s result=%d\n",
-         nsecs, pid, comm, args->pid, str(args->comm), args->result);
+         nsecs, pid, comm, args->pid, args->comm, args->result);
 }
 tracepoint:signal:signal_deliver
 /args->sig == 17 && comm == "tmux: server"/
@@ -143,7 +171,9 @@ BPF
 
 # One tracer for the whole focused invocation; no ptrace or per-fixture attach.
 sudo -n setsid bash -c '
+  set -euo pipefail
   printf "%s %s\n" "$$" "$(awk "{print \$22}" "/proc/$$/stat")" > "$1"
+  chmod 0644 "$1"
   exec timeout --signal=INT --kill-after=5s 210s stdbuf -oL -eL bpftrace -q "$2"
 ' bash "$root_pidfile" "$program" > "$trace" 2>&1 &
 wrapper_pid=$!

@@ -162,7 +162,9 @@ func TestTaskDetailsUseHeaderBackWithoutFooter(t *testing.T) {
 
 func TestMasterStaysPinnedAndSidebarCannotClose(t *testing.T) {
 	m := model{kind: "members", current: "worker", width: 28, height: 40, data: Snapshot{Members: []Member{{ID: "master", Color: "115"}, {ID: "a"}, {ID: "b"}, {ID: "c"}, {ID: "worker"}}}}
-	m.move(4)
+	for range 4 {
+		m.move(1)
+	}
 	rows, hits := m.memberCards()
 	if hits[0].index != 0 || hits[len(hits)-1].index != 4 || !strings.Contains(ansi.Strip(strings.Join(rows, "\n")), "◆ master") {
 		t.Fatal("Master or selected worker scrolled out of view")

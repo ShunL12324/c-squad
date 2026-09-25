@@ -51,7 +51,7 @@ def panel(session, view):
 
 
 def owner_highlighted(session, member):
-    """The session's own sidebar marks its owner with the ▎ stripe."""
+    """The session's own sidebar marks its owner with the │ stripe."""
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
         screen = tm("capture-pane", "-p", "-t", panel(session, "members"))
@@ -59,7 +59,7 @@ def owner_highlighted(session, member):
             # The right gutter may show a scrollbar independently of the
             # owner's stripe on the left. It is not part of the member name.
             title = row.rstrip().removesuffix("│").removesuffix("┃").strip()
-            if title.startswith("▎") and title[1:].strip().removeprefix("◆").strip() == member:
+            if title.startswith("│") and title[1:].strip().removeprefix("◆").strip() == member:
                 return True
         drain(.05)
     print(f"Missing owner highlight for {member!r} in {session}:\n{screen}", flush=True)

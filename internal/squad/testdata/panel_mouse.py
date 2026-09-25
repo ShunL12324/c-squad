@@ -90,7 +90,7 @@ try:
         pane = next(row.split("|")[0] for row in panels.splitlines() if row.endswith("|members"))
         name = "master" if target==master else "a"
         screen = tm("capture-pane", "-p", "-t", pane)
-        assert any("▎" in line and line.replace("▎", "").replace("◆", "").strip()==name for line in screen.splitlines()), f"stale highlight after switching to {name}: {screen}"
+        assert any("│" in line and line.replace("│", "").replace("◆", "").strip()==name for line in screen.splitlines()), f"stale highlight after switching to {name}: {screen}"
     os.write(fd, b"\x1b[1;3D\x1b[1;3C")
     drain(.2)
     assert sessions()[client] == worker, "Alt-arrow still switches members"

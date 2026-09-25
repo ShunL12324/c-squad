@@ -390,6 +390,7 @@ func (st *Store) rememberPanelLayout(owner string) error {
 	if err != nil {
 		return err
 	}
+	repairHeader := false
 	for _, row := range strings.Split(rows, "\n") {
 		f := strings.Split(row, "|")
 		if len(f) != 6 || f[0] == "" || f[3] != f[4] || f[5] == "1" {
@@ -398,14 +399,33 @@ func (st *Store) rememberPanelLayout(owner string) error {
 		size := f[1]
 		if f[0] == "header" {
 			size = strconv.Itoa(fixedHeaderHeight)
+			repairHeader = f[2] != size
 		}
 		if _, err := tm(s, "set-option", "-w", "-t", m.Pane, "@csquad_size_"+f[0], size); err != nil {
 			return err
 		}
 	}
+	if !repairHeader {
+		return nil
+	}
 	g, err := readPanelGeometry(s, m.Pane)
 	if err != nil {
 		return err
+	}
+	// Recheck after reading geometry: window reflow owns normalization while
+	// dimensions are transient, and very short windows may clamp the header.
+	guard, err := tm(s, "display-message", "-p", "-t", m.Pane, "#{window_width} #{window_height}|#{@csquad_geometry}|#{@csquad_layout_active}")
+	if err != nil {
+		return err
+	}
+	f := strings.Split(guard, "|")
+	size := strings.Fields(g.size)
+	if len(f) != 3 || f[0] != g.size || f[0] != f[1] || f[2] == "1" || g.size != g.saved || len(size) != 2 {
+		return nil
+	}
+	height, _ := strconv.Atoi(size[1])
+	if height < 12 {
+		return nil
 	}
 	if g.panes["header"] != "" && g.dimensions["header"][1] != fixedHeaderHeight {
 		return applyPanelDimensions(s, m.Pane, map[string][2]int{"header": {0, fixedHeaderHeight}}, g)

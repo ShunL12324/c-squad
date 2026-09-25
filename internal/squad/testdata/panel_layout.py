@@ -163,6 +163,7 @@ try:
         for offset in range(1, 7):
             os.write(fd, f"\x1b[<32;{x};{y+offset}M".encode())
             drain(.02)
+            assert tm("display-message", "-p", "-t", header[0], "#{pane_height}") == "3", "header expanded during drag"
         os.write(fd, f"\x1b[<0;{x};{y+6}m".encode())
         drain(.1)
         assert tm("display-message", "-p", "-t", header[0], "#{pane_height}") == "3", "header drag changed height"

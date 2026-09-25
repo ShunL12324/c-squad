@@ -537,7 +537,7 @@ func TestMemberCardShowsItsOwnGitState(t *testing.T) {
 		{name: "detached head", member: Member{ID: "dev", Cwd: "/repo", Commit: "4f2a1b9"}, want: "Git detached 4f2a1b9"},
 		{name: "linked worktree keeps the branch tail and the marker",
 			member: Member{ID: "dev", Cwd: "/repo", Branch: "csquad/csquad/T167", Worktree: true}, want: "wt", unwanted: "Git csquad/csquad/T167"},
-		{name: "outside git keeps the divider", member: Member{ID: "dev", Cwd: "/tmp/plain"}, want: "—", unwanted: "Git "},
+		{name: "outside git keeps the divider", member: Member{ID: "dev", Cwd: "/tmp/plain"}, want: "────", unwanted: "Git "},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			m := model{kind: "members", width: 28, height: 40, data: Snapshot{Active: true, Members: []Member{tt.member}}}
@@ -675,7 +675,7 @@ func TestCurrentMemberCueSurvivesCursorMovement(t *testing.T) {
 	}
 	current := ansi.Strip(strings.Join(m.memberCard(0), "\n"))
 	other := ansi.Strip(strings.Join(m.memberCard(1), "\n"))
-	if !strings.Contains(current, "● Codex") || strings.Contains(other, "● Codex") {
+	if !strings.Contains(current, "● ◆ master") || strings.Contains(other, "● ") {
 		t.Fatal("current-session cue followed cursor")
 	}
 	for range 8 {
@@ -687,5 +687,55 @@ func TestCurrentMemberCueSurvivesCursorMovement(t *testing.T) {
 	m.move(-1)
 	if m.selectedID != "master" {
 		t.Fatal("cannot return to pinned Master")
+	}
+}
+
+func TestMemberCardRestoresSurfaceAndMetadataHierarchy(t *testing.T) {
+	previous := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.ANSI256)
+	defer lipgloss.SetColorProfile(previous)
+	m := model{kind: "members", width: 40, height: 40, current: "master", selectedID: "dev",
+		data: Snapshot{Active: true, Members: []Member{
+			{ID: "master", Engine: "codex", State: "working", Color: "115", Cwd: "/repo", Branch: "main"},
+			{ID: "dev", Engine: "claude", State: "in review", Color: "121", Cwd: "/repo/worktrees/T441", Branch: "csquad/csquad-1/T441", Worktree: true, Tasks: "T441"},
+		}}}
+	current := strings.Join(m.memberCard(0), "\n")
+	selected := strings.Join(m.memberCard(1), "\n")
+	if !strings.Contains(current, "\x1b[48;5;237m") || !strings.Contains(selected, "\x1b[48;5;235m") {
+		t.Fatal("current and cursor cards lost their separate surfaces")
+	}
+	if !strings.Contains(selected, "\x1b[48;5;238m") {
+		t.Fatal("state badge lost its contrasting background")
+	}
+	plainCurrent, plainSelected := ansi.Strip(current), ansi.Strip(selected)
+	for _, want := range []string{"● ◆ master", "Working", "Dir /repo", "Git main"} {
+		if !strings.Contains(plainCurrent, want) {
+			t.Fatalf("current card lost %q:\n%s", want, plainCurrent)
+		}
+	}
+	for _, want := range []string{"Claude Code", "Review", "TASK", "T441", "wt"} {
+		if !strings.Contains(plainSelected, want) {
+			t.Fatalf("selected card lost %q:\n%s", want, plainSelected)
+		}
+	}
+	if !strings.Contains(plainSelected, "│ dev") || strings.Contains(plainCurrent, "│") {
+		t.Fatal("keyboard cursor and current-session marker became conflated")
+	}
+	for _, width := range []int{40, 28, 11} {
+		m.width = width
+		for i := range m.data.Members {
+			rows := m.memberCard(i)
+			if len(rows) != memberBlockRows {
+				t.Fatalf("width %d member %d has %d rows", width, i, len(rows))
+			}
+			for _, row := range rows {
+				if ansi.StringWidth(row) > width {
+					t.Fatalf("width %d member %d overflows: %q", width, i, ansi.Strip(row))
+				}
+			}
+		}
+	}
+	if narrow := ansi.Strip(strings.Join(m.memberCard(1), "\n")); !strings.Contains(narrow, "Review") || !strings.Contains(narrow, "T441") {
+		t.Fatalf("narrow card hid status or assignment:\n%s", narrow)
 	}
 }

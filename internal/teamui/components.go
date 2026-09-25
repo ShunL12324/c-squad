@@ -59,13 +59,18 @@ func (i memberItem) FilterValue() string { return i.member.ID }
 
 // Title supplies the member name to the stock delegate.
 func (i memberItem) Title() string {
+	name := clean(i.member.ID)
 	if i.member.ID == "master" {
-		return "◆ " + clean(i.member.ID)
+		name = "◆ " + name
 	}
-	return clean(i.member.ID)
+	if i.current {
+		return "● " + name
+	}
+	return name
 }
 
-// Description supplies member metadata without owning item layout.
+// Description restores the card's information hierarchy while the stock
+// delegate still owns item height, clipping, cursor styling and pagination.
 func (i memberItem) Description() string {
 	member := i.member
 	engine := member.Engine
@@ -79,18 +84,42 @@ func (i memberItem) Description() string {
 	if cwd == "" {
 		cwd = "Not recorded"
 	}
-	git := gitLine(member, max(1, i.width-6), canvas)
-	if git == "" {
-		git = "—"
-	}
-	task := "No assigned task"
-	if member.Tasks != "" {
-		task = "Task " + clean(member.Tasks)
-	}
+	width := max(1, i.width-6)
+	bg := surface
 	if i.current {
-		engine = "● " + engine
+		bg = selectedSurface
 	}
-	return strings.Join([]string{engine + " · " + label(member.State), "Dir " + compactPath(cwd, max(1, i.width-10)), git, task, "", ""}, "\n")
+	git := gitLine(member, width, bg)
+	if git == "" {
+		git = textStyle(strings.Repeat("─", width), "240", false)
+	}
+	task := textStyle("No assigned task", muted, false)
+	if member.Tasks != "" {
+		color := member.Color
+		if color == "" {
+			color = accent
+		}
+		task = spread(textStyle("TASK", muted, false), textStyle(line(member.Tasks, max(1, width-6)), color, true), width, bg)
+	}
+	meta := spread(textStyle(engine, muted, false), badge(member.State), width, bg)
+	path := "Dir " + compactPath(cwd, max(1, width-4))
+	if width < 12 {
+		// A narrow pane cannot fit both columns or a padded badge. Keep the
+		// values visible instead of truncating every row to its field label.
+		meta = label(member.State)
+		path = compactPath(cwd, width)
+		if member.Branch != "" {
+			git = tail(member.Branch, width)
+		} else if member.Commit != "" {
+			git = tail(member.Commit, width)
+		}
+		if member.Tasks != "" {
+			task = line(member.Tasks, width)
+		} else {
+			task = "—"
+		}
+	}
+	return strings.Join([]string{meta, path, git, task, "", ""}, "\n")
 }
 
 // The standard delegate owns text truncation, item layout and selection styling.
@@ -110,14 +139,34 @@ func (d memberDelegate) Render(w io.Writer, model list.Model, index int, item li
 	if color == "" {
 		color = accent
 	}
-	style := d.DefaultDelegate
-	if i.member.ID == d.selected {
-		style.Styles.NormalTitle = style.Styles.SelectedTitle.BorderForeground(lipgloss.Color(color))
-		style.Styles.NormalDesc = style.Styles.SelectedDesc.BorderForeground(lipgloss.Color(color))
+	bg := surface
+	if i.current {
+		bg = selectedSurface
 	}
-	style.Styles.NormalTitle = style.Styles.NormalTitle.Foreground(lipgloss.Color(color)).Bold(true)
-	style.Styles.SelectedTitle = style.Styles.NormalTitle
-	style.Styles.SelectedDesc = style.Styles.NormalDesc
+	cardWidth := max(1, i.width-4)
+	style := d.DefaultDelegate
+	style.Styles.NormalTitle = style.Styles.NormalTitle.Width(cardWidth).
+		Background(lipgloss.Color(bg)).Foreground(lipgloss.Color(color)).Bold(true)
+	style.Styles.NormalDesc = style.Styles.NormalDesc.Width(cardWidth).
+		Background(lipgloss.Color(bg)).Foreground(lipgloss.Color(muted))
+	style.Styles.SelectedTitle = style.Styles.SelectedTitle.Width(max(1, cardWidth-1)).
+		Background(lipgloss.Color(bg)).BorderForeground(lipgloss.Color(color)).
+		Foreground(lipgloss.Color(color)).Bold(true)
+	style.Styles.SelectedDesc = style.Styles.SelectedDesc.Width(max(1, cardWidth-1)).
+		Background(lipgloss.Color(bg)).BorderForeground(lipgloss.Color(color)).
+		Foreground(lipgloss.Color(muted))
+	if i.width < 18 {
+		style.Styles.NormalTitle = style.Styles.NormalTitle.PaddingLeft(1)
+		style.Styles.NormalDesc = style.Styles.NormalDesc.PaddingLeft(1)
+		style.Styles.SelectedTitle = style.Styles.SelectedTitle.PaddingLeft(0)
+		style.Styles.SelectedDesc = style.Styles.SelectedDesc.PaddingLeft(0)
+	}
+	if i.member.ID != d.selected {
+		// The pinned Master is rendered in a one-item list; its stock index is
+		// always zero, even when the actual keyboard cursor is elsewhere.
+		style.Styles.SelectedTitle = style.Styles.NormalTitle
+		style.Styles.SelectedDesc = style.Styles.NormalDesc
+	}
 	style.Render(w, model, index, item)
 }
 func rosterDelegate(selected string) memberDelegate {

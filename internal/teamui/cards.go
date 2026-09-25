@@ -28,18 +28,17 @@ const cardContentX = 3
 
 const detailsLabel = "View details ›"
 
-func (m model) taskCards() ([]string, []cardHit) {
+func (m model) taskContent() ([]string, []cardHit) {
 	if len(m.tasks()) == 0 {
 		if m.completed {
 			return block([]string{textStyle("No finished tasks", foreground, true), "", textStyle("Completed or cancelled tasks appear here.", muted, false)}, m.width, surface, ""), nil
 		}
 		return block([]string{textStyle("Nothing in progress", foreground, true), "", textStyle("Tasks from Master appear here.", muted, false), textStyle("Past work is under Done.", muted, false)}, m.width, surface, ""), nil
 	}
-	available := m.taskAvailable()
 	var lines []string
 	var hits []cardHit
-	for i := m.top; i < len(m.tasks()); i++ {
-		card, buttons := m.taskCard(i)
+	for i, task := range m.tasks() {
+		card, buttons := m.renderTaskCard(task, i)
 		start := len(lines)
 		lines = append(lines, card...)
 		for j := range buttons {
@@ -47,9 +46,15 @@ func (m model) taskCards() ([]string, []cardHit) {
 		}
 		hits = append(hits, cardHit{index: i, start: start, end: len(lines), buttons: buttons})
 	}
-	offset := min(m.offset, max(0, len(lines)-available))
-	end := min(len(lines), offset+available)
-	lines = lines[offset:end]
+	return lines, hits
+}
+
+func (m model) taskCards() ([]string, []cardHit) {
+	rows, hits := m.taskContent()
+	v := m.contentViewport(rows)
+	available, offset := v.Height, v.YOffset
+	end := offset + available
+	lines := strings.Split(v.View(), "\n")
 	visible := hits[:0]
 	for _, hit := range hits {
 		if hit.end <= offset || hit.start >= end {
@@ -96,7 +101,10 @@ func taskCardButtons(contentWidth int) ([]string, []cardButton) {
 // taskCard returns the rendered card and its buttons, whose rows are indices
 // into the returned slice.
 func (m model) taskCard(index int) ([]string, []cardButton) {
-	task := m.tasks()[index]
+	return m.renderTaskCard(m.tasks()[index], index)
+}
+
+func (m model) renderTaskCard(task Task, index int) ([]string, []cardButton) {
 	selected := index == m.selected
 	bg, stripe := surface, ""
 	if selected {

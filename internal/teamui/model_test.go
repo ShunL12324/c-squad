@@ -122,7 +122,7 @@ func TestDetailsButtonAndBack(t *testing.T) {
 	}
 	next, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
 	m = next.(model)
-	if m.offset == 0 {
+	if m.viewport.YOffset == 0 {
 		t.Fatal("detail wheel did not scroll")
 	}
 	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
@@ -247,13 +247,13 @@ func TestWheelScrollPreservesSelectionAcrossRefresh(t *testing.T) {
 			if cmd != nil || m.selectedID != selected || m.selected != 0 {
 				t.Fatal("wheel changed selection or dispatched navigation")
 			}
-			if kind == "members" && m.top <= 1 || kind == "tasks" && m.offset == 0 {
+			if kind == "members" && m.pages.Page == 0 || kind == "tasks" && m.viewport.YOffset == 0 {
 				t.Fatal("wheel did not scroll viewport")
 			}
-			top, offset := m.top, m.offset
+			top, offset := m.pages.Page, m.viewport.YOffset
 			next, _ = m.Update(snapshotMsg{data: data})
 			m = next.(model)
-			if m.top != top || m.offset != offset || m.selectedID != selected {
+			if m.pages.Page != top || m.viewport.YOffset != offset || m.selectedID != selected {
 				t.Fatal("refresh reset viewport or selection")
 			}
 			next, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -420,9 +420,9 @@ func TestSidebarRevealsTheCurrentMemberOnFirstRead(t *testing.T) {
 	}
 	// Later reads must not fight the wheel.
 	shown.scroll(-1)
-	top := shown.top
+	top := shown.pages.Page
 	again, _ := shown.Update(snapshotMsg{data: Snapshot{Active: true, Members: members}})
-	if again.(model).top != top {
+	if again.(model).pages.Page != top {
 		t.Fatal("a refresh snapped the list back to the selection")
 	}
 }
@@ -473,54 +473,33 @@ func rosterOf(n int) []Member {
 	return members
 }
 
-func TestMemberScrollbarReflectsPosition(t *testing.T) {
-	data := Snapshot{Active: true, Members: rosterOf(12)}
-	m := model{kind: "members", width: 28, height: 34, current: "master", selectedID: "master", data: data}
-	if m.rows() >= m.count()-1 {
-		t.Fatalf("the roster fits in %d rows; this test needs it to overflow", m.rows())
+func TestMemberPaginationReflectsPosition(t *testing.T) {
+	m := model{kind: "members", width: 28, height: 34, data: Snapshot{Active: true, Members: rosterOf(12)}}
+	l := m.memberList()
+	if l.Paginator.TotalPages < 2 {
+		t.Fatal("roster needs pagination")
 	}
-	positions := map[string][]int{}
-	for _, at := range []struct {
-		name string
-		top  int
-	}{{"top", 1}, {"middle", 5}, {"bottom", m.count() - m.rows()}} {
-		scrolled := m
-		scrolled.top = at.top
-		var thumb []int
-		for row, cell := range scrollColumn(scrolled) {
-			if cell == '┃' {
-				thumb = append(thumb, row)
-			}
-		}
-		if len(thumb) == 0 {
-			t.Fatalf("%s: no thumb drawn while %d of %d members are hidden", at.name, m.count()-1-m.rows(), m.count()-1)
-		}
-		positions[at.name] = thumb
+	first := ansi.Strip(m.View())
+	m.scroll(1)
+	if m.pages.Page != 1 || ansi.Strip(m.View()) == first {
+		t.Fatal("stock paginator did not advance")
 	}
-	if positions["top"][0] >= positions["middle"][0] || positions["middle"][0] >= positions["bottom"][0] {
-		t.Fatalf("the thumb does not move down the track: %v", positions)
+	for range 20 {
+		m.scroll(1)
 	}
-	track := 0
-	for _, cell := range scrollColumn(m) {
-		if cell == '│' || cell == '┃' {
-			track++
-		}
+	if m.pages.Page != l.Paginator.TotalPages-1 {
+		t.Fatal("page did not stop at end")
 	}
-	bottom := positions["bottom"]
-	if bottom[len(bottom)-1] != positions["top"][0]+track-1 {
-		t.Fatalf("the bottom of the list does not reach the end of the track: %v in %d rows", positions, track)
+	m.scroll(-1)
+	if m.pages.Page != l.Paginator.TotalPages-2 {
+		t.Fatal("reverse after end failed")
 	}
 }
 
-func TestShortRosterDrawsNoScrollbar(t *testing.T) {
-	m := model{kind: "members", width: 28, height: 60, current: "master", data: Snapshot{Active: true, Members: rosterOf(2)}}
-	if m.count()-1 > m.rows() {
-		t.Fatal("this roster does not fit; the test cannot show the absence of a bar")
-	}
-	for _, cell := range scrollColumn(m) {
-		if cell == '│' || cell == '┃' {
-			t.Fatal("a fitting roster was given a bar implying hidden members")
-		}
+func TestShortRosterHasOnePage(t *testing.T) {
+	m := model{kind: "members", width: 28, height: 60, data: Snapshot{Active: true, Members: rosterOf(2)}}
+	if m.memberList().Paginator.TotalPages != 1 {
+		t.Fatal("fitting roster has extra pages")
 	}
 }
 
@@ -531,13 +510,13 @@ func TestMemberResizeFillsViewportAfterInitialSnapshot(t *testing.T) {
 	data := Snapshot{Active: true, Members: []Member{{ID: "master"}, {ID: "a"}, {ID: "b", Color: "115"}}}
 	next, _ := m.Update(snapshotMsg{data: data})
 	m = next.(model)
-	if m.top != 2 {
-		t.Fatalf("initial viewport should reveal b, got top %d", m.top)
+	if m.pages.Page != 1 {
+		t.Fatalf("initial viewport should reveal b, got top %d", m.pages.Page)
 	}
 	next, _ = m.Update(tea.WindowSizeMsg{Width: 28, Height: 34})
 	m = next.(model)
-	if m.top != 1 {
-		t.Fatalf("expanded viewport still hides a: top=%d\n%s", m.top, ansi.Strip(m.View()))
+	if m.pages.Page != 0 {
+		t.Fatalf("expanded viewport still hides a: top=%d\n%s", m.pages.Page, ansi.Strip(m.View()))
 	}
 	for _, cell := range scrollColumn(m) {
 		if cell == '│' || cell == '┃' {
@@ -556,7 +535,7 @@ func TestMemberCardShowsItsOwnGitState(t *testing.T) {
 		{name: "detached head", member: Member{ID: "dev", Cwd: "/repo", Commit: "4f2a1b9"}, want: "Git detached 4f2a1b9"},
 		{name: "linked worktree keeps the branch tail and the marker",
 			member: Member{ID: "dev", Cwd: "/repo", Branch: "csquad/csquad/T167", Worktree: true}, want: "wt", unwanted: "Git csquad/csquad/T167"},
-		{name: "outside git keeps the divider", member: Member{ID: "dev", Cwd: "/tmp/plain"}, want: "────", unwanted: "Git "},
+		{name: "outside git keeps the divider", member: Member{ID: "dev", Cwd: "/tmp/plain"}, want: "—", unwanted: "Git "},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			m := model{kind: "members", width: 28, height: 40, data: Snapshot{Active: true, Members: []Member{tt.member}}}
@@ -580,48 +559,37 @@ func TestMemberCardShowsItsOwnGitState(t *testing.T) {
 	}
 }
 
-func TestScrollbarSurvivesResizeAndKeepsCardClicks(t *testing.T) {
+func TestMemberPaginationResizeAndClicks(t *testing.T) {
 	data := Snapshot{Active: true, Members: rosterOf(12)}
 	m := model{kind: "members", width: 28, height: 34, current: "master", selectedID: "master", data: data}
-	m.top = 1
+	m.scroll(1)
 	for _, size := range [][2]int{{28, 34}, {11, 34}, {24, 20}, {28, 34}} {
 		next, _ := m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
-		resized := next.(model)
-		for _, row := range strings.Split(resized.View(), "\n") {
+		m = next.(model)
+		for _, row := range strings.Split(m.View(), "\n") {
 			if ansi.StringWidth(row) > size[0] {
-				t.Fatalf("width %d overflowed: %q", size[0], row)
+				t.Fatal("resized list overflow")
 			}
 		}
-		drawn := false
-		for _, cell := range scrollColumn(resized) {
-			drawn = drawn || cell == '│' || cell == '┃'
-		}
-		// Below the width block() itself gives up at, the bar is dropped rather
-		// than squeezed into the card body.
-		if want := size[0] >= 12; drawn != want {
-			t.Fatalf("width %d drew the indicator=%v, want %v", size[0], drawn, want)
-		}
 	}
-	// The bar occupies the gutter column only, and the card hit test is
-	// unchanged, so a click there still opens that member.
 	var opened Action
 	m.act = func(a Action) (string, error) { opened = a; return "", nil }
 	_, hits := m.memberCards()
-	var scrolling cardHit
 	for _, hit := range hits {
-		if hit.index >= 1 {
-			scrolling = hit
-			break
+		if hit.index == 0 {
+			continue
 		}
+		_, cmd := m.Update(tea.MouseMsg{X: 4, Y: hit.start + 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+		if cmd == nil {
+			t.Fatal("visible list item not clickable")
+		}
+		cmd()
+		if opened.Member != m.data.Members[hit.index].ID {
+			t.Fatal("wrong item after pagination/resize")
+		}
+		return
 	}
-	_, cmd := m.Update(tea.MouseMsg{X: m.width - 2, Y: scrolling.start + 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	if cmd == nil {
-		t.Fatal("a click on the indicator column no longer reaches the member card")
-	}
-	cmd()
-	if want := m.data.Members[scrolling.index].ID; opened.Kind != "open" || opened.Member != want {
-		t.Fatalf("the indicator column opened %+v, want %s", opened, want)
-	}
+	t.Fatal("no scrolling list items")
 }
 
 // cardLines renders one card without its button rectangles.
@@ -646,20 +614,20 @@ func TestDetailScrollStopsAtTheEnd(t *testing.T) {
 	for range limit + 20 {
 		press(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	}
-	if m.offset != limit {
-		t.Fatalf("j scrolled to %d, past the last page at %d", m.offset, limit)
+	if m.viewport.YOffset != limit {
+		t.Fatalf("j scrolled to %d, past the last page at %d", m.viewport.YOffset, limit)
 	}
 	last := ansi.Strip(m.View())
 	press(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-	if m.offset != limit-1 || ansi.Strip(m.View()) == last {
-		t.Fatalf("one k after overscrolling did not move the view: offset %d", m.offset)
+	if m.viewport.YOffset != limit-1 || ansi.Strip(m.View()) == last {
+		t.Fatalf("one k after overscrolling did not move the view: offset %d", m.viewport.YOffset)
 	}
 	for range 10 {
 		press(tea.KeyMsg{Type: tea.KeyPgDown})
 		press(tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
 	}
-	if m.offset != limit {
-		t.Fatalf("page and wheel scrolled to %d, past %d", m.offset, limit)
+	if m.viewport.YOffset != limit {
+		t.Fatalf("page and wheel scrolled to %d, past %d", m.viewport.YOffset, limit)
 	}
 }
 
@@ -674,8 +642,8 @@ func TestDetailScrollBoundFollowsResizeAndContent(t *testing.T) {
 	}
 	firstKMoves := func(when string) {
 		t.Helper()
-		if m.offset != m.maxOffset() {
-			t.Fatalf("%s: offset %d, last page at %d", when, m.offset, m.maxOffset())
+		if m.viewport.YOffset != m.maxOffset() {
+			t.Fatalf("%s: offset %d, last page at %d", when, m.viewport.YOffset, m.maxOffset())
 		}
 		before := ansi.Strip(m.View())
 		update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})

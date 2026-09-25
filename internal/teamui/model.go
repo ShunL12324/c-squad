@@ -6,6 +6,8 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/charmbracelet/bubbles/paginator"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -69,16 +71,18 @@ type actionMsg struct {
 type tickMsg time.Time
 
 type model struct {
-	kind, current                        string
-	data                                 Snapshot
-	load                                 Source
-	act                                  Handler
-	width, height, selected, top, offset int
-	selectedID                           string
-	completed                            bool
-	detail                               bool
-	loading                              bool
-	err                                  error
+	kind, current           string
+	data                    Snapshot
+	load                    Source
+	act                     Handler
+	width, height, selected int
+	viewport                viewport.Model
+	pages                   paginator.Model
+	selectedID              string
+	completed               bool
+	detail                  bool
+	loading                 bool
+	err                     error
 }
 
 // Run owns only its pane's terminal; the native agent continues in another pane.
@@ -127,7 +131,7 @@ func (m model) rows() int {
 }
 func (m *model) move(delta int) {
 	m.selected = max(0, min(m.count()-1, m.selected+delta))
-	m.offset = 0
+	m.viewport.GotoTop()
 	m.remember()
 	m.reveal()
 }
@@ -144,33 +148,28 @@ func (m *model) remember() {
 }
 func (m *model) reveal() {
 	if m.kind == "members" {
-		first := 0
-		if m.hasMaster() {
-			first = 1
+		l := m.memberList()
+		if !m.hasMaster() || m.selected > 0 {
+			l.Select(max(0, m.selected-m.memberFirst()))
 		}
-		// A larger pane can fit cards that were above the old viewport.
-		// Clamp before the pinned-Master return as well as for other members.
-		m.top = max(first, min(m.top, max(first, m.count()-m.rows())))
-		if m.hasMaster() && m.selected == 0 {
-			return
+		m.pages = l.Paginator
+		return
+	}
+	if m.kind != "tasks" || m.detail {
+		return
+	}
+	rows, hits := m.taskContent()
+	v := m.contentViewport(rows)
+	for _, hit := range hits {
+		if hit.index != m.selected {
+			continue
 		}
-	}
-	if m.selected < m.top {
-		m.top = m.selected
-	}
-	if m.selected >= m.top+m.rows() {
-		m.top = m.selected - m.rows() + 1
-	}
-	m.top = max(0, m.top)
-	if m.kind == "tasks" {
-		for m.top < m.selected {
-			_, hits := m.taskCards()
-			if len(hits) > 0 && hits[len(hits)-1].index >= m.selected {
-				break
-			}
-			m.top++
+		if hit.start < v.YOffset || hit.start >= v.YOffset+v.Height {
+			v.SetYOffset(hit.start)
 		}
+		break
 	}
+	m.viewport = v
 }
 func (m model) open() tea.Cmd {
 	if m.count() == 0 {
@@ -213,7 +212,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = max(1, v.Height)
 		m.reveal()
 		// A larger pane or wider wrapping lowers the last page.
-		m.offset = min(m.offset, m.maxOffset())
+		m.viewport = m.taskViewport()
 	case snapshotMsg:
 		return m.updateSnapshot(v)
 	case tickMsg:
@@ -235,15 +234,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // scroll moves the viewport independently of keyboard selection.
 func (m *model) scroll(direction int) {
 	if m.kind == "members" {
-		first := 0
-		if m.hasMaster() {
-			first = 1
+		l := m.memberList()
+		if direction > 0 {
+			l.Paginator.NextPage()
+		} else {
+			l.Paginator.PrevPage()
 		}
-		m.top = max(first, min(max(first, m.count()-m.rows()), max(first, m.top)+direction))
+		m.pages = l.Paginator
 		return
 	}
-	m.offset = max(0, min(m.offset, m.maxOffset())+3*direction)
-	m.offset = min(m.offset, m.maxOffset())
+	v := m.taskViewport()
+	if direction > 0 {
+		v.ScrollDown(v.MouseWheelDelta)
+	} else {
+		v.ScrollUp(v.MouseWheelDelta)
+	}
+	m.viewport = v
 }
 
 func clean(s string) string {
@@ -269,19 +275,6 @@ func paint(s, color string, selected bool) string {
 // renderer count the same lines.
 func (m model) detailLines(text string) []string {
 	return strings.Split(lipgloss.NewStyle().Width(max(1, m.width-6)).Render(clean(text)), "\n")
-}
-
-func (m model) details(text string, available int) []string {
-	if available < 1 {
-		return nil
-	}
-	lines := m.detailLines(text)
-	offset := min(m.offset, max(0, len(lines)-available))
-	lines = lines[offset:min(len(lines), offset+available)]
-	for i := range lines {
-		lines[i] = "   " + lines[i]
-	}
-	return lines
 }
 
 // View renders a bounded panel; the parent tmux pane owns its dimensions.

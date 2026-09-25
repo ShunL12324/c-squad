@@ -38,7 +38,7 @@ func (m model) updateSnapshot(v snapshotMsg) (tea.Model, tea.Cmd) {
 			m.reveal()
 		}
 		// Content that shrank or rewrapped must not leave presses to undo.
-		m.offset = min(m.offset, m.maxOffset())
+		m.viewport = m.taskViewport()
 	}
 	return m, tick()
 }
@@ -51,7 +51,7 @@ func (m model) updateKey(v tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q", "esc", "ctrl+c":
 		if m.detail && v.String() != "ctrl+c" {
 			m.detail = false
-			m.offset = 0
+			m.viewport.GotoTop()
 			return m, nil
 		}
 		if m.kind == "members" {
@@ -64,7 +64,7 @@ func (m model) updateKey(v tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if m.kind == "tasks" && m.count() > 0 {
 			m.detail = true
-			m.offset = 0
+			m.viewport.GotoTop()
 		}
 		return m, nil
 	case "left", "right":
@@ -77,20 +77,20 @@ func (m model) updateKey(v tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "down", "j":
 		if m.kind == "tasks" && m.detail {
-			m.offset = min(m.offset+1, m.maxOffset())
+			m.scrollViewport(v)
 		} else {
 			m.move(1)
 		}
 	case "up", "k":
 		if m.kind == "tasks" && m.detail {
-			m.offset = max(0, min(m.offset, m.maxOffset())-1)
+			m.scrollViewport(v)
 		} else {
 			m.move(-1)
 		}
 	case "pgdown":
-		m.offset = max(0, min(m.offset+max(1, m.height/2), m.maxOffset()))
+		m.scrollViewport(v)
 	case "pgup":
-		m.offset = max(0, min(m.offset, m.maxOffset())-max(1, m.height/2))
+		m.scrollViewport(v)
 
 	}
 	return m, nil
@@ -124,7 +124,7 @@ func (m model) updateMouse(v tea.MouseMsg) (tea.Model, tea.Cmd) {
 				if v.Y == taskFilterRow {
 					// The whole row goes back, not only the painted button.
 					m.detail = false
-					m.offset = 0
+					m.viewport.GotoTop()
 				}
 				return m, nil
 			}
@@ -143,7 +143,8 @@ func (m model) updateMouse(v tea.MouseMsg) (tea.Model, tea.Cmd) {
 							if v.Y != button.row+taskHeaderRows || v.X < button.start || v.X >= button.end {
 								continue
 							}
-							m.detail, m.offset = true, 0
+							m.detail = true
+							m.viewport.GotoTop()
 							break
 						}
 						break

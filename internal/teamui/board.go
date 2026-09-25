@@ -73,10 +73,9 @@ func detailRow(width int) (string, []cardButton) {
 
 func (m model) boardView() []string {
 	if m.detail && m.count() > 0 {
-		task := m.tasks()[m.selected]
 		header, _ := detailRow(m.width)
 		lines := []string{"", m.boardHeading("TASK DETAILS"), "", header, "", ""}
-		return append(lines, m.details(m.detailBody(task), m.taskAvailable())...)
+		return append(lines, strings.Split(m.taskViewport().View(), "\n")...)
 	}
 	lines := []string{"", m.boardHeading("TASKS"), "", m.taskFilters(), "", ""}
 	cards, _ := m.taskCards()
@@ -97,23 +96,11 @@ func (m model) detailBody(task Task) string {
 	return body
 }
 
-// maxOffset is the furthest the tasks panel can scroll. The renderer clamps a
-// larger offset anyway, so storing one only means the extra presses have to be
-// undone before the view moves back.
+// maxOffset is derived from the stock viewport rather than a parallel scroll model.
 func (m model) maxOffset() int {
-	if m.kind != "tasks" {
-		return 0
-	}
-	available := m.taskAvailable()
-	if m.detail && m.count() > 0 {
-		return max(0, len(m.detailLines(m.detailBody(m.tasks()[m.selected])))-available)
-	}
-	total := 0
-	for i := m.top; i < len(m.tasks()); i++ {
-		card, _ := m.taskCard(i)
-		total += len(card)
-	}
-	return max(0, total-available)
+	v := m.taskViewport()
+	v.GotoBottom()
+	return v.YOffset
 }
 
 func (m model) boardHeading(title string) string {
@@ -142,7 +129,8 @@ func (m *model) filterTasks(completed bool) {
 		return
 	}
 	m.completed = completed
-	m.selected, m.top, m.offset = 0, 0, 0
+	m.selected = 0
+	m.viewport.GotoTop()
 	m.detail = false
 	m.remember()
 }

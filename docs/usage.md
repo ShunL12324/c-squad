@@ -615,7 +615,14 @@ The bottom footer has clickable **Tasks** and **Detach** buttons.
 Tasks toggles the right panel; the member sidebar stays open. Detach disconnects only your terminal; the
 team keeps running. Button labels include their keyboard shortcuts.
 
-Master stays pinned above the scrolling member list, marked with a diamond.
+Master stays pinned above the member list, marked with a diamond. The roster uses
+the standard Bubbles list and item styles; its page indicator shows when more
+members are available. The wheel changes pages without changing the selected
+member. Task cards and details use the Bubbles viewport for scrolling.
+
+Colors and spacing are small Lip Gloss overrides. Bubbles does not provide a
+general button or tabs component, so task filters and the full-width View Details
+action remain thin application-specific renderers with matching mouse targets.
 Member names always use their assigned colors, including unselected members.
 
 The task panel opens on **Active**, which includes pending, working, and review tasks.

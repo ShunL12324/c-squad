@@ -3,6 +3,7 @@ package teamui
 import (
 	"strings"
 
+	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -90,75 +91,31 @@ func block(content []string, width int, bg, stripe string) []string {
 func (m model) memberCards() ([]string, []cardHit) {
 	rows := []string{""}
 	var hits []cardHit
-	appendCard := func(i int) {
-		start := len(rows)
-		rows = append(rows, m.memberCard(i)...)
-		hits = append(hits, cardHit{index: i, start: start, end: len(rows) - 1})
-	}
-	first := m.top
 	if m.hasMaster() {
 		rows = append(rows, textStyle("  LEAD", muted, true), "")
-		appendCard(0)
-		rows = append(rows, textStyle("  MEMBERS", muted, true), "")
-		first = max(1, first)
-	} else {
-		rows = append(rows, textStyle("  MEMBERS", muted, true), "")
+		start := len(rows)
+		rows = append(rows, m.memberCard(0)...)
+		hits = append(hits, cardHit{index: 0, start: start, end: len(rows) - 1})
 	}
-	for i := first; i < min(m.count(), first+m.rows()); i++ {
-		appendCard(i)
+	l := m.memberList()
+	heading := "  MEMBERS"
+	if l.Paginator.TotalPages > 1 {
+		heading += "  " + l.Paginator.View()
 	}
-	return m.scrollbar(rows, hits), hits
-}
-
-// scrollbar shows how much roster is off-screen, in the blank gutter column the
-// cards already leave at the right edge: state, the selection stripe and the
-// card bodies all sit further left, so nothing is covered. It spans only the
-// scrolling cards, because Master is pinned above them and is never scrolled.
-func (m model) scrollbar(rows []string, hits []cardHit) []string {
-	pinned := 0
-	if m.hasMaster() {
-		pinned = 1
+	rows = append(rows, textStyle(heading, muted, true), "")
+	start := len(rows)
+	if len(l.Items()) == 0 {
+		return rows, hits
 	}
-	visible, start, end := 0, -1, -1
-	for _, hit := range hits {
-		if hit.index < pinned {
-			continue
-		}
-		if start < 0 {
-			start = hit.start
-		}
-		end, visible = hit.end, visible+1
+	for _, row := range strings.Split(l.View(), "\n") {
+		rows = append(rows, "  "+row)
 	}
-	total := m.count() - pinned
-	// A bar over a list that already fits would imply hidden members.
-	if start < 0 || visible >= total || m.width < 12 {
-		return rows
+	first, last := l.Paginator.GetSliceBounds(len(l.Items()))
+	for i := first; i < last; i++ {
+		top := start + (i-first)*memberBlockRows
+		hits = append(hits, cardHit{index: i + m.memberFirst(), start: top, end: top + memberBlockRows - 1})
 	}
-	track := end - start + 1
-	thumb := max(1, track*visible/total)
-	offset := max(0, m.top-pinned)
-	position := min(track*offset/total, track-thumb)
-	if offset+visible >= total {
-		// Reaching the end must look like the end, whatever rounding says.
-		position = track - thumb
-	}
-	for i := range track {
-		glyph, color := "│", "238"
-		if i >= position && i < position+thumb {
-			glyph, color = "┃", muted
-		}
-		rows[start+i] = m.gutter(rows[start+i], glyph, color)
-	}
-	return rows
-}
-
-// gutter rewrites a row's last two cells, which block paints blank, leaving the
-// card's own styling and the row's total width untouched.
-func (m model) gutter(row, glyph, color string) string {
-	body := ansi.Truncate(row, m.width-2, "")
-	style := lipgloss.NewStyle().Background(lipgloss.Color(canvas))
-	pad := style.Render(strings.Repeat(" ", max(0, m.width-2-ansi.StringWidth(body))))
-	return body + pad + style.Foreground(lipgloss.Color(color)).Render(glyph) + style.Render(" ")
+	return rows, hits
 }
 
 func (m model) hasMaster() bool {
@@ -168,54 +125,18 @@ func (m model) hasMaster() bool {
 func (m model) memberBlocks() []string { rows, _ := m.memberCards(); return rows }
 
 func (m model) memberCard(i int) []string {
-	member := m.data.Members[i]
-	bg, stripe := surface, ""
-	if member.ID == m.current {
-		bg = selectedSurface
-		stripe = member.Color
+	var out strings.Builder
+	item := memberItem{member: m.data.Members[i], width: m.width}
+	l := list.New([]list.Item{item}, rosterDelegate(m.selectedID), max(1, m.width-4), memberBlockRows)
+	rosterDelegate(m.selectedID).Render(&out, l, 0, item)
+	rows := strings.Split(out.String(), "\n")
+	for len(rows) < memberBlockRows-1 {
+		rows = append(rows, "")
 	}
-	color := member.Color
-	if color == "" {
-		color = accent
+	for i := range rows {
+		rows[i] = "  " + rows[i]
 	}
-	name := line(member.ID, m.width-6)
-	if member.ID == "master" {
-		name = "◆ " + line(member.ID, m.width-8)
-		stripe = color
-	}
-
-	engineName := member.Engine
-	switch engineName {
-	case "claude":
-		engineName = "Claude Code"
-	case "codex":
-		engineName = "Codex"
-	}
-	width := max(1, m.width-6)
-	meta := spread(textStyle(engineName, muted, false), badge(member.State), width, bg)
-	cwd := member.Cwd
-	if cwd == "" {
-		cwd = "Not recorded"
-	}
-	cwd = "Dir " + compactPath(cwd, max(1, width-4))
-	task := textStyle("No assigned task", muted, false)
-	if member.Tasks != "" {
-		color := member.Color
-		if color == "" {
-			color = accent
-		}
-		task = spread(textStyle("TASK", muted, false), textStyle(line(member.Tasks, max(1, width-6)), color, true), width, bg)
-	}
-	title := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).
-		Underline(i == m.selected && member.ID != m.current).Render(name)
-	// The Git line takes the decorative divider's row rather than a new one, so
-	// card height and every offset derived from it stay exactly as they were.
-	divider := textStyle(strings.Repeat("─", width), "240", false)
-	if row := gitLine(member, width, bg); row != "" {
-		divider = row
-	}
-	return block([]string{title, meta, textStyle(cwd, muted, false), divider, task}, m.width, bg, stripe)
-
+	return append(rows, "")
 }
 
 // gitLine names the branch of the member's OWN directory. Branch names are

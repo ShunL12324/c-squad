@@ -52,6 +52,20 @@ func TestPanelOffersNoBriefReport(t *testing.T) {
 	}
 }
 
+func TestTaskPanelGKeyDoesNotNavigate(t *testing.T) {
+	for _, detail := range []bool{false, true} {
+		m := taskModel(40, func(a Action) (string, error) {
+			t.Fatalf("g dispatched action: %+v", a)
+			return "", nil
+		})
+		m.detail = detail
+		next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+		if cmd != nil || next.(model).detail != detail {
+			t.Fatalf("g changed task panel (detail=%v)", detail)
+		}
+	}
+}
+
 // Completion comes from the snapshot; the panel offers no way to mark it.
 func TestCompletionIsDisplayedNotClicked(t *testing.T) {
 	for _, width := range []int{28, 40, 80} {
@@ -111,7 +125,7 @@ func TestTaskTabsSplitActiveFromDoneOrCancelled(t *testing.T) {
 		t.Fatalf("Active tab: %v", got)
 	}
 	filters := ansi.Strip(m.taskFilters())
-	if !strings.Contains(filters, fmt.Sprintf("Active %d", len(active))) || !strings.Contains(filters, "Done/Cancelled 2") {
+	if !strings.Contains(filters, fmt.Sprintf("Active %d", len(active))) || !strings.Contains(filters, "Done 2") || strings.Contains(filters, "Cancelled") {
 		t.Fatalf("tab labels: %q", filters)
 	}
 	m.filterTasks(true)
@@ -129,7 +143,37 @@ func TestTaskTabsSplitActiveFromDoneOrCancelled(t *testing.T) {
 		t.Fatalf("cancelled task shows the completion mark:\n%s", text)
 	}
 	narrow := model{kind: "tasks", width: 24, height: 40, data: m.data}
-	if filters := ansi.Strip(narrow.taskFilters()); !strings.Contains(filters, "Closed 2") || strings.Contains(filters, "…") {
+	if filters := ansi.Strip(narrow.taskFilters()); !strings.Contains(filters, "Done 2") || strings.Contains(filters, "…") {
 		t.Fatalf("narrow tab label cut: %q", filters)
+	}
+}
+
+func TestDetailsButtonFillsCardWithPaddedClickTarget(t *testing.T) {
+	for _, width := range []int{12, 24, 40, 80} {
+		m := taskModel(width, nil)
+		rows, buttons := taskCardButtons(max(1, width-6))
+		if len(buttons) != 1 || buttons[0].start != cardContentX || buttons[0].end != cardContentX+max(1, width-6) {
+			t.Fatalf("width %d: button bounds: %+v", width, buttons)
+		}
+		if got := ansi.StringWidth(rows[0]); got != max(1, width-6) {
+			t.Fatalf("width %d: button row is %d columns", width, got)
+		}
+		if width >= 24 {
+			plain := ansi.Strip(rows[0])
+			if !strings.HasPrefix(plain, "  ") || !strings.HasSuffix(plain, "  ") {
+				t.Fatalf("width %d: button lacks horizontal padding: %q", width, plain)
+			}
+		}
+		_, hits := m.taskCards()
+		if len(hits) == 0 || len(hits[0].buttons) == 0 {
+			t.Fatalf("width %d: button missing from card", width)
+		}
+		button := hits[0].buttons[0]
+		for _, x := range []int{button.start, button.end - 1} {
+			next, _ := m.Update(tea.MouseMsg{X: x, Y: button.row + taskHeaderRows, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+			if !next.(model).detail {
+				t.Fatalf("width %d: button column %d did not open detail", width, x)
+			}
+		}
 	}
 }

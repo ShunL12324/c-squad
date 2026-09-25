@@ -26,16 +26,16 @@ type cardHit struct {
 // gutter cells, then one cell of its own horizontal padding.
 const cardContentX = 3
 
-const detailsLabel = " View details › "
+const detailsLabel = "View details ›"
 
 func (m model) taskCards() ([]string, []cardHit) {
 	if len(m.tasks()) == 0 {
 		if m.completed {
-			return block([]string{textStyle("No finished tasks", foreground, true), "", textStyle("Done and cancelled work appears here.", muted, false)}, m.width, surface, ""), nil
+			return block([]string{textStyle("No finished tasks", foreground, true), "", textStyle("Completed or cancelled tasks appear here.", muted, false)}, m.width, surface, ""), nil
 		}
-		return block([]string{textStyle("Nothing in progress", foreground, true), "", textStyle("Tasks from Master appear here.", muted, false), textStyle("Past work is under Done or cancelled.", muted, false)}, m.width, surface, ""), nil
+		return block([]string{textStyle("Nothing in progress", foreground, true), "", textStyle("Tasks from Master appear here.", muted, false), textStyle("Past work is under Done.", muted, false)}, m.width, surface, ""), nil
 	}
-	available := max(0, m.height-taskHeaderRows-2)
+	available := m.taskAvailable()
 	var lines []string
 	var hits []cardHit
 	for i := m.top; i < len(m.tasks()); i++ {
@@ -79,11 +79,17 @@ func (m model) taskCards() ([]string, []cardHit) {
 // and its clickable region cannot drift apart - the discipline filterSplit
 // already applies to the task filter.
 func taskCardButtons(contentWidth int) ([]string, []cardButton) {
-	details := ansi.StringWidth(detailsLabel)
-	// block truncates an overlong row, so never claim cells beyond the content
-	// it can actually paint.
-	return []string{paint(detailsLabel, accent, true)}, []cardButton{
-		{action: "details", row: 0, start: cardContentX, end: min(cardContentX+details, cardContentX+contentWidth)},
+	if contentWidth < 1 {
+		return nil, nil
+	}
+	// Keep at least two visible padding cells on each side when space allows.
+	padding := min(2, max(0, (contentWidth-1)/2))
+	label := ansi.Truncate(detailsLabel, max(1, contentWidth-2*padding), "…")
+	row := lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center).
+		Background(lipgloss.Color(brandSurface)).Foreground(lipgloss.Color(accent)).Bold(true).
+		Render(label)
+	return []string{row}, []cardButton{
+		{action: "details", row: 0, start: cardContentX, end: cardContentX + contentWidth},
 	}
 }
 

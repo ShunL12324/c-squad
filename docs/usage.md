@@ -619,8 +619,9 @@ Master stays pinned above the scrolling member list, marked with a diamond.
 Member names always use their assigned colors, including unselected members.
 
 The task panel opens on **Active**, which includes pending, working, and review tasks.
-Completed tasks move to **Done**. Click either filter or use the left/right arrow
-keys to switch; both filters show their task counts.
+Completed and cancelled tasks move to **Done**; each card retains its actual
+status badge. Click either filter or use the left/right arrow keys to switch;
+both filters show their task counts.
 
 The task panel shows the recorded task phase, owner, collaborators, acceptance
 criteria, latest progress report, blockers, checkpoints, and review/test evidence.

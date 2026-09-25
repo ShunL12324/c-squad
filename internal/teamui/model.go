@@ -300,11 +300,12 @@ func (m model) View() string {
 	default:
 		lines = m.boardView()
 	}
-	for len(lines) < m.height-2 {
+	footer := m.footer()
+	for len(lines) < m.height-len(footer) {
 		lines = append(lines, "")
 	}
-	lines = lines[:min(len(lines), max(0, m.height-2))]
-	lines = append(lines, m.footer()...)
+	lines = lines[:min(len(lines), max(0, m.height-len(footer)))]
+	lines = append(lines, footer...)
 	base := lipgloss.NewStyle().Background(lipgloss.Color(canvas)).Foreground(lipgloss.Color(foreground))
 	for i, s := range lines {
 		s = ansi.Truncate(s, m.width, "")

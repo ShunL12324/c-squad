@@ -28,6 +28,8 @@ func queryOut(o options, value any) error {
 
 func writeTable(out io.Writer, value any) error {
 	switch data := value.(type) {
+	case *Task:
+		return writeTaskTable(out, data)
 	case map[string]*Member:
 		rows := [][]string{}
 		for _, id := range sortedKeys(data) {

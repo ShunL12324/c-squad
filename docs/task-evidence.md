@@ -5,6 +5,14 @@ Every `task submit` returns a `submission` ID (for example, `T7-r1`), a
 by `task inspect` or `board`; treat it as an opaque selector scoped to that team.
 Code submissions also return the exact candidate commit SHA.
 
+For a concise current status, run `csquad task inspect T7 --output table`. It
+shows state and owner, candidate/submission, workspace, shortened scope and
+acceptance, blockers and gates, and only the latest evidence from each
+member/category for the current submission and candidate. Failures lead the
+bounded evidence list; omitted counts remain visible. Any shortened text and
+older evidence are available with `csquad task inspect T7 --output json`.
+The default JSON output and its fields remain unchanged for scripts.
+
 An identical submission retry retains its ID and evidence. Changing the summary
 or code candidate requires master to run `task reopen` first. Reopen clears the
 current submission, candidate, approval, and evidence. The next submission gets

@@ -117,6 +117,19 @@ func (m model) count() int {
 }
 func (m model) rows() int {
 	if m.kind == "members" {
+		if m.height <= 20 {
+			reserved := len(m.footer())
+			if m.height >= 16 {
+				reserved++ // Members label.
+			}
+			if m.hasMaster() {
+				reserved += compactBlockRows
+				if m.height >= 16 {
+					reserved++ // Lead label.
+				}
+			}
+			return max(1, (m.height-reserved)/compactBlockRows)
+		}
 		reserved := memberHeaderRows + 2
 		if m.hasMaster() {
 			reserved += memberBlockRows + 2

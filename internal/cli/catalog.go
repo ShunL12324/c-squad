@@ -163,7 +163,7 @@ func definitions() []definition {
 		defs = append(defs, d)
 	}
 	for _, op := range []string{"inspect", "claim", "approve", "merge", "reopen", "abort-merge"} {
-		defs = append(defs, definition{path: "task " + op, args: " TASK", summary: map[string]string{"inspect": "Inspect one task", "claim": "Claim an available open task", "approve": "Approve the submitted candidate", "merge": "Merge an approved candidate", "reopen": "Reopen a submitted task for changes", "abort-merge": "Clear a safe-to-abort merge intent"}[op], min: 1, max: 1, complete: "task"})
+		defs = append(defs, definition{path: "task " + op, args: " TASK", summary: map[string]string{"inspect": "Inspect one task (--output table for concise status)", "claim": "Claim an available open task", "approve": "Approve the submitted candidate", "merge": "Merge an approved candidate", "reopen": "Reopen a submitted task for changes", "abort-merge": "Clear a safe-to-abort merge intent"}[op], min: 1, max: 1, complete: "task"})
 	}
 	for _, op := range []string{"ack", "retry"} {
 		defs = append(defs, definition{path: "message " + op, args: " MESSAGE", summary: map[string]string{"ack": "Acknowledge a received message", "retry": "Retry a message as master"}[op], min: 1, max: 1, complete: "message"})

@@ -11,9 +11,9 @@ import (
 // index, resolved to the same coordinate space as cardHit.start by whoever holds
 // the button.
 type cardButton struct {
-	action     string
-	row        int
-	start, end int
+	action      string
+	row, height int
+	start, end  int
 }
 
 // cardHit uses the same rendered bounds for pointer input and viewport selection.
@@ -59,12 +59,14 @@ func (m model) taskCards() ([]string, []cardHit) {
 		hit.end = min(available, hit.end-offset)
 		kept := hit.buttons[:0]
 		for _, button := range hit.buttons {
-			button.row -= offset
-			// A button scrolled out of the viewport must stop being clickable,
-			// or its cells would trigger whatever row now occupies them.
-			if button.row < 0 || button.row >= available {
+			start := max(0, button.row-offset)
+			end := min(available, button.row+button.height-offset)
+			// Keep only painted rows inside this viewport. A clipped button
+			// cannot activate a card that scrolls into its former cells.
+			if end <= start {
 				continue
 			}
+			button.row, button.height = start, end-start
 			kept = append(kept, button)
 		}
 		hit.buttons = kept
@@ -74,22 +76,29 @@ func (m model) taskCards() ([]string, []cardHit) {
 	return lines, hits
 }
 
-// taskCardButtons lays out the card actions and the cells that trigger them.
-// The renderer and the mouse hit test read this one result, so a painted button
-// and its clickable region cannot drift apart - the discipline filterSplit
-// already applies to the task filter.
-func taskCardButtons(contentWidth int) ([]string, []cardButton) {
+// actionButton paints one full-width, three-row action. Its vertical padding
+// is part of the button, not an unstyled spacer outside the hit target.
+func actionButton(label string, contentWidth int) []string {
 	if contentWidth < 1 {
-		return nil, nil
+		return nil
 	}
 	// Keep at least two visible padding cells on each side when space allows.
 	padding := min(2, max(0, (contentWidth-1)/2))
-	label := ansi.Truncate(detailsLabel, max(1, contentWidth-2*padding), "…")
-	row := lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center).
-		Background(lipgloss.Color(brandSurface)).Foreground(lipgloss.Color(accent)).Bold(true).
-		Render(label)
-	return []string{row}, []cardButton{
-		{action: "details", row: 0, start: cardContentX, end: cardContentX + contentWidth},
+	label = ansi.Truncate(label, max(1, contentWidth-2*padding), "…")
+	style := lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center).
+		Background(lipgloss.Color(brandSurface)).Foreground(lipgloss.Color(accent)).Bold(true)
+	blank := style.Render(strings.Repeat(" ", contentWidth))
+	return []string{blank, style.Render(label), blank}
+}
+
+// taskCardButtons lays out the action and the exact cells that trigger it.
+func taskCardButtons(contentWidth int) ([]string, []cardButton) {
+	rows := actionButton(detailsLabel, contentWidth)
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return rows, []cardButton{
+		{action: "details", row: 0, height: 3, start: cardContentX, end: cardContentX + contentWidth},
 	}
 }
 
@@ -111,16 +120,16 @@ func (m model) taskCard(index int) ([]string, []cardButton) {
 		}
 		return rows
 	}
-	content := wrap(task.Title, 2)
+	content := wrap("▸ "+task.Title, 2)
 	for i := range content {
-		content[i] = textStyle(content[i], foreground, true)
+		content[i] = textStyle(content[i], "255", true)
 	}
 	owner := task.Owner
 	if owner == "" {
 		owner = "Unassigned"
 	}
-	content = append([]string{spread(textStyle(task.ID, accent, true), badge(task.State), width, bg), ""}, content...)
-	content = append(content, textStyle(line("Owner: "+owner, width), muted, false))
+	content = append([]string{spread(textStyle(task.ID, accent, true), badge(task.State), width, bg)}, content...)
+	content = append(content, textStyle(line("↳ Owner: "+owner, width), secondary, false))
 	if task.Note != "" {
 		content = append(content, textStyle(line(task.Note, width), "222", true))
 	}
@@ -132,11 +141,11 @@ func (m model) taskCard(index int) ([]string, []cardButton) {
 	content = append(content, milestoneLines(task.Milestones, width, 3)...)
 	if progress != "" {
 		content = append(content, "")
-		content = append(content, textStyle("LATEST UPDATE", muted, true))
-		content = append(content, wrap(progress, 2)...)
-		content = append(content, "")
+		content = append(content, textStyle("LATEST UPDATE", secondary, true))
+		for _, row := range wrap(progress, 2) {
+			content = append(content, textStyle(row, muted, false))
+		}
 	}
-	content = append(content, "")
 	rows, buttons := taskCardButtons(width)
 	base := len(content)
 	content = append(content, rows...)

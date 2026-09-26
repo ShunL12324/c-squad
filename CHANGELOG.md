@@ -4,6 +4,30 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
+## v0.12.9 — 2026-09-26
+
+### Changed
+
+- Polish the original member and task panels with restrained terminal icons,
+  stronger titles, muted metadata, and three-row padded Details and Back actions.
+  Short member panes retain task IDs while keeping Master visible.
+- Batch already-pending routine Codex notifications for one recipient before
+  native queue delivery, preserving each message identity and delivery outcome.
+  Keep urgent, freeform and startup messages independent; skip stale notices
+  and preserve ordering behind earlier unfinished recipient deliveries.
+- Reduce duplicate report fields and repeated agent handoffs. Prefer consolidated
+  readiness and terminal monitoring outcomes over intermediate confirmations.
+- Make `task inspect --output table` a concise status summary with current
+  evidence, failures, missing review/test results and a full-JSON route.
+  Preserve the existing default JSON format for automation.
+
+### Fixed
+
+- Keep nested member metadata on its card background and align padded button
+  click regions with visible rows after scrolling. Correct short-pane sizing.
+- Exclude audit-only legacy Brief records from notification batching and ordering
+  so they cannot block current notices or be replayed.
+
 ## v0.12.8 — 2026-09-26
 
 ### Changed

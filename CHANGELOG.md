@@ -4,6 +4,17 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
+## v0.12.8 — 2026-09-26
+
+### Changed
+
+- Restore the original member and task panels from v0.12.1, including member
+  colors, card layout, scrolling and mouse/keyboard interaction. Remove the
+  subsequent Bubbles list and tview side-panel migrations and their prototypes.
+- Keep Active/Done task filters, cancelled task status, and the full-width
+  View details action. Retain the fixed three-row workspace header and later
+  startup delivery, notification and member-switch performance fixes.
+
 ## v0.12.7 — 2026-09-26
 
 ### Changed

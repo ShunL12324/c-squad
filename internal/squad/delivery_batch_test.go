@@ -147,3 +147,48 @@ func TestRoutineBatchByteBound(t *testing.T) {
 		t.Fatal("untransported oversize notice consumed a claim")
 	}
 }
+
+func TestRoutineBatchOversizedFirstStaysIndividual(t *testing.T) {
+	st, log := busyCodexStore(t)
+	ids := pendingRoutineReports(t, st, 2)
+	must(t, st.update(func(s *State) error {
+		s.Tasks["T1"].Participants = []string{"master"}
+		s.Messages[0].Report = &ReportReference{Kind: "assigned", Owner: "a"}
+		s.Messages[0].Text = strings.Repeat("x", routineBatchBytes)
+		return nil
+	}))
+	must(t, st.deliver(ids[0]))
+	got := queueCalls(t, log)
+	if !strings.Contains(got, "message_id="+ids[0]) || strings.Contains(got, "message_id="+ids[1]) {
+		t.Fatal("oversize first message did not remain an individual transport")
+	}
+}
+
+func TestRoutineBatchWaitsForEarlierRecipientDelivery(t *testing.T) {
+	for _, state := range []DeliveryState{DeliveryStatePending, DeliveryStateSending} {
+		t.Run(string(state), func(t *testing.T) {
+			st, log := busyCodexStore(t)
+			ids := pendingRoutineReports(t, st, 3)
+			must(t, st.update(func(s *State) error {
+				m := s.Messages[0]
+				m.Report, m.Text = nil, "Earlier actionable request"
+				m.State, m.Attempt, m.Attempts = state, now(), 1
+				return nil
+			}))
+			must(t, st.deliver(ids[1]))
+			if queueCalls(t, log) != "" {
+				t.Fatal("later routine batch overtook earlier unfinished delivery")
+			}
+			s, err := st.read()
+			must(t, err)
+			if s.Messages[1].State != DeliveryStatePending || s.Messages[1].Attempts != 0 || s.Messages[2].Attempts != 0 {
+				t.Fatal("waiting routine messages consumed attempts")
+			}
+			must(t, st.update(func(s *State) error { s.Messages[0].State = DeliveryStateSent; return nil }))
+			must(t, st.deliver(ids[1]))
+			if strings.Count(queueCalls(t, log), "message_id=") != 2 {
+				t.Fatal("routine batch did not resume after earlier transport completed")
+			}
+		})
+	}
+}

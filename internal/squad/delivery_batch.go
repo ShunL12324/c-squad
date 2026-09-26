@@ -29,10 +29,16 @@ func (st *Store) claimRoutineBatch(first *Message, attempt string, generation in
 		if !s.Active || member == nil || member.Generation != generation || member.EngineID != thread {
 			return nil
 		}
-		found, size := false, 0
+		found, earlierPending, size := false, false, 0
 		for _, item := range s.Messages {
 			if item.ID == first.ID {
 				if item.State != DeliveryStateSending || item.Attempt != attempt || !s.reportCurrent(item) {
+					return nil
+				}
+				if earlierPending {
+					item.State, item.Attempt = DeliveryStatePending, ""
+					item.Attempts--
+					item.Error = "routine notice waiting for earlier recipient delivery"
 					return nil
 				}
 				if deliveryPaused(member.State) || member.State == MemberStateRemoved || deferBusyCodexNotice(member, item) {
@@ -43,7 +49,13 @@ func (st *Store) claimRoutineBatch(first *Message, attempt string, generation in
 				}
 				found = true
 			} else {
-				if !found || item.To != first.To || item.State == DeliveryStateSent || item.State == DeliveryStateAcknowledged || item.State == DeliveryStateSuperseded {
+				if !found {
+					if item.To == first.To && (item.State == DeliveryStatePending || item.State == DeliveryStateSending) {
+						earlierPending = true
+					}
+					continue
+				}
+				if item.To != first.To || item.State == DeliveryStateSent || item.State == DeliveryStateAcknowledged || item.State == DeliveryStateSuperseded {
 					continue
 				}
 				if len(batch) >= routineBatchCount || item.State != DeliveryStatePending || !routineNotice(item) || item.BootstrapGeneration != 0 || legacyBrief(item) {
@@ -66,6 +78,11 @@ func (st *Store) claimRoutineBatch(first *Message, attempt string, generation in
 			}
 			size += bytes
 			batch = append(batch, &copy)
+			// An oversized first message keeps its existing individual path;
+			// never append another message to that exception.
+			if size > routineBatchBytes {
+				break
+			}
 		}
 		return nil
 	})

@@ -57,6 +57,10 @@ questions, decisions, failures and recovery remain independent. An unfinished
 message of those kinds is an ordering boundary. Another recipient's messages,
 startup input, records claimed by another delivery and retry backoff are not
 absorbed. Claude's native peer socket path is unchanged.
+An older unfinished delivery to the same recipient also holds later routine
+notices, including when the earlier record is in retry backoff or claimed by
+another sender. Waiting does not consume a transport attempt. Urgent/freeform
+messages keep their existing immediate individual path.
 
 This does not retract notices already accepted into Codex's native queue, ensure
 exactly-once delivery after a transport crash, or make queued input interrupt a

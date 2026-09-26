@@ -59,7 +59,8 @@ reports and master-generated follow-up traffic.
 
 For established Codex sessions, already-pending ordinary automatic notices for
 one recipient can share one native `codex queue` input (up to eight messages and
-24 KiB combined). Every message retains its sender, task and message ID and its
+24 KiB combined; a larger single notice stays individual). Every message retains
+its sender, task and message ID and its
 individual ledger outcome. Current task state is checked before claiming the
 batch; stale notices are excluded. No timer waits for more messages. Freeform
 messages, failures, decisions, startup input and records already claimed by

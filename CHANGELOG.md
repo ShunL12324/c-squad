@@ -4,6 +4,19 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
+## v0.12.7 — 2026-09-26
+
+### Changed
+
+- Refine member and task panels with borderless card surfaces and consistent
+  padding. Restore each teammate's persistent color on names, task chips and
+  owner labels; keep current session and keyboard focus distinct without outlines.
+- Place member status and task chips together, mute the no-task placeholder,
+  and remove unused metadata rows. Compact task cards fit three complete items
+  at 40 by 46 terminal cells, with bounded summaries and full content in details.
+- Keep native tview buttons visibly filled and align their inset backgrounds
+  with the surrounding cards. Hide page numbers when there is only one page.
+
 ## v0.12.6 — 2026-09-25
 
 ### Changed

@@ -50,15 +50,15 @@ func (st *Store) claimRoutineBatch(first *Message, attempt string, generation in
 				found = true
 			} else {
 				if !found {
-					if item.To == first.To && (item.State == DeliveryStatePending || item.State == DeliveryStateSending) {
+					if item.To == first.To && !legacyBrief(item) && (item.State == DeliveryStatePending || item.State == DeliveryStateSending) {
 						earlierPending = true
 					}
 					continue
 				}
-				if item.To != first.To || item.State == DeliveryStateSent || item.State == DeliveryStateAcknowledged || item.State == DeliveryStateSuperseded {
+				if item.To != first.To || legacyBrief(item) || item.State == DeliveryStateSent || item.State == DeliveryStateAcknowledged || item.State == DeliveryStateSuperseded {
 					continue
 				}
-				if len(batch) >= routineBatchCount || item.State != DeliveryStatePending || !routineNotice(item) || item.BootstrapGeneration != 0 || legacyBrief(item) {
+				if len(batch) >= routineBatchCount || item.State != DeliveryStatePending || !routineNotice(item) || item.BootstrapGeneration != 0 {
 					break
 				}
 				at, _ := time.Parse(time.RFC3339Nano, item.Attempt)

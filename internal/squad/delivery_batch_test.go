@@ -192,3 +192,29 @@ func TestRoutineBatchWaitsForEarlierRecipientDelivery(t *testing.T) {
 		})
 	}
 }
+
+func TestRoutineBatchIgnoresLegacyBriefHistory(t *testing.T) {
+	st, log := busyCodexStore(t)
+	ids := pendingRoutineReports(t, st, 4)
+	must(t, st.update(func(s *State) error {
+		for _, i := range []int{0, 2} {
+			m := s.Messages[i]
+			m.From, m.Report, m.Text = UserSender, nil, "historical Brief"
+			m.RequestKey = UserSender + ":brief:" + m.Task
+		}
+		return nil
+	}))
+	must(t, st.deliver(ids[1]))
+	got := queueCalls(t, log)
+	if strings.Count(got, "message_id=") != 2 || !strings.Contains(got, "message_id="+ids[1]) || !strings.Contains(got, "message_id="+ids[3]) || strings.Contains(got, "historical Brief") {
+		t.Fatalf("legacy history blocked or entered batch: %s", got)
+	}
+	s, err := st.read()
+	must(t, err)
+	for _, i := range []int{0, 2} {
+		m := s.Messages[i]
+		if m.State != DeliveryStatePending || m.Attempts != 0 || m.Text != "historical Brief" {
+			t.Fatalf("legacy audit record changed: %+v", m)
+		}
+	}
+}

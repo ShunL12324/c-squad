@@ -33,11 +33,7 @@ func deferBusyCodexNotice(member *Member, msg *Message) bool {
 	if err != nil || time.Since(seen) > 5*time.Minute {
 		return false
 	}
-	switch msg.Report.Kind {
-	case "delivery", "ready", "available", "assigned", "cc":
-		return true
-	}
-	return false
+	return routineNotice(msg)
 }
 
 func (st *Store) deliver(id string) error {
@@ -205,6 +201,19 @@ func (st *Store) deliver(id string) error {
 	// Refresh aggregated facts immediately before transport.
 	msg.Text = s.reportText(msg)
 	text := messageBody(msg, recipientGen, true)
+	transported := map[string]string{id: msg.Text}
+	if m.Engine == config.Codex && m.EngineID != "" && routineNotice(msg) && msg.BootstrapGeneration == 0 {
+		batch, err := st.claimRoutineBatch(msg, attempt, recipientGen, m.EngineID)
+		if err != nil || len(batch) == 0 {
+			return err
+		}
+		parts := make([]string, 0, len(batch))
+		for _, item := range batch {
+			transported[item.ID] = item.Text
+			parts = append(parts, messageBody(item, recipientGen, true))
+		}
+		text = strings.Join(parts, "\n\n")
+	}
 	if m.Engine == config.Claude {
 		if m.Peer == "" {
 			e = fmt.Errorf("recipient inbox not registered yet")
@@ -236,7 +245,8 @@ func (st *Store) deliver(id string) error {
 	recorder := &Store{Dir: st.Dir, DB: st.DB}
 	err := recorder.update(func(s *State) error {
 		for _, v := range s.Messages {
-			if v.ID == id && v.State == DeliveryStateSending && v.Attempt == attempt && s.Members[v.To] != nil && s.Members[v.To].Generation == recipientGen {
+			body, included := transported[v.ID]
+			if included && v.State == DeliveryStateSending && v.Attempt == attempt && s.Members[v.To] != nil && s.Members[v.To].Generation == recipientGen {
 				if deliveryErr != nil {
 					v.State = DeliveryStatePending
 					v.Error = deliveryErr.Error()
@@ -247,7 +257,7 @@ func (st *Store) deliver(id string) error {
 					v.Error = "awaiting native Codex prompt submission"
 				} else {
 					v.State = DeliveryStateSent
-					v.Text = msg.Text
+					v.Text = body
 					v.Error = ""
 				}
 			}

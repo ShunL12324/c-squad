@@ -197,6 +197,11 @@ func (s *State) reportText(m *Message) string {
 		Evidence:   []reportEvidence{}, OpenQuestions: []string{}, Blockers: []string{},
 	}
 	snapshot.Trigger.Milestone = reportExcerpt(snapshot.Trigger.Milestone, 160)
+	// submit normally copies the conclusion into progress. Repeating both
+	// doubles the largest part of a notification without adding information.
+	if t.Progress == t.SubmissionSummary {
+		snapshot.Progress = ""
+	}
 	for _, b := range t.Blockers {
 		if len(snapshot.Blockers) == 8 {
 			break

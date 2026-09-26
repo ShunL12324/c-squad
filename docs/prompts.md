@@ -49,6 +49,24 @@ do not need a second confirmation message. Genuine blockers and time-sensitive
 risks still escalate, and exceptions remain a matter of judgment, not a quota.
 Routine uncertainty is distinguished from missing authority or an actual blocker.
 
+Implementation readiness is one actionable handoff when master must schedule
+review or testing. After submission/evidence/gate commands, their automatic
+notification replaces a second manual summary. Workflow monitoring reports the
+terminal outcome rather than each intermediate poll. Master combines scope,
+validation and submission directions, does not ask for repeated readiness
+confirmations, and silently ignores obsolete notices. This addresses both worker
+reports and master-generated follow-up traffic.
+
+For established Codex sessions, already-pending ordinary automatic notices for
+one recipient can share one native `codex queue` input (up to eight messages and
+24 KiB combined). Every message retains its sender, task and message ID and its
+individual ledger outcome. Current task state is checked before claiming the
+batch; stale notices are excluded. No timer waits for more messages. Freeform
+messages, failures, decisions, startup input and records already claimed by
+another delivery are not batched. Claude peer transport is unchanged. Accepted
+Codex queue entries still represent future user inputs, not native inter-agent
+mail, and cannot be recalled by this change after transport.
+
 Master reviews the current candidate SHA and consolidates findings instead of
 answering every update. Workers retain their ban on asking the human directly,
 merging into the target branch, or removing worktrees. Owners may integrate

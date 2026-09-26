@@ -1,6 +1,6 @@
 {{define "commands"}}
 Commands (COMMAND --help lists all flags):
-  task inspect TASK; board; task list
+  task inspect TASK --output table; board --output table; task list --output table
   task progress TASK --text TEXT; task milestone TASK --name NAME
   task submit TASK --summary TEXT [--sha COMMIT]
   task evidence TASK --kind review|test --submission ID --passed true|false --summary TEXT

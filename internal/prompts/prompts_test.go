@@ -77,6 +77,7 @@ var sharedInvariants = []string{
 	"does not prove that a message was read", "go in the ledger", "avoid a mistaken wait",
 	"already notify the right people", "gate must be released", "Developers and reviewers",
 	"never reply to pure acknowledgments", "not message quotas", "surface real blockers",
+	"one consolidated readiness report", "do not also send their summaries", "terminal outcomes",
 	// role separation, coordinated validation and event-driven waiting
 	"developers implement their tasks", "reviewers review and return findings",
 	"Testing is a separate assignment scheduled by master", "Do not start tests after each small edit",
@@ -95,6 +96,7 @@ var masterOnly = []string{
 	"Unrelated features need not wait", "same candidate SHA",
 	"wait for all modules to finish and integrate", "one combined test pass",
 	"First inspect the member", "ask once", "no fixed response deadline", "activity clues, not proof of completion",
+	"one handoff", "repeated readiness confirmations", "ignored stale notices",
 }
 
 var workerOnly = []string{

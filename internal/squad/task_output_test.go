@@ -35,7 +35,7 @@ func TestTaskTableBoundsLongFieldsAndKeepsActionableFacts(t *testing.T) {
 
 func TestTaskTableUsesOnlyLatestEvidenceForCurrentSubmission(t *testing.T) {
 	task := &Task{
-		ID: "T8", State: TaskPhaseInReview, Submission: "T8-r2", Candidate: "current",
+		ID: "T8", State: TaskPhaseInReview, Workspace: "/tmp/task/T8", Submission: "T8-r2", Candidate: "current",
 		Evidence: []Evidence{
 			{Member: "reviewer", Kind: EvidenceReview, Submission: "T8-r1", SHA: "old", Passed: false, Summary: "stale failure"},
 			{Member: "reviewer", Kind: EvidenceReview, Submission: "T8-r2", SHA: "current", Passed: true, Summary: "first pass"},
@@ -49,7 +49,7 @@ func TestTaskTableUsesOnlyLatestEvidenceForCurrentSubmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	view := out.String()
-	for _, want := range []string{"Submission: T8-r2 | candidate current", "Evidence: 2 current latest; 1 failing; 5 total records", "#3 FAIL review reviewer: current issue", "#5 PASS test tester: race passes", "Next: resolve current failing evidence"} {
+	for _, want := range []string{"Submission: T8-r2 | candidate current", "Evidence: 2 current latest; 1 failing; 5 total records", "Required evidence: missing current passing review", "#3 FAIL review reviewer: current issue", "#5 PASS test tester: race passes", "Next: resolve current failing evidence; obtain passing review"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("missing %q from current evidence:\n%s", want, view)
 		}
@@ -58,6 +58,25 @@ func TestTaskTableUsesOnlyLatestEvidenceForCurrentSubmission(t *testing.T) {
 		if strings.Contains(view, stale) {
 			t.Fatalf("stale evidence %q included:\n%s", stale, view)
 		}
+	}
+}
+
+func TestTaskTableShowsMissingCurrentCodeEvidenceWithoutDuplicatingConclusion(t *testing.T) {
+	task := &Task{ID: "T10", State: TaskPhaseInReview, Workspace: "/tmp/task/T10", Submission: "T10-r2", Candidate: "current", Progress: "Ready for review", SubmissionSummary: "Ready for review", Evidence: []Evidence{
+		{Member: "reviewer", Kind: EvidenceReview, Submission: "T10-r1", SHA: "old", Passed: true, Summary: "old review"},
+	}}
+	var out bytes.Buffer
+	if err := writeTable(&out, task); err != nil {
+		t.Fatal(err)
+	}
+	view := out.String()
+	for _, want := range []string{"Conclusion: Ready for review", "Required evidence: missing current passing review, test", "Next: obtain current passing review, test before approval"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("missing %q from code submission:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "Progress: Ready for review") || strings.Contains(view, "old review") {
+		t.Fatalf("duplicate conclusion or stale evidence included:\n%s", view)
 	}
 }
 

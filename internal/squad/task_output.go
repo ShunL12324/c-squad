@@ -54,7 +54,7 @@ func writeTaskTable(out io.Writer, t *Task) error {
 	if t.Setup != "" {
 		add("Setup", taskCell(t.Setup, 180))
 	}
-	if t.Progress != "" {
+	if t.Progress != "" && t.Progress != t.SubmissionSummary {
 		add("Progress", taskCell(t.Progress, 200))
 	}
 	if t.SubmissionSummary != "" {
@@ -117,6 +117,25 @@ func writeTaskTable(out io.Writer, t *Task) error {
 		return entries[i].index < entries[j].index
 	})
 	add("Evidence", fmt.Sprintf("%d current latest; %d failing; %d total records", len(entries), failed, len(t.Evidence)))
+	var missing []string
+	if t.State == TaskPhaseInReview && t.Workspace != "" {
+		passed := map[EvidenceKind]bool{}
+		for _, entry := range entries {
+			if entry.value.Passed {
+				passed[entry.value.Kind] = true
+			}
+		}
+		for _, kind := range []EvidenceKind{EvidenceReview, EvidenceTest} {
+			if !passed[kind] {
+				missing = append(missing, string(kind))
+			}
+		}
+		if len(missing) == 0 {
+			add("Required evidence", "passing review and test present; check failures")
+		} else {
+			add("Required evidence", "missing current passing "+strings.Join(missing, ", "))
+		}
+	}
 	for i, entry := range entries {
 		if i >= 8 {
 			add("", fmt.Sprintf("+%d more current evidence entries (including %d unshown failures)", len(entries)-i, max(0, failed-i)))
@@ -141,7 +160,7 @@ func writeTaskTable(out io.Writer, t *Task) error {
 		add("External", taskCell(t.ExternalClosure.Repo, 140)+" @ "+taskCell(t.ExternalClosure.SHA, 64))
 		add("Limits", taskCell(t.ExternalClosure.Limits, 160))
 	}
-	add("Next", taskNext(t, gateCount, failed))
+	add("Next", taskNext(t, gateCount, failed, missing))
 	lines = append(lines, "Full record: csquad task inspect "+t.ID+" --output json")
 	_, err := io.WriteString(out, strings.Join(lines, "\n")+"\n")
 	return err
@@ -154,7 +173,7 @@ func taskValue(value string) string {
 	return taskCell(value, 100)
 }
 
-func taskNext(t *Task, pendingGates, failingEvidence int) string {
+func taskNext(t *Task, pendingGates, failingEvidence int, missing []string) string {
 	switch {
 	case t.State == TaskPhaseCancelled || t.State == TaskPhaseDone:
 		return "closed; inspect full record for history"
@@ -163,8 +182,14 @@ func taskNext(t *Task, pendingGates, failingEvidence int) string {
 	case pendingGates > 0:
 		return "master decision on awaiting gate"
 	case failingEvidence > 0:
+		if len(missing) > 0 {
+			return "resolve current failing evidence; obtain passing " + strings.Join(missing, ", ")
+		}
 		return "resolve current failing evidence"
 	case t.State == TaskPhaseInReview:
+		if len(missing) > 0 {
+			return "obtain current passing " + strings.Join(missing, ", ") + " before approval"
+		}
 		return "review current submission and evidence before approval"
 	case t.State == TaskPhaseAwaitingMerge:
 		return "master merge of approved candidate pending"

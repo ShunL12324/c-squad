@@ -213,10 +213,7 @@ func (p *sidePanel) memberCardHeight() int {
 	if p.height < 18 {
 		return 4
 	}
-	if p.height < 30 {
-		return 6
-	}
-	return 8
+	return 6
 }
 func (p *sidePanel) memberGap() int {
 	if p.height < 18 {
@@ -466,6 +463,7 @@ func (p *sidePanel) render() {
 	}
 	p.root.Clear()
 	p.focusOrder = nil
+	p.root.Box = tview.NewBox() // Flex leaves unused cells untouched by default.
 	p.root.SetBackgroundColor(uiCanvas)
 	p.memberCards = make(map[string]*tview.TextView)
 	p.taskButtons = make(map[string]*tview.Button)
@@ -674,24 +672,12 @@ func (p *sidePanel) memberCard(member Member) *tview.TextView {
 	} else {
 		status += " " + firstTask
 	}
-	lines := []string{
-		"",
-		name,
-		status,
-		"  " + secondTask,
-		git,
-		path,
-		"",
-		"",
+	lines := []string{"", name, status, git, path, ""}
+	if secondTask != "" {
+		lines = []string{"", name, status, "  " + secondTask, git, path}
 	}
-	switch p.memberCardHeight() {
-	case 4:
+	if p.memberCardHeight() == 4 {
 		lines = []string{name, status, git, path}
-	case 6:
-		lines = []string{"", name, status, git, path, ""}
-		if secondTask != "" {
-			lines = []string{name, status, "  " + secondTask, git, path, ""}
-		}
 	}
 	card.SetText(strings.Join(lines, "\n"))
 	id := member.ID
@@ -790,7 +776,7 @@ func taskSummary(task Task, width int) string {
 }
 
 func taskEyebrow(task Task) string {
-	return "  " + chip(task.ID, "#d0e8ee", "#354550") + " " + stateChip(task.State)
+	return chip(task.ID, "#d0e8ee", "#354550") + " " + stateChip(task.State)
 }
 
 func taskBodyRows(task Task, width, rows int) string {
@@ -804,7 +790,7 @@ func taskBodyRows(task Task, width, rows int) string {
 	if rows >= 8 {
 		lines = append(lines, "")
 	}
-	lines = append(lines, taskEyebrow(task))
+	lines = append(lines, "  "+taskEyebrow(task))
 	lines = append(lines, taskTitleRows(task.Title, width)...)
 	lines = append(lines,
 		"  [#9aa4a9]Owner[-:-:-] ["+snapshotColorTag(task.Color)+"::b]"+fitLine(task.Owner, max(1, width-7))+"[-:-:-]",
@@ -854,6 +840,7 @@ func (p *sidePanel) renderTasks() {
 	for _, task := range tasks[start:end] {
 		id := task.ID
 		card := tview.NewFlex().SetDirection(tview.FlexRow)
+		card.Box = tview.NewBox() // Paint the surface behind the inset Button row.
 		surface := uiCard
 		if id == p.selectedID {
 			surface = uiFocus
@@ -881,6 +868,7 @@ func (p *sidePanel) renderTasks() {
 		p.taskButtons[id] = button
 		p.focusOrder = append(p.focusOrder, button)
 		buttonRow := tview.NewFlex().SetDirection(tview.FlexColumn)
+		buttonRow.Box = tview.NewBox()
 		buttonRow.SetBackgroundColor(surface)
 		buttonRow.AddItem(nil, 2, 0, false)
 		buttonRow.AddItem(button, 0, 1, false)
@@ -968,6 +956,7 @@ func (p *sidePanel) renderDetail() {
 	p.detailText = view
 	p.focusOrder = append(p.focusOrder, view)
 	content := tview.NewFlex().SetDirection(tview.FlexColumn)
+	content.Box = tview.NewBox()
 	content.SetBackgroundColor(uiCard)
 	content.AddItem(nil, 2, 0, false)
 	content.AddItem(view, 0, 1, false)

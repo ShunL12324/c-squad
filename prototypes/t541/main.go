@@ -23,14 +23,25 @@ func main() {
 		{ID: "T191", Title: "Publish v0.12.1 coordinated validation improvements", State: "done", Owner: "master", Color: "87", Completion: "Published v0.12.1 from the reviewed candidate, with signed package validation and source checks.", Milestones: []teamui.Milestone{{Name: "Review", State: "approved"}, {Name: "Validate", State: "approved"}, {Name: "Publish", State: "approved"}}},
 	}}
 	// The screenshot has 28 Done tasks. Keep its first two visible entries, then
-	// populate the remaining count so the preview exercises real pagination and
-	// shows how many complete cards fit at the actual 40×46 task pane size.
+	// populate the remaining count with illustrative Done/Cancelled work so the
+	// preview exercises actual pagination at the 40×46 task pane size.
+	titles := []string{
+		"Validate native navigation and publication workflow",
+		"Improve task handoff and review evidence rendering",
+		"Preserve member colors across resumed sessions",
+		"Check package integrity across public channels",
+		"Review terminal resize and panel lifecycle behavior",
+		"Document release verification and rollback process",
+	}
 	for i := 2; i < 28; i++ {
-		screenshot.Tasks = append(screenshot.Tasks, teamui.Task{
-			ID: fmt.Sprintf("T%d", i), Title: "Validate native navigation and publication workflow", State: "done",
+		task := teamui.Task{ID: fmt.Sprintf("T%d", i), Title: titles[(i-2)%len(titles)], State: "done",
 			Owner: "master", Color: "87", Completion: "Accepted source and package checks after native panel validation.",
-			Milestones: []teamui.Milestone{{Name: "Review", State: "approved"}, {Name: "Validation", State: "approved"}},
-		})
+			Milestones: []teamui.Milestone{{Name: "Review", State: "approved"}, {Name: "Validation", State: "approved"}}}
+		if i%7 == 6 {
+			task.State, task.Owner, task.Color = "cancelled", "navigation-dev", "117"
+			task.Note, task.Completion = "Superseded by the next reviewed release candidate.", ""
+		}
+		screenshot.Tasks = append(screenshot.Tasks, task)
 	}
 	active := teamui.Snapshot{Team: "csquad-1", Active: true, Members: []teamui.Member{
 		{ID: "master", Engine: "codex", State: "idle", Color: "87", Branch: "main", Cwd: "~/projects/c-squad"},
@@ -53,6 +64,7 @@ func main() {
 	}{
 		{"members-screenshot-28x46", "members", "master", "master", 28, 46, screenshot, false, ""},
 		{"tasks-screenshot-40x46", "tasks", "master", "T1", 40, 46, screenshot, true, ""},
+		{"tasks-screenshot-last-40x46", "tasks", "master", "T27", 40, 46, screenshot, true, ""},
 		{"members-28x46", "members", "master", "navigation-dev", 28, 46, active, false, ""},
 		{"members-32x46", "members", "master", "navigation-dev", 32, 46, active, false, ""},
 		{"members-28x12", "members", "master", "navigation-dev", 28, 12, active, false, ""},

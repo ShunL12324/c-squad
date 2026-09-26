@@ -80,6 +80,37 @@ func TestTaskListSummaryIsBoundedWhileDetailKeepsFullUpdate(t *testing.T) {
 	}
 }
 
+func TestTaskButtonAndDetailInsetsKeepCardSurface(t *testing.T) {
+	p := panelForTest("tasks", "master", 40, 46, Snapshot{Active: true, Tasks: []Task{{ID: "T1", State: "working"}}})
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer screen.Fini()
+	screen.SetSize(40, 46)
+	draw := func() {
+		p.root.SetRect(0, 0, 40, 46)
+		p.root.Draw(screen)
+	}
+	background := func(x, y int) tcell.Color {
+		_, _, style, _ := screen.GetContent(x, y)
+		_, bg, _ := style.Decompose()
+		return bg
+	}
+	draw()
+	button := p.taskButtons["T1"]
+	x, y, _, _ := button.GetRect()
+	if got := background(x-1, y+1); got != uiFocus {
+		t.Fatalf("button inset shows canvas instead of selected card: %v", got)
+	}
+	button.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), focusForTest(p))
+	draw()
+	x, y, _, _ = p.detailText.GetRect()
+	if got := background(x-1, y+1); got != uiCard {
+		t.Fatalf("detail inset shows canvas instead of detail surface: %v", got)
+	}
+}
+
 func TestMemberCardsPinMasterAndPageEveryWorker(t *testing.T) {
 	members := []Member{{ID: "master", State: "working", Tasks: "T1"}}
 	for i := 0; i < 12; i++ {
@@ -103,7 +134,7 @@ func TestMemberCurrentAndFocusHaveDistinctCardStyles(t *testing.T) {
 	p := panelForTest("members", "master", 32, 46, Snapshot{Active: true, Members: []Member{
 		{ID: "master", State: "working", Color: "203", Tasks: "T477, T480"},
 		{ID: "dev", State: "blocked", Color: "117", Tasks: "T451"},
-		{ID: "other", State: "idle", Color: "121"},
+		{ID: "other", Engine: "codex", State: "idle", Color: "121"},
 	}})
 	p.selectedID = "dev"
 	p.render()
@@ -122,6 +153,10 @@ func TestMemberCurrentAndFocusHaveDistinctCardStyles(t *testing.T) {
 	}
 	if !strings.Contains(current.GetText(false), "T477") || !strings.Contains(current.GetText(false), "T480") {
 		t.Fatal("multiple task chips lost")
+	}
+	otherRows := strings.Split(ordinary.GetText(false), "\n")
+	if len(otherRows) != 6 || !strings.Contains(otherRows[3], "Codex") {
+		t.Fatal("no-task card reserved an empty second-task row")
 	}
 	p.selectedID = "master"
 	p.render()

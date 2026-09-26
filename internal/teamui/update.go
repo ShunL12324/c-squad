@@ -121,8 +121,8 @@ func (m model) updateMouse(v tea.MouseMsg) (tea.Model, tea.Cmd) {
 				return m, m.action(Action{Kind: "close"})
 			}
 			if m.detail {
-				if v.Y == taskFilterRow {
-					// The whole row goes back, not only the painted button.
+				_, back := detailRow(m.width)
+				if v.Y >= back.row && v.Y < back.row+back.height && v.X >= back.start && v.X < back.end {
 					m.detail = false
 					m.offset = 0
 				}
@@ -140,7 +140,7 @@ func (m model) updateMouse(v tea.MouseMsg) (tea.Model, tea.Cmd) {
 						m.selected = hit.index
 						m.remember()
 						for _, button := range hit.buttons {
-							if v.Y != button.row+taskHeaderRows || v.X < button.start || v.X >= button.end {
+							if v.Y < button.row+taskHeaderRows || v.Y >= button.row+button.height+taskHeaderRows || v.X < button.start || v.X >= button.end {
 								continue
 							}
 							m.detail, m.offset = true, 0

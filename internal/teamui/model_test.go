@@ -109,6 +109,34 @@ func TestMemberNavigationDoesNotPersistOutgoingSelection(t *testing.T) {
 	}
 }
 
+func TestShortMemberPaneKeepsPinnedMasterAndCurrentWorkerVisible(t *testing.T) {
+	for _, height := range []int{12, 16, 20} {
+		m := model{kind: "members", current: "worker", selected: 1, width: 28, height: height,
+			data: Snapshot{Active: true, Members: []Member{
+				{ID: "master", Engine: "codex", Color: "87", State: "idle"},
+				{ID: "worker", Engine: "codex", Color: "117", State: "working"},
+				{ID: "other", Engine: "codex", Color: "214", State: "blocked"},
+			}}}
+		rows, hits := m.memberCards()
+		if len(hits) < 2 || hits[0].index != 0 || hits[1].index != 1 || hits[1].end > height-len(m.footer()) {
+			t.Fatalf("height %d: pinned and current cards do not fit: %+v", height, hits)
+		}
+		view := ansi.Strip(m.View())
+		for _, want := range []string{"◆ master", "worker", "Working"} {
+			if !strings.Contains(view, want) {
+				t.Fatalf("height %d: missing %q from short pane:\n%s", height, want, view)
+			}
+		}
+		if len(rows) > height-len(m.footer()) {
+			t.Fatalf("height %d: card rows overrun footer", height)
+		}
+		next, cmd := m.Update(tea.MouseMsg{X: 4, Y: hits[1].start + 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+		if cmd == nil || next.(model).selectedID != "worker" {
+			t.Fatalf("height %d: current worker title is not clickable", height)
+		}
+	}
+}
+
 func TestDetailsButtonAndBack(t *testing.T) {
 	m := model{kind: "tasks", width: 40, height: 50, data: Snapshot{Active: true, Tasks: []Task{{ID: "T1", Title: "Research", Detail: strings.Repeat("Evidence\n", 100), Milestones: []Milestone{{Name: "Research", State: "reported"}, {Name: "Review", State: "awaiting_approval", Gate: true}, {Name: "Deliver", State: "pending"}}}}}}
 	_, hits := m.taskCards()

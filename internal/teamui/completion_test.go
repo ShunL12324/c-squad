@@ -150,30 +150,88 @@ func TestTaskTabsSplitActiveFromDoneOrCancelled(t *testing.T) {
 
 func TestDetailsButtonFillsCardWithPaddedClickTarget(t *testing.T) {
 	for _, width := range []int{12, 24, 40, 80} {
-		m := taskModel(width, nil)
 		rows, buttons := taskCardButtons(max(1, width-6))
-		if len(buttons) != 1 || buttons[0].start != cardContentX || buttons[0].end != cardContentX+max(1, width-6) {
+		if len(rows) != 3 || len(buttons) != 1 || buttons[0].height != 3 || buttons[0].start != cardContentX || buttons[0].end != cardContentX+max(1, width-6) {
 			t.Fatalf("width %d: button bounds: %+v", width, buttons)
 		}
-		if got := ansi.StringWidth(rows[0]); got != max(1, width-6) {
-			t.Fatalf("width %d: button row is %d columns", width, got)
+		for i, row := range rows {
+			if got := ansi.StringWidth(row); got != max(1, width-6) {
+				t.Fatalf("width %d: button row %d is %d columns", width, i, got)
+			}
+			if i != 1 && strings.TrimSpace(ansi.Strip(row)) != "" {
+				t.Fatalf("width %d: vertical padding row %d has text: %q", width, i, row)
+			}
 		}
 		if width >= 24 {
-			plain := ansi.Strip(rows[0])
+			plain := ansi.Strip(rows[1])
 			if !strings.HasPrefix(plain, "  ") || !strings.HasSuffix(plain, "  ") {
 				t.Fatalf("width %d: button lacks horizontal padding: %q", width, plain)
 			}
 		}
-		_, hits := m.taskCards()
-		if len(hits) == 0 || len(hits[0].buttons) == 0 {
-			t.Fatalf("width %d: button missing from card", width)
-		}
-		button := hits[0].buttons[0]
-		for _, x := range []int{button.start, button.end - 1} {
-			next, _ := m.Update(tea.MouseMsg{X: x, Y: button.row + taskHeaderRows, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-			if !next.(model).detail {
-				t.Fatalf("width %d: button column %d did not open detail", width, x)
+		for _, height := range []int{12, 16, 46} {
+			m := taskModel(width, nil)
+			m.height = height
+			m.offset = m.maxOffset()
+			_, hits := m.taskCards()
+			if len(hits) == 0 || len(hits[0].buttons) == 0 {
+				t.Fatalf("%dx%d: button missing from viewport", width, height)
+			}
+			button := hits[0].buttons[0]
+			if button.height < 1 || button.height > 3 {
+				t.Fatalf("%dx%d: invalid visible button height %+v", width, height, button)
+			}
+			for y := button.row; y < button.row+button.height; y++ {
+				for _, x := range []int{button.start, button.end - 1} {
+					next, _ := m.Update(tea.MouseMsg{X: x, Y: y + taskHeaderRows, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+					if !next.(model).detail {
+						t.Fatalf("%dx%d: painted button cell (%d,%d) did not open detail", width, height, x, y)
+					}
+				}
+			}
+			next, _ := m.Update(tea.MouseMsg{X: button.start - 1, Y: button.row + taskHeaderRows, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+			if next.(model).detail {
+				t.Fatalf("%dx%d: outer card gutter opened detail", width, height)
 			}
 		}
+	}
+}
+
+func TestDetailBackPaddingHasMatchingClickBounds(t *testing.T) {
+	for _, width := range []int{12, 28, 40} {
+		rows, button := detailRow(width)
+		if len(rows) != 3 || button.row != 2 || button.height != 3 || button.start != 2 || button.end != width-2 {
+			t.Fatalf("width %d: back bounds %+v", width, button)
+		}
+		m := taskModel(width, nil)
+		m.detail, m.height = true, 16
+		for y := button.row; y < button.row+button.height; y++ {
+			for _, x := range []int{button.start, button.end - 1} {
+				next, _ := m.Update(tea.MouseMsg{X: x, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+				if next.(model).detail {
+					t.Fatalf("width %d: painted back cell (%d,%d) did not return", width, x, y)
+				}
+			}
+		}
+	}
+}
+
+func TestScrolledButtonOnlyClicksPaintedRows(t *testing.T) {
+	m := taskModel(40, nil)
+	m.height = 12
+	_, raw := m.taskCard(0)
+	available := m.taskAvailable()
+	m.offset = raw[0].row - available + 1
+	_, hits := m.taskCards()
+	if len(hits) != 1 || len(hits[0].buttons) != 1 || hits[0].buttons[0].height != 1 {
+		t.Fatalf("partly clipped button has wrong visible bounds: %+v", hits)
+	}
+	button := hits[0].buttons[0]
+	next, _ := m.Update(tea.MouseMsg{X: button.start, Y: button.row + taskHeaderRows, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if !next.(model).detail {
+		t.Fatal("visible button padding did not open details")
+	}
+	next, _ = m.Update(tea.MouseMsg{X: button.start, Y: button.row + taskHeaderRows + 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if next.(model).detail {
+		t.Fatal("clipped button row remained clickable")
 	}
 }

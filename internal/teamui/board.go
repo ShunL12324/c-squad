@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
 )
 
 const taskHeaderRows = 6
@@ -61,21 +60,26 @@ func milestoneLines(milestones []Milestone, width, limit int) []string {
 	return lines
 }
 
-const backLabel = "  ‹ Back to tasks  "
+const backLabel = "‹ Back to tasks"
 
 // detailRow lays out the detail header actions and the cells that trigger them,
 // so the renderer and the mouse hit test read one result.
-func detailRow(width int) (string, []cardButton) {
-	back := min(ansi.StringWidth(backLabel), max(1, width-4))
-	return "  " + paint(ansi.Truncate(backLabel, back, "…"), accent, true),
-		[]cardButton{{action: "back", row: taskFilterRow, start: 2, end: 2 + back}}
+func detailRow(width int) ([]string, cardButton) {
+	contentWidth := max(1, width-4)
+	rows := actionButton(backLabel, contentWidth)
+	gutter := lipgloss.NewStyle().Background(lipgloss.Color(canvas)).Render("  ")
+	for i := range rows {
+		rows[i] = gutter + rows[i] + gutter
+	}
+	return rows, cardButton{action: "back", row: 2, height: 3, start: 2, end: 2 + contentWidth}
 }
 
 func (m model) boardView() []string {
 	if m.detail && m.count() > 0 {
 		task := m.tasks()[m.selected]
-		header, _ := detailRow(m.width)
-		lines := []string{"", m.boardHeading("TASK DETAILS"), "", header, "", ""}
+		buttonRows, _ := detailRow(m.width)
+		lines := append([]string{"", m.boardHeading("TASK DETAILS")}, buttonRows...)
+		lines = append(lines, "")
 		return append(lines, m.details(m.detailBody(task), m.taskAvailable())...)
 	}
 	lines := []string{"", m.boardHeading("TASKS"), "", m.taskFilters(), "", ""}

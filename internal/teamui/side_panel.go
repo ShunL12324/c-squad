@@ -3,6 +3,7 @@ package teamui
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -38,10 +39,11 @@ var (
 	uiCanvas  = tcell.PaletteColor(234)
 	uiCard    = tcell.PaletteColor(236)
 	uiCurrent = tcell.PaletteColor(238)
+	uiFocus   = tcell.PaletteColor(239)
+	uiBoth    = tcell.PaletteColor(240)
 	uiText    = tcell.PaletteColor(253)
 	uiMuted   = tcell.PaletteColor(245)
 	uiAccent  = tcell.PaletteColor(115)
-	uiBlue    = tcell.PaletteColor(81)
 	uiWarning = tcell.PaletteColor(222)
 )
 
@@ -245,10 +247,7 @@ func (p *sidePanel) taskCardHeight() int {
 	if p.height < 18 {
 		return max(5, p.height-3-errorRows)
 	}
-	if p.height == 18 && errorRows == 1 {
-		return 12
-	}
-	return 13
+	return 11
 }
 func (p *sidePanel) taskGap() int {
 	if p.height < 18 {
@@ -532,44 +531,65 @@ func chip(text, fg, bg string) string {
 func stateChip(state string) string {
 	name := label(state)
 	switch name {
-	case "Working", "Ready", "Done":
-		return chip(name, "#c8ffe3", "#245e48")
+	case "Working", "Ready":
+		return chip(name, "#bce9cd", "#304c3c")
+	case "Done":
+		return chip(name, "#bce9cd", "#315043")
 	case "Blocked", "Review", "Awaiting approval":
-		return chip(name, "#ffe6ae", "#70491c")
+		return chip(name, "#f2d4a5", "#55432f")
 	case "Cancelled":
-		return chip(name, "#ffd6d6", "#703b3b")
+		return chip(name, "#e8bcbc", "#503737")
 	default:
-		return chip(name, "#eeeeee", "#555555")
+		return chip(name, "#c8cdd0", "#3c4144")
 	}
 }
 
-func taskChips(tasks string) string {
-	if strings.TrimSpace(tasks) == "" {
-		return chip("No task", "#eeeeee", "#555555")
+// Snapshot colors are palette indices resolved from tmux.Color.StyleValue by
+// panel_snapshot.go. Keep the same persisted member palette in both panes.
+func snapshotColor(value string) tcell.Color {
+	index, err := strconv.Atoi(value)
+	if err != nil || index < 0 || index > 255 {
+		return tcell.PaletteColor(252)
 	}
-	var out []string
+	return tcell.PaletteColor(index)
+}
+
+func snapshotColorTag(value string) string {
+	return fmt.Sprintf("#%06x", snapshotColor(value).Hex())
+}
+
+func fitLine(s string, width int) string {
+	return safeLine(ansi.Truncate(plainLine(s), max(1, width), "…"))
+}
+
+func memberTaskRows(tasks string, width int, color, state string, showSecond bool) (string, string) {
+	ids := make([]string, 0, 2)
 	for _, id := range strings.Split(tasks, ",") {
 		if id = strings.TrimSpace(id); id != "" {
-			out = append(out, chip(id, "#d7efff", "#305270"))
+			ids = append(ids, id)
 		}
 	}
-	return strings.Join(out, " ")
-}
-
-func memberTaskRows(tasks string) (string, string) {
-	if strings.TrimSpace(tasks) == "" {
-		return " " + taskChips(""), ""
+	if len(ids) == 0 {
+		return "", ""
 	}
-	ids := strings.Split(tasks, ",")
-	first := " " + taskChips(strings.TrimSpace(ids[0]))
+	fg := snapshotColorTag(color)
+	indicator := 0
+	if len(ids) > 1 && !showSecond {
+		indicator = ansi.StringWidth(fmt.Sprintf(" +%d", len(ids)-1)) + 1
+	}
+	firstRoom := max(2, width-ansi.StringWidth(state)-2-1-2-indicator)
+	first := chip(ansi.Truncate(plainLine(ids[0]), firstRoom, "…"), fg, "#353b3f")
 	if len(ids) == 1 {
 		return first, ""
 	}
-	second := strings.TrimSpace(ids[1])
-	if len(ids) > 2 {
-		second += fmt.Sprintf(" +%d", len(ids)-2)
+	if !showSecond {
+		first += fmt.Sprintf(" [#a4adb2]+%d[-:-:-]", len(ids)-1)
 	}
-	return first, " " + taskChips(second)
+	second := chip(ansi.Truncate(plainLine(ids[1]), max(2, width-5), "…"), fg, "#353b3f")
+	if len(ids) > 2 {
+		second += fmt.Sprintf(" [#a4adb2]+%d[-:-:-]", len(ids)-2)
+	}
+	return first, second
 }
 
 func memberMeta(member Member, width int) (string, string) {
@@ -579,6 +599,28 @@ func memberMeta(member Member, width int) (string, string) {
 			return text
 		}
 		return ansi.TruncateLeft(text, ansi.StringWidth(text)-room+1, "…")
+	}
+	pathTail := func(path string, room int) string {
+		path = clean(path)
+		if ansi.StringWidth(path) <= room {
+			return path
+		}
+		parts := strings.Split(strings.Trim(path, "/"), "/")
+		if len(parts) == 0 {
+			return tail(path, room)
+		}
+		suffix := parts[len(parts)-1]
+		for i := len(parts) - 2; i >= 0; i-- {
+			candidate := parts[i] + "/" + suffix
+			if ansi.StringWidth("…/"+candidate) > room {
+				break
+			}
+			suffix = candidate
+		}
+		if ansi.StringWidth("…/"+suffix) <= room {
+			return "…/" + suffix
+		}
+		return tail(path, room)
 	}
 	engine := member.Engine
 	if engine == "codex" {
@@ -595,46 +637,61 @@ func memberMeta(member Member, width int) (string, string) {
 	if member.Worktree {
 		suffix = " wt"
 	}
-	room := max(1, width-5-ansi.StringWidth(engine)-len(suffix))
+	room := max(1, width-6-ansi.StringWidth(engine)-len(suffix))
 	branch = tail(branch, room)
-	path := tail(member.Cwd, max(1, width-2))
-	return " " + safeLine(engine) + "  " + safeLine(branch) + suffix, " " + safeLine(path)
+	path := pathTail(member.Cwd, max(1, width-4))
+	git := engine
+	if branch != "" {
+		git += "  " + branch
+	}
+	git += suffix
+	return "  [#aab3b7]" + fitLine(git, width-4) + "[-:-:-]", "  [#929ca1]" + safeLine(path) + "[-:-:-]"
 }
 
 func (p *sidePanel) memberCard(member Member) *tview.TextView {
-	firstTask, secondTask := memberTaskRows(member.Tasks)
+	contentWidth := max(1, p.width-4)
+	firstTask, secondTask := memberTaskRows(member.Tasks, contentWidth, member.Color, label(member.State), p.memberCardHeight() >= 6)
 	git, path := memberMeta(member, p.width)
 	card := tview.NewTextView().SetDynamicColors(true)
-	card.SetBackgroundColor(uiCard)
-	card.SetTextColor(uiText)
-	card.SetBorder(true)
-	border := uiMuted
+	surface := uiCard
 	if member.ID == p.current {
-		card.SetBackgroundColor(uiCurrent)
-		border = uiBlue
+		surface = uiCurrent
 	}
 	if member.ID == p.selectedID {
-		border = uiAccent
+		surface = uiFocus
+		if member.ID == p.current {
+			surface = uiBoth
+		}
 	}
-	card.SetBorderColor(border)
+	card.SetBackgroundColor(surface)
+	card.SetTextColor(uiText)
+	card.SetBorder(false)
 	card.SetWrap(false)
+	name := "  [" + snapshotColorTag(member.Color) + "::b]" + fitLine(member.ID, contentWidth) + "[-:-:-]"
+	status := "  " + stateChip(member.State)
+	if firstTask == "" {
+		status += "  [#a4adb2]No task[-:-:-]"
+	} else {
+		status += " " + firstTask
+	}
 	lines := []string{
-		" [::b]" + safeLine(member.ID) + "[-:-:-]",
-		" " + stateChip(member.State),
-		firstTask,
-		secondTask,
+		"",
+		name,
+		status,
+		"  " + secondTask,
 		git,
 		path,
+		"",
+		"",
 	}
 	switch p.memberCardHeight() {
 	case 4:
-		lines = []string{lines[0], lines[1] + firstTask}
+		lines = []string{name, status, git, path}
 	case 6:
-		last := git
+		lines = []string{"", name, status, git, path, ""}
 		if secondTask != "" {
-			last = secondTask
+			lines = []string{name, status, "  " + secondTask, git, path, ""}
 		}
-		lines = []string{lines[0], lines[1], firstTask, last}
 	}
 	card.SetText(strings.Join(lines, "\n"))
 	id := member.ID
@@ -663,7 +720,11 @@ func (p *sidePanel) renderMembers() {
 			p.root.AddItem(nil, p.memberGap(), 0, false)
 		}
 	}
-	p.root.AddItem(textRow(fmt.Sprintf("  TEAM  %d / %d", p.page+1, p.pageCount()), uiMuted), 1, 0, false)
+	teamLabel := fmt.Sprintf("  TEAM  %d", len(p.data.Members)-first)
+	if p.pageCount() > 1 {
+		teamLabel = fmt.Sprintf("%s  ·  %d / %d", teamLabel, p.page+1, p.pageCount())
+	}
+	p.root.AddItem(textRow(teamLabel, uiMuted), 1, 0, false)
 	start := first + p.page*p.perPage()
 	end := min(len(p.data.Members), start+p.perPage())
 	for _, member := range p.data.Members[start:end] {
@@ -688,14 +749,74 @@ func styledButton(label string, active bool, selected func()) *tview.Button {
 		}
 		return action, event
 	})
-	bg, fg := uiCard, uiText
+	bg, fg := uiCurrent, uiText
 	if active {
-		bg, fg = uiCurrent, uiAccent
+		bg, fg = uiFocus, uiAccent
 	}
 	b.SetStyle(tcell.StyleDefault.Background(bg).Foreground(fg))
 	b.SetActivatedStyle(tcell.StyleDefault.Background(uiAccent).Foreground(uiCanvas).Bold(true))
 	b.SetSelectedFunc(selected)
 	return b
+}
+
+func taskTitleRows(title string, width int) []string {
+	title = strings.TrimSpace(plainLine(title))
+	if title == "" {
+		title = "Untitled task"
+	}
+	rows := strings.Split(ansi.Wordwrap(title, max(1, width), " "), "\n")
+	if len(rows) > 2 {
+		rows = []string{rows[0], ansi.Truncate(strings.Join(rows[1:], " "), max(1, width), "…")}
+	}
+	for i := range rows {
+		rows[i] = "  [::b]" + fitLine(rows[i], width) + "[-:-:-]"
+	}
+	return rows
+}
+
+func taskSummary(task Task, width int) string {
+	summary := task.Progress
+	if finished(task.State) && task.Completion != "" {
+		summary = task.Completion
+	}
+	if summary == "" {
+		summary = task.Note
+	}
+	if summary == "" {
+		return ""
+	}
+	first := strings.TrimSpace(strings.Split(clean(summary), "\n")[0])
+	return "  [#aab3b7]" + fitLine(first, width) + "[-:-:-]"
+}
+
+func taskEyebrow(task Task) string {
+	return "  " + chip(task.ID, "#d0e8ee", "#354550") + " " + stateChip(task.State)
+}
+
+func taskBodyRows(task Task, width, rows int) string {
+	done := 0
+	for _, step := range task.Milestones {
+		if step.complete() {
+			done++
+		}
+	}
+	lines := make([]string, 0, rows)
+	if rows >= 8 {
+		lines = append(lines, "")
+	}
+	lines = append(lines, taskEyebrow(task))
+	lines = append(lines, taskTitleRows(task.Title, width)...)
+	lines = append(lines,
+		"  [#9aa4a9]Owner[-:-:-] ["+snapshotColorTag(task.Color)+"::b]"+fitLine(task.Owner, max(1, width-7))+"[-:-:-]",
+		fmt.Sprintf("  [#9aa4a9]Milestones %d/%d[-:-:-]", done, len(task.Milestones)),
+	)
+	if summary := taskSummary(task, width); summary != "" {
+		lines = append(lines, summary)
+	}
+	if len(lines) > rows {
+		lines = lines[:rows]
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (p *sidePanel) renderTasks() {
@@ -723,40 +844,27 @@ func (p *sidePanel) renderTasks() {
 	tabs.AddItem(p.tabs[0], 0, 1, false).AddItem(p.tabs[1], 0, 1, false)
 	p.root.AddItem(tabs, tabRows, 0, false)
 	tasks := p.visibleTasks()
-	p.root.AddItem(textRow(fmt.Sprintf("  %d tasks  ·  %d / %d", len(tasks), p.page+1, p.pageCount()), uiMuted), countRows, 0, false)
+	countLabel := fmt.Sprintf("  %d tasks", len(tasks))
+	if p.pageCount() > 1 {
+		countLabel = fmt.Sprintf("%s  ·  %d / %d", countLabel, p.page+1, p.pageCount())
+	}
+	p.root.AddItem(textRow(countLabel, uiMuted), countRows, 0, false)
 	start := p.page * p.perPage()
 	end := min(len(tasks), start+p.perPage())
 	for _, task := range tasks[start:end] {
 		id := task.ID
 		card := tview.NewFlex().SetDirection(tview.FlexRow)
-		card.SetBackgroundColor(uiCard)
-		card.SetBorder(true)
-		card.SetBorderColor(uiMuted)
+		surface := uiCard
+		if id == p.selectedID {
+			surface = uiFocus
+		}
+		card.SetBackgroundColor(surface)
+		card.SetBorder(false)
 		body := tview.NewTextView().SetDynamicColors(true)
-		body.SetBackgroundColor(uiCard)
+		body.SetBackgroundColor(surface)
 		body.SetTextColor(uiText)
-		done := 0
-		for _, step := range task.Milestones {
-			if step.complete() {
-				done++
-			}
-		}
-		cardLines := []string{
-			" " + chip(task.ID, "#d7efff", "#305270") + " " + stateChip(task.State),
-			" [::b]" + safeLine(task.Title) + "[-:-:-]",
-			" [#a0a0a0]Owner: " + safeLine(task.Owner) + "[-:-:-]",
-			fmt.Sprintf(" [#a0a0a0]Milestones %d/%d[-:-:-]", done, len(task.Milestones)),
-		}
-		if task.Progress != "" {
-			cardLines = append(cardLines, " [#a0a0a0]"+safeLine(task.Progress)+"[-:-:-]")
-		}
-		if task.Note != "" {
-			cardLines = append(cardLines, " [#ffdfa6]"+safeLine(task.Note)+"[-:-:-]")
-		}
-		if task.Completion != "" {
-			cardLines = append(cardLines, " [#b7f5ca]"+safeLine(task.Completion)+"[-:-:-]")
-		}
-		body.SetText(strings.Join(cardLines, "\n"))
+		body.SetWrap(false)
+		body.SetText(taskBodyRows(task, max(1, p.width-4), p.taskCardHeight()-3))
 		body.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 			if event != nil && body.InRect(event.Position()) && (action == tview.MouseLeftClick || action == tview.MouseLeftDoubleClick) {
 				p.selectedID = id
@@ -766,13 +874,18 @@ func (p *sidePanel) renderTasks() {
 			return action, event
 		})
 		card.AddItem(body, 0, 1, false)
-		button := styledButton("View details  ›", id == p.selectedID, func() {
+		button := styledButton("View details", id == p.selectedID, func() {
 			p.selectedID, p.detailID = id, id
 			p.render()
 		})
 		p.taskButtons[id] = button
 		p.focusOrder = append(p.focusOrder, button)
-		card.AddItem(button, 3, 0, false)
+		buttonRow := tview.NewFlex().SetDirection(tview.FlexColumn)
+		buttonRow.SetBackgroundColor(surface)
+		buttonRow.AddItem(nil, 2, 0, false)
+		buttonRow.AddItem(button, 0, 1, false)
+		buttonRow.AddItem(nil, 2, 0, false)
+		card.AddItem(buttonRow, 3, 0, false)
 		p.root.AddItem(card, p.taskCardHeight(), 0, false)
 		if p.taskGap() > 0 {
 			p.root.AddItem(nil, p.taskGap(), 0, false)
@@ -807,14 +920,15 @@ func (p *sidePanel) renderDetail() {
 	}
 	p.root.AddItem(backButton, backRows, 0, false)
 	lines := []string{
-		" " + chip(task.ID, "#d7efff", "#305270") + " " + stateChip(task.State), "",
-		" [::b]" + safeLine(task.Title) + "[-:-:-]", "", " Owner: " + safeLine(task.Owner), "",
+		"", taskEyebrow(task), "",
+		"[::b]" + safeLine(task.Title) + "[-:-:-]", "",
+		"[#9aa4a9]Owner[-:-:-] [" + snapshotColorTag(task.Color) + "::b]" + safeLine(task.Owner) + "[-:-:-]", "",
 	}
 	if task.Completion != "" {
-		lines = append(lines, " "+safeBody(task.Completion), "")
+		lines = append(lines, safeBody(task.Completion), "")
 	}
 	if task.Note != "" {
-		lines = append(lines, " "+safeBody(task.Note), "")
+		lines = append(lines, safeBody(task.Note), "")
 	}
 	done := 0
 	for _, milestone := range task.Milestones {
@@ -822,9 +936,9 @@ func (p *sidePanel) renderDetail() {
 			done++
 		}
 	}
-	lines = append(lines, fmt.Sprintf(" [::b]MILESTONES  %d/%d[-:-:-]", done, len(task.Milestones)))
+	lines = append(lines, fmt.Sprintf("[::b]MILESTONES  %d/%d[-:-:-]", done, len(task.Milestones)))
 	if len(task.Milestones) == 0 {
-		lines = append(lines, " No milestones defined")
+		lines = append(lines, "No milestones defined")
 	}
 	for _, milestone := range task.Milestones {
 		mark := "○"
@@ -837,21 +951,26 @@ func (p *sidePanel) renderDetail() {
 		if milestone.Gate {
 			name += " · approval gate"
 		}
-		lines = append(lines, " "+mark+" "+safeLine(name)+"  "+safeLine(label(milestone.State)))
+		lines = append(lines, mark+" "+safeLine(name)+"  "+safeLine(label(milestone.State)))
 	}
 	if task.Progress != "" {
-		lines = append(lines, "", " [::b]LATEST UPDATE[-:-:-]", " "+safeBody(task.Progress))
+		lines = append(lines, "", "[::b]LATEST UPDATE[-:-:-]", safeBody(task.Progress))
 	}
 	if task.Detail != "" {
-		lines = append(lines, "", " [::b]DETAIL[-:-:-]", " "+safeBody(task.Detail))
+		lines = append(lines, "", "[::b]DETAIL[-:-:-]", safeBody(task.Detail))
 	}
 	view := tview.NewTextView().SetDynamicColors(true)
 	view.SetBackgroundColor(uiCard)
 	view.SetTextColor(uiText)
-	view.SetBorder(true)
-	view.SetBorderColor(uiAccent)
+	view.SetBorder(false)
+	view.SetWrap(true)
 	view.SetText(strings.Join(lines, "\n"))
 	p.detailText = view
 	p.focusOrder = append(p.focusOrder, view)
-	p.root.AddItem(view, 0, 1, true)
+	content := tview.NewFlex().SetDirection(tview.FlexColumn)
+	content.SetBackgroundColor(uiCard)
+	content.AddItem(nil, 2, 0, false)
+	content.AddItem(view, 0, 1, false)
+	content.AddItem(nil, 2, 0, false)
+	p.root.AddItem(content, 0, 1, false)
 }

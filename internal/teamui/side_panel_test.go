@@ -27,12 +27,20 @@ func focusForTest(p *sidePanel) func(tview.Primitive) {
 
 func TestSidePanelUsesNativeButtonsAndPreservesTaskDetail(t *testing.T) {
 	p := panelForTest("tasks", "master", 40, 46, Snapshot{Active: true, Tasks: []Task{
-		{ID: "T1", Title: "[red] literal", State: "blocked", Owner: "dev", Progress: "[blue] update", Detail: "[green] details", Milestones: []Milestone{{Name: "[yellow] Review", State: "awaiting_approval", Gate: true}}},
+		{ID: "T1", Title: "[red] literal", State: "blocked", Owner: "dev", Color: "203", Progress: "[blue] update", Detail: "[green] details", Milestones: []Milestone{{Name: "[yellow] Review", State: "awaiting_approval", Gate: true}}},
 		{ID: "T2", Title: "Cancelled", State: "cancelled"},
 	}})
 	button := p.taskButtons["T1"]
 	if button == nil || button.IsDisabled() {
 		t.Fatal("blocked work must still have an enabled tview Button")
+	}
+	for _, line := range drawPanel(t, p) {
+		if strings.ContainsAny(line, "┌┐└┘╔╗╚╝║") {
+			t.Fatalf("task card wireframe returned: %q", line)
+		}
+	}
+	if x, _, width, _ := button.GetRect(); x < 2 || width > 36 {
+		t.Fatalf("task button lost horizontal inset: x=%d width=%d", x, width)
 	}
 	button.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), focusForTest(p))
 	if p.detailID != "T1" || p.detailText == nil {
@@ -57,6 +65,21 @@ func TestSidePanelUsesNativeButtonsAndPreservesTaskDetail(t *testing.T) {
 	}
 }
 
+func TestTaskListSummaryIsBoundedWhileDetailKeepsFullUpdate(t *testing.T) {
+	update := "First line gives the current outcome and should stay readable in a compact task card.\nSecond line contains the longer audit trail that belongs in details."
+	task := Task{ID: "T541", Title: "Compact task summary", State: "working", Progress: update}
+	list := taskBodyRows(task, 36, 8)
+	if strings.Contains(list, "Second line") || !strings.Contains(list, "First line") {
+		t.Fatalf("task list did not bound its progress summary: %q", list)
+	}
+	p := panelForTest("tasks", "master", 40, 46, Snapshot{Active: true, Tasks: []Task{task}})
+	p.detailID = task.ID
+	p.render()
+	if p.detailText == nil || !strings.Contains(p.detailText.GetText(false), "Second line contains the longer audit trail") {
+		t.Fatal("full progress update is missing from task details")
+	}
+}
+
 func TestMemberCardsPinMasterAndPageEveryWorker(t *testing.T) {
 	members := []Member{{ID: "master", State: "working", Tasks: "T1"}}
 	for i := 0; i < 12; i++ {
@@ -77,24 +100,38 @@ func TestMemberCardsPinMasterAndPageEveryWorker(t *testing.T) {
 }
 
 func TestMemberCurrentAndFocusHaveDistinctCardStyles(t *testing.T) {
-	p := panelForTest("members", "master", 32, 46, Snapshot{Active: true, Members: []Member{{ID: "master", State: "working", Tasks: "T477, T480"}, {ID: "dev", State: "blocked", Tasks: "T451"}}})
+	p := panelForTest("members", "master", 32, 46, Snapshot{Active: true, Members: []Member{
+		{ID: "master", State: "working", Color: "203", Tasks: "T477, T480"},
+		{ID: "dev", State: "blocked", Color: "117", Tasks: "T451"},
+		{ID: "other", State: "idle", Color: "121"},
+	}})
 	p.selectedID = "dev"
 	p.render()
-	current, focus := p.memberCards["master"], p.memberCards["dev"]
-	if current == nil || focus == nil {
-		t.Fatal("both cards must render")
+	current, focus, ordinary := p.memberCards["master"], p.memberCards["dev"], p.memberCards["other"]
+	if current == nil || focus == nil || ordinary == nil {
+		t.Fatal("all three card states must render")
 	}
-	if current.GetBackgroundColor() != uiCurrent || focus.GetBackgroundColor() != uiCard {
-		t.Fatal("current and focus surfaces collapsed")
+	if current.GetBackgroundColor() != uiCurrent || focus.GetBackgroundColor() != uiFocus || ordinary.GetBackgroundColor() != uiCard {
+		t.Fatal("current, focus and ordinary surfaces collapsed")
 	}
-	if current.GetBorderColor() != uiBlue || focus.GetBorderColor() != uiAccent {
-		t.Fatal("current border and focus border collapsed")
+	if !strings.Contains(current.GetText(false), snapshotColorTag("203")) || !strings.Contains(focus.GetText(false), snapshotColorTag("117")) {
+		t.Fatal("persisted teammate colors missing from names and task chips")
 	}
 	if strings.Contains(current.GetText(false), "●") {
 		t.Fatal("obsolete current-session dot returned")
 	}
 	if !strings.Contains(current.GetText(false), "T477") || !strings.Contains(current.GetText(false), "T480") {
 		t.Fatal("multiple task chips lost")
+	}
+	p.selectedID = "master"
+	p.render()
+	if p.memberCards["master"].GetBackgroundColor() != uiBoth {
+		t.Fatal("current and focused combination lost its distinct surface")
+	}
+	for _, line := range drawPanel(t, p) {
+		if strings.ContainsAny(line, "┌┐└┘╔╗╚╝║") {
+			t.Fatalf("member card wireframe returned: %q", line)
+		}
 	}
 }
 
@@ -293,7 +330,11 @@ func TestRootMouseClickSelectsOnlyLaterTaskAndButton(t *testing.T) {
 	var body *tview.TextView
 	for i := 0; i < p.root.GetItemCount(); i++ {
 		card, ok := p.root.GetItem(i).(*tview.Flex)
-		if !ok || card.GetItemCount() != 2 || card.GetItem(1) != p.taskButtons["T2"] {
+		if !ok || card.GetItemCount() != 2 {
+			continue
+		}
+		buttonRow, ok := card.GetItem(1).(*tview.Flex)
+		if !ok || buttonRow.GetItemCount() != 3 || buttonRow.GetItem(1) != p.taskButtons["T2"] {
 			continue
 		}
 		body, _ = card.GetItem(0).(*tview.TextView)

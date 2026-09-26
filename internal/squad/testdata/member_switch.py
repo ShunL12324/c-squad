@@ -51,20 +51,14 @@ def panel(session, view):
 
 
 def owner_highlighted(session, member):
-    """The owner's card is focused and retains its current-session surface."""
+    """The exact owner title has the combined current-and-focus surface."""
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
         screen = tm("capture-pane", "-p", "-e", "-t", panel(session, "members"))
         for colored in screen.splitlines():
             row = re.sub(r"\x1b\[[0-9;]*m", "", colored)
-            # The right gutter may show a scrollbar independently of the
-            # owner's card on the left. It is not part of the member name.
-            title = row.rstrip().rstrip("│┃║").strip()
-            if not title.startswith("║"):
-                continue
-            title = title[1:].strip()
-            current_surface = re.search(r"\x1b\[[0-9;]*48;5;238(?:;|m)", colored)
-            if title == member and current_surface:
+            focused_current = re.search(r"\x1b\[[0-9;]*48;5;240(?:;|m)", colored)
+            if row.strip() == member and focused_current:
                 return True
         drain(.05)
     print(f"Missing owner highlight for {member!r} in {session}:\n{screen}", flush=True)

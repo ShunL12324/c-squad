@@ -234,4 +234,24 @@ func TestScrolledButtonOnlyClicksPaintedRows(t *testing.T) {
 	if next.(model).detail {
 		t.Fatal("clipped button row remained clickable")
 	}
+
+	// A later card makes it possible to scroll the first button partly above
+	// the viewport as well. Only its two remaining painted rows may activate it.
+	m.data.Tasks = append(m.data.Tasks, Task{ID: "T2", Title: "Following task", State: "ready"})
+	m.offset = raw[0].row + 1
+	_, hits = m.taskCards()
+	if len(hits) < 1 || hits[0].index != 0 || len(hits[0].buttons) != 1 || hits[0].buttons[0].row != 0 || hits[0].buttons[0].height != 2 {
+		t.Fatalf("top-clipped button has wrong visible bounds: %+v", hits)
+	}
+	button = hits[0].buttons[0]
+	for y := button.row; y < button.row+button.height; y++ {
+		next, _ = m.Update(tea.MouseMsg{X: button.start, Y: y + taskHeaderRows, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+		if !next.(model).detail {
+			t.Fatalf("top-clipped painted row %d did not open details", y)
+		}
+	}
+	next, _ = m.Update(tea.MouseMsg{X: button.start, Y: taskHeaderRows - 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if next.(model).detail {
+		t.Fatal("hidden top button row remained clickable")
+	}
 }

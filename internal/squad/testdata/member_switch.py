@@ -4,7 +4,7 @@ The sidebar pane is created with split-window -d and every navigation selects th
 engine pane, so the panel almost never holds focus. These bindings live in the
 team's tmux root table, which is consumed before the pane sees the key.
 """
-import errno, fcntl, os, pty, re, select, signal, struct, subprocess, sys, termios, time
+import errno, fcntl, os, pty, select, signal, struct, subprocess, sys, termios, time
 
 socket, master, first, last = sys.argv[1:5]
 height = int(sys.argv[5]) if len(sys.argv) > 5 else 40
@@ -51,14 +51,13 @@ def panel(session, view):
 
 
 def owner_highlighted(session, member):
-    """The exact owner title has the combined current-and-focus surface."""
+    """The session's own sidebar marks its owner with the original stripe."""
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
-        screen = tm("capture-pane", "-p", "-e", "-t", panel(session, "members"))
-        for colored in screen.splitlines():
-            row = re.sub(r"\x1b\[[0-9;]*m", "", colored)
-            focused_current = re.search(r"\x1b\[[0-9;]*48;5;240(?:;|m)", colored)
-            if row.strip() == member and focused_current:
+        screen = tm("capture-pane", "-p", "-t", panel(session, "members"))
+        for row in screen.splitlines():
+            title = row.rstrip().removesuffix("│").removesuffix("┃").strip()
+            if title.startswith("▎") and title[1:].strip().removeprefix("◆").strip() == member:
                 return True
         drain(.05)
     print(f"Missing owner highlight for {member!r} in {session}:\n{screen}", flush=True)

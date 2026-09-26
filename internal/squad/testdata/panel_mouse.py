@@ -3,7 +3,6 @@ import errno
 import fcntl
 import os
 import pty
-import re
 import select
 import signal
 import struct
@@ -41,13 +40,15 @@ def sessions():
 
 
 def member_title(line):
-    return re.sub(r"\x1b\[[0-9;]*m", "", line).strip()
+    title = line.strip().rstrip("│┃║").strip()
+    for marker in ("▎", "◆"):
+        title = title.removeprefix(marker).strip()
+    return title
 
 
 def focused_owner(line, member):
-    """A switched session shows its exact owner on the combined focus surface."""
-    return (member_title(line) == member and
-            re.search(r"\x1b\[[0-9;]*48;5;240(?:;|m)", line))
+    """A switched session shows its exact owner with the original stripe."""
+    return line.strip().startswith("▎") and member_title(line) == member
 
 
 def member_row(pane, member):
@@ -112,9 +113,9 @@ try:
         drain(.1)
         panels = tm("list-panes", "-t", target, "-F", "#{pane_id}|#{@csquad_panel}")
         pane = next(row.split("|")[0] for row in panels.splitlines() if row.endswith("|members"))
-        screen = tm("capture-pane", "-p", "-e", "-t", pane)
+        screen = tm("capture-pane", "-p", "-t", pane)
         assert any(focused_owner(line, name) for line in screen.splitlines()), \
-            f"stale current/focus surface after switching to {name}: {screen}"
+            f"stale owner stripe after switching to {name}: {screen}"
     os.write(fd, b"\x1b[1;3D\x1b[1;3C")
     drain(.2)
     assert sessions()[client] == worker, "Alt-arrow still switches members"

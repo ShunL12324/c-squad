@@ -1,5 +1,0 @@
-initial: focused=true unfocused=true disabled=true
-Enter: Opened T477 via tview Button
-click: Opened T480 via tview Button
-disabled click/Enter: callback unchanged=true
-Done tab click: view=done, visible actions=2

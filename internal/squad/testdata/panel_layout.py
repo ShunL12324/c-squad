@@ -46,7 +46,10 @@ def card(session, member):
     name = member.split("-")[-1]
 
     def title(line):
-        return line.strip()
+        text = line.strip().rstrip("│┃║").strip()
+        for marker in ("▎", "◆"):
+            text = text.removeprefix(marker).strip()
+        return text
 
     deadline = time.monotonic() + 5
     while True:

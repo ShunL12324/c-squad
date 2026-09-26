@@ -1,3 +1,5 @@
+//go:build t541preview
+
 // Run with: go run -tags t541preview ./prototypes/t541
 // The build-tagged renderer calls the production sidePanel layout directly.
 package main

@@ -114,7 +114,7 @@ func TestShortMemberPaneKeepsPinnedMasterAndCurrentWorkerVisible(t *testing.T) {
 		m := model{kind: "members", current: "worker", selected: 1, width: 28, height: height,
 			data: Snapshot{Active: true, Members: []Member{
 				{ID: "master", Engine: "codex", Color: "87", State: "idle"},
-				{ID: "worker", Engine: "codex", Color: "117", State: "working"},
+				{ID: "worker", Engine: "codex", Color: "117", State: "working", Tasks: "T602"},
 				{ID: "other", Engine: "codex", Color: "214", State: "blocked"},
 			}}}
 		rows, hits := m.memberCards()
@@ -122,7 +122,7 @@ func TestShortMemberPaneKeepsPinnedMasterAndCurrentWorkerVisible(t *testing.T) {
 			t.Fatalf("height %d: pinned and current cards do not fit: %+v", height, hits)
 		}
 		view := ansi.Strip(m.View())
-		for _, want := range []string{"◆ master", "worker", "Working"} {
+		for _, want := range []string{"◆ master", "worker", "Working", "T602", "No task"} {
 			if !strings.Contains(view, want) {
 				t.Fatalf("height %d: missing %q from short pane:\n%s", height, want, view)
 			}
@@ -134,6 +134,55 @@ func TestShortMemberPaneKeepsPinnedMasterAndCurrentWorkerVisible(t *testing.T) {
 		if cmd == nil || next.(model).selectedID != "worker" {
 			t.Fatalf("height %d: current worker title is not clickable", height)
 		}
+	}
+}
+
+func TestCompactMemberHeadingMatchesReservedRowsWithoutMaster(t *testing.T) {
+	m := model{kind: "members", width: 28, height: 16, data: Snapshot{Active: true, Members: []Member{
+		{ID: "worker", State: "working", Tasks: "T602"},
+		{ID: "other", State: "idle"},
+		{ID: "third", State: "blocked"},
+	}}}
+	rows, hits := m.memberCards()
+	if len(hits) != m.rows() || len(rows) > m.height-len(m.footer()) {
+		t.Fatalf("compact heading exceeds reserved rows: rows=%d visible=%d footer=%d height=%d", len(rows), len(hits), len(m.footer()), m.height)
+	}
+	if len(hits) > 0 && hits[len(hits)-1].end >= m.height-len(m.footer()) {
+		t.Fatalf("last compact member reaches footer: %+v", hits)
+	}
+}
+
+func TestCurrentMemberMetadataKeepsCardBackground(t *testing.T) {
+	restore := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.ANSI256)
+	t.Cleanup(func() { lipgloss.SetColorProfile(restore) })
+	m := model{kind: "members", current: "worker", width: 28, height: 46, data: Snapshot{Active: true, Members: []Member{
+		{ID: "worker", Engine: "codex", State: "working", Color: "117", Tasks: "T602", Branch: "csquad/T602", Worktree: true},
+	}}}
+	seen := 0
+	for _, row := range m.memberCard(0) {
+		plain := ansi.Strip(row)
+		for _, target := range []struct{ label, value string }{{"↳ Git", "csquad/T602"}, {"TASK", "T602"}} {
+			if !strings.Contains(plain, target.label) {
+				continue
+			}
+			value := target.value
+			start := strings.Index(plain, value)
+			if start < 0 {
+				t.Fatalf("%s row has no %q: %q", target.label, value, plain)
+			}
+			seen++
+			cells := cellBackgrounds(row)
+			start = ansi.StringWidth(plain[:start])
+			for x := start; x < start+ansi.StringWidth(value); x++ {
+				if cells[x] != selectedSurface {
+					t.Fatalf("%q at column %d has background %q, want %q", value, x, cells[x], selectedSurface)
+				}
+			}
+		}
+	}
+	if seen != 2 {
+		t.Fatalf("checked %d metadata rows, want Git and task", seen)
 	}
 }
 

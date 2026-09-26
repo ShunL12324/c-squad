@@ -29,6 +29,10 @@ func textStyle(text, color string, bold bool) string {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(bold).Render(text)
 }
 
+func cardText(text, color, bg string, bold bool) string {
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Background(lipgloss.Color(bg)).Bold(bold).Render(text)
+}
+
 func label(state string) string {
 	switch strings.ReplaceAll(state, "_", " ") {
 	case "in progress", "working":
@@ -122,7 +126,10 @@ func (m model) memberCards() ([]string, []cardHit) {
 		}
 		first = max(1, first)
 	} else if !compact || m.height >= 16 {
-		rows = append(rows, textStyle("  MEMBERS", muted, true), "")
+		rows = append(rows, textStyle("  MEMBERS", muted, true))
+		if !compact {
+			rows = append(rows, "")
+		}
 	}
 	for i := first; i < min(m.count(), first+m.rows()); i++ {
 		appendCard(i)
@@ -218,10 +225,15 @@ func (m model) memberCardRows(i int, compact bool) []string {
 		engineName = "Codex"
 	}
 	width := max(1, m.width-6)
-	meta := spread(textStyle("▸ "+engineName, secondary, false), badge(member.State), width, bg)
-	title := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).
+	meta := spread(cardText("▸ "+engineName, secondary, bg, false), badge(member.State), width, bg)
+	title := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Background(lipgloss.Color(bg)).Bold(true).
 		Underline(i == m.selected && member.ID != m.current).Render(name)
 	if compact {
+		assignment := cardText("No task", muted, bg, false)
+		if member.Tasks != "" {
+			assignment = cardText("▸ "+line(member.Tasks, width), color, bg, true)
+		}
+		meta = spread(assignment, badge(member.State), width, bg)
 		return block([]string{title, meta}, m.width, bg, stripe)
 	}
 	cwd := member.Cwd
@@ -229,17 +241,17 @@ func (m model) memberCardRows(i int, compact bool) []string {
 		cwd = "Not recorded"
 	}
 	cwd = "⌂ Dir " + compactPath(cwd, max(1, width-6))
-	task := textStyle("No assigned task", muted, false)
+	task := cardText("No assigned task", muted, bg, false)
 	if member.Tasks != "" {
-		task = spread(textStyle("TASK", muted, false), textStyle(line(member.Tasks, max(1, width-6)), color, true), width, bg)
+		task = spread(cardText("TASK", muted, bg, false), cardText(line(member.Tasks, max(1, width-6)), color, bg, true), width, bg)
 	}
 	// The Git line takes the decorative divider's row rather than a new one, so
 	// card height and every offset derived from it stay exactly as they were.
-	divider := textStyle(strings.Repeat("─", width), "240", false)
+	divider := cardText(strings.Repeat("─", width), "240", bg, false)
 	if row := gitLine(member, width, bg); row != "" {
 		divider = row
 	}
-	return block([]string{title, meta, textStyle(cwd, secondary, false), divider, task}, m.width, bg, stripe)
+	return block([]string{title, meta, cardText(cwd, secondary, bg, false), divider, task}, m.width, bg, stripe)
 
 }
 
@@ -260,10 +272,10 @@ func gitLine(member Member, width int, bg string) string {
 	// confusion this line exists to remove, and a truncated branch still shows
 	// the segment that identifies it.
 	if member.Worktree && room > 4 {
-		left := textStyle(label, secondary, false) + textStyle(tail(value, room-3), muted, false)
-		return spread(left, textStyle("wt", secondary, false), width, bg)
+		left := cardText(label, secondary, bg, false) + cardText(tail(value, room-3), muted, bg, false)
+		return spread(left, cardText("wt", secondary, bg, false), width, bg)
 	}
-	return textStyle(label, secondary, false) + textStyle(tail(value, room), muted, false)
+	return cardText(label, secondary, bg, false) + cardText(tail(value, room), muted, bg, false)
 }
 
 func tail(s string, width int) string {

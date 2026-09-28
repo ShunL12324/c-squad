@@ -131,7 +131,7 @@ func definitions() []definition {
 		{path: "stop", args: " [TEAM]", max: 1, complete: "team", summary: "Stop team processes and retain recoverable work", flags: []string{"name"}},
 		{path: "sync", summary: "Start the active runtime if needed and retry pending delivery"},
 		{path: "reconcile", summary: "Reconcile durable Git merge intents"},
-		{path: "repin", args: " [TEAM]", max: 1, complete: "team", summary: "Recover a team whose pinned csquad build is missing or damaged, from an outside terminal", flags: []string{"name", "yes"}},
+		{path: "repin", args: " [TEAM]", max: 1, complete: "team", summary: "Move a legacy team from its private csquad copy to the installed executable", flags: []string{"name", "yes"}},
 		{path: "recover", args: " [TEAM]", max: 1, complete: "team", summary: "Restart only master in an active team, from an outside terminal", flags: []string{"name", "fresh", "prompt", "reprofile", "profile"}},
 		{path: "member add", args: " NAME", summary: "Recruit a member with a task-specific identity", min: 1, max: 1, flags: append([]string{"instructions", "profile", "task", "prompt", "color", "cwd"}, removedLaunchFlags...), example: "  csquad member add reviewer --profile claude-opus --instructions 'Review the candidate commit'"},
 		{path: "member list", summary: "List team members"},

@@ -11,7 +11,8 @@ release history; earlier releases remain available on
 - Start and resume teams with the installed csquad executable instead of
   making a new private binary copy. This keeps the executable path stable for
   antivirus allowlists. Existing teams with private copies move to the installed
-  path when resumed; their saved work remains intact.
+  path with `stop` and `resume`; team commands no longer launch those copies
+  through the installed build. Their saved work remains intact.
 - Warn that teams using the installed executable should be stopped before a
   package update and resumed afterward.
 

@@ -421,8 +421,9 @@ remove your loading line yourself if you stop using C Squad.
   delivery and cleanup; no system service is installed.
 - **Teams use the installed csquad executable.** `start` and `resume` keep its
   installed path instead of creating a private binary copy. Stop running teams
-  before updating csquad, then resume them after the update. Teams created by
-  earlier 0.12 releases keep their private copy until they resume. See
+  before updating csquad, then resume them after the update. For teams created
+  by earlier 0.12 releases, run `stop` and `resume` once to leave their private
+  copy behind. See
   [Updating](install.md#updating).
 
 ## How tasks are coordinated

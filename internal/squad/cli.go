@@ -146,7 +146,7 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 	}
 	// Legacy pinned teams forward commands to their private copy. Resume moves
 	// them to the installed executable; repin remains a legacy repair command.
-	if p[0] != "resume" && p[0] != "repin" {
+	if p[0] != "resume" && p[0] != "repin" && p[0] != "stop" && p[0] != "shutdown" {
 		if e = forward(s); e != nil {
 			return e
 		}
@@ -433,5 +433,12 @@ func stop(st *Store) error {
 		return e
 	}
 	defer unlock()
+	s, e := st.read()
+	if e != nil {
+		return e
+	}
+	if _, e = st.adoptInstalledExecutable(s); e != nil {
+		return e
+	}
 	return cleanupTeam(st, "stopped")
 }

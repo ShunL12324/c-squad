@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"github.com/charmbracelet/x/term"
 
@@ -20,10 +19,6 @@ import (
 // ErrWrongBuild refuses a write to a pinned team from any other csquad build.
 // Each team is written by exactly one build: the one recorded in its pin.
 var ErrWrongBuild = errors.New("this csquad build is not the one the team is pinned to")
-
-// forwardedEnv marks a command forwarded to a team's pinned build, so the
-// pinned build never forwards again.
-const forwardedEnv = "CSQUAD_FORWARDED"
 
 // selfSHA256 is replaceable in tests, whose binary is a Go test executable.
 var selfSHA256 = pin.SelfSHA256
@@ -113,32 +108,14 @@ func ensurePin(s *State) error {
 	return fmt.Errorf("team %s is pinned to csquad %s (%s…), but its copy is unusable: %w; run: csquad repin %s", s.ID, p.Version, p.SHA256[:12], err, s.ID)
 }
 
-// forward runs a team command with the team's pinned build instead of this
-// one. It returns without effect when this process already is that build.
+// forward protects a legacy team from silently launching its private copy.
+// The user must stop and resume it once before normal team commands continue.
 func forward(s *State) error {
-	p, pinned := teamPin(s)
+	_, pinned := teamPin(s)
 	if !pinned {
 		return nil
 	}
-	sha, err := selfSHA256()
-	if err != nil {
-		return fmt.Errorf("hash the running csquad: %w", err)
-	}
-	if sha == p.SHA256 {
-		_ = os.Unsetenv(forwardedEnv)
-		return nil
-	}
-	if os.Getenv(forwardedEnv) != "" {
-		return fmt.Errorf("forwarding loop: team %s is pinned to %s…, but its pinned build %s is %s…", s.ID, p.SHA256[:12], p.Path, sha[:12])
-	}
-	if err = ensurePin(s); err != nil {
-		return err
-	}
-	if p.Version != buildinfo.Version && stderrIsTerminal() {
-		fmt.Fprintf(os.Stderr, "csquad: team %s runs csquad %s (pinned); resume it to move to %s\n", s.ID, p.Version, buildinfo.Version)
-	}
-	argv := append([]string{p.Path}, os.Args[1:]...)
-	return syscall.Exec(p.Path, argv, append(os.Environ(), forwardedEnv+"="+p.SHA256))
+	return fmt.Errorf("team %s still uses a private csquad copy; from an outside terminal run: csquad stop %s, then csquad resume %s", s.ID, s.ID, s.ID)
 }
 
 func stderrIsTerminal() bool { return term.IsTerminal(os.Stderr.Fd()) }
@@ -179,25 +156,6 @@ var confirm = func(question string) bool {
 	return answer == "y" || answer == "yes"
 }
 
-// transitionPin moves a team to the running build in the one transaction the
-// self check lets through with a different hash. Callers hold team-lifecycle
-// and have checked the downgrade rule; every write after it is by the pin.
-func (st *Store) transitionPin() (pin.Pin, error) {
-	p, err := pin.Create()
-	if err != nil {
-		return pin.Pin{}, err
-	}
-	st.transition = true
-	defer func() { st.transition = false }()
-	return p, st.update(func(s *State) error {
-		if s.Executable != p.Path {
-			s.event("master", "pinned", p.Version+" "+p.SHA256[:12])
-		}
-		s.Executable = p.Path
-		return nil
-	})
-}
-
 // transitionExecutable retires a legacy private copy when a team resumes.
 // The one transition transaction may be written by the installed build; once
 // the ordinary path is recorded, the existing unpinned-team rules apply.
@@ -210,11 +168,29 @@ func (st *Store) transitionExecutable(path string) error {
 	})
 }
 
-// repinTeam is the one recovery for a team whose pinned copy is missing or
-// damaged. It refuses an intact pin, restores an identical build from itself,
-// applies the downgrade rule, and otherwise moves the team to this build. A
-// running team is stopped after the move, so the stop is written by the new
-// pin, not by a second build.
+// adoptInstalledExecutable is used by lifecycle commands that retire a
+// legacy pin. They hold team-lifecycle before changing the ledger.
+func (st *Store) adoptInstalledExecutable(s *State) (string, error) {
+	path, err := installedExecutable()
+	if err != nil {
+		return "", err
+	}
+	if _, pinned := teamPin(s); pinned {
+		if err = decideRepin(s); err != nil {
+			return "", err
+		}
+	}
+	if s.Executable != path {
+		if err = st.transitionExecutable(path); err != nil {
+			return "", fmt.Errorf("select installed csquad for the team: %w", err)
+		}
+	}
+	return path, nil
+}
+
+// repinTeam migrates a legacy team to the installed executable. It can repair
+// a missing private copy without creating another one. An active team is
+// stopped after the transition and can then be resumed normally.
 func repinTeam(st *Store, yes bool) error {
 	unlock, err := filelock.Acquire(st.Dir, "team-lifecycle", false)
 	if err != nil {
@@ -225,33 +201,23 @@ func repinTeam(st *Store, yes bool) error {
 	if err != nil {
 		return err
 	}
-	p, pinned := teamPin(s)
+	_, pinned := teamPin(s)
 	if !pinned {
-		return fmt.Errorf("team %s uses the installed csquad executable; repin only repairs legacy private copies", s.ID)
+		return fmt.Errorf("team %s already uses the installed csquad executable", s.ID)
 	}
-	if pin.Verify(p) == nil {
-		return fmt.Errorf("team %s's pinned csquad %s is intact; nothing to repair. To move it to this build, stop and resume it", s.ID, p.Version)
-	}
-	if ensurePin(s) == nil {
-		fmt.Fprintf(os.Stderr, "csquad: restored team %s's copy of csquad %s from this identical build\n", s.ID, p.Version)
-		return nil
-	}
-	if err = decideRepin(s); err != nil {
-		return err
-	}
-	if s.Active && !yes && !confirm(fmt.Sprintf("team %s is running; repin moves it to csquad %s and stops it. Continue? [y/N] ", s.ID, buildinfo.Version)) {
+	if s.Active && !yes && !confirm(fmt.Sprintf("team %s is running; moving it to the installed csquad will stop it. Continue? [y/N] ", s.ID)) {
 		return fmt.Errorf("team %s was not changed", s.ID)
 	}
-	next, err := st.transitionPin()
+	path, err := st.adoptInstalledExecutable(s)
 	if err != nil {
-		return fmt.Errorf("pin this csquad build for the team: %w", err)
+		return err
 	}
 	if s.Active {
 		if err = cleanupTeam(st, "stopped"); err != nil {
 			return err
 		}
 	}
-	fmt.Fprintf(os.Stderr, "csquad: team %s now uses csquad %s (%s…); start it with: csquad resume %s\n", s.ID, next.Version, next.SHA256[:12], s.ID)
+	fmt.Fprintf(os.Stderr, "csquad: team %s now uses the installed executable %s; resume it with: csquad resume %s\n", s.ID, path, s.ID)
 	return nil
 }
 

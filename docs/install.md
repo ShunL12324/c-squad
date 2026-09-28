@@ -185,10 +185,12 @@ the update. A running team's later hooks and restarts may otherwise use the new
 build before the team has been resumed.
 
 Teams created by csquad 0.12.0 through 0.12.9 may still use a private copy.
-Their commands continue to work through that copy until the team is stopped.
-`resume` moves them to the installed executable, refusing a known downgrade
+Use `csquad stop TEAM` followed by `csquad resume TEAM` once to move them to
+the installed executable. Other team commands from the installed build ask for
+this migration instead of launching the private copy. The migration refuses a known downgrade
 and asking before moving between builds whose order cannot be determined.
-`csquad repin TEAM` remains available to repair a damaged legacy copy. Unused
+`csquad repin TEAM` can also migrate a legacy team, including one whose private
+copy is missing or damaged. It stops an active team first. Unused
 copies under `~/.local/share/csquad/versions/` are not removed automatically;
 `csquad update --check` reports their disk usage.
 

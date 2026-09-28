@@ -16,7 +16,7 @@ import (
 // ledger. Clearing the keys once, before any test runs, keeps the suite bound to
 // its temporary stores; subprocess helpers inherit the cleaned copy through
 // os.Environ. Tests that need a value set it back with t.Setenv.
-var hermeticKeys = []string{"CSQUAD_STATE_DIR", "CSQUAD_MEMBER_ID", "CSQUAD_GENERATION", "CSQUAD_HOME", "CSQUAD_CONFIG", "CSQUAD_VERSIONS_DIR", forwardedEnv}
+var hermeticKeys = []string{"CSQUAD_STATE_DIR", "CSQUAD_MEMBER_ID", "CSQUAD_GENERATION", "CSQUAD_HOME", "CSQUAD_CONFIG", "CSQUAD_VERSIONS_DIR"}
 
 // CSQUAD_CONFIG is cleared like the others and then pointed at a temporary file:
 // config.Load falls back to the real user configuration when it is unset, and

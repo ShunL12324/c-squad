@@ -75,7 +75,13 @@ func excludeProjectState(root string) error {
 }
 func shutdownCommand(st *Store, s *State, reason string) string {
 	// Only ever run through run-shell, which expands formats.
-	return runShellQuote(s.Executable) + " --team " + runShellQuote(st.Dir) + " --member master --generation 0 shutdown --epoch " + strconv.Itoa(s.Epoch) + " --expected-generation " + strconv.Itoa(s.Members["master"].Generation) + " --reason " + runShellQuote(reason)
+	binary := s.Executable
+	if _, pinned := teamPin(s); pinned {
+		if installed, err := installedExecutable(); err == nil {
+			binary = installed
+		}
+	}
+	return runShellQuote(binary) + " --team " + runShellQuote(st.Dir) + " --member master --generation 0 shutdown --epoch " + strconv.Itoa(s.Epoch) + " --expected-generation " + strconv.Itoa(s.Members["master"].Generation) + " --reason " + runShellQuote(reason)
 }
 func requestShutdown(st *Store, s *State, reason string) error {
 	_, e := tm(s, "run-shell", "-b", shutdownCommand(st, s, reason))
@@ -104,6 +110,9 @@ func shutdownRequest(st *Store, o options) error {
 	}
 	if !s.Active && s.Phase != TeamPhaseStopping && s.Phase != TeamPhaseCleanupFailed {
 		return nil
+	}
+	if _, e = st.adoptInstalledExecutable(s); e != nil {
+		return e
 	}
 	return cleanupTeam(st, o["reason"])
 }
@@ -271,17 +280,9 @@ func resumeTeam(st *Store, o options) (err error) {
 	// Older teams may still have a private copy. Move them to the installed
 	// executable before cleanup so this process can write their ledger. New
 	// teams already use the installed executable and need no transition.
-	binary, e := installedExecutable()
+	binary, e := st.adoptInstalledExecutable(s)
 	if e != nil {
 		return e
-	}
-	if _, pinned := teamPin(s); pinned {
-		if e = decideRepin(s); e != nil {
-			return e
-		}
-	}
-	if e = st.transitionExecutable(binary); e != nil {
-		return fmt.Errorf("select installed csquad for the team: %w", e)
 	}
 	started := false
 	defer func() {

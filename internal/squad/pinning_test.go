@@ -151,42 +151,30 @@ func TestRepinDowngradeRule(t *testing.T) {
 	must(t, decideRepin(s))
 }
 
-// repin repairs only a broken pin: it refuses an unpinned team and an intact
-// pin, restores an identical build from itself, and otherwise moves the team
-// to this build after the downgrade rule.
-func TestRepinRecoversOnlyABrokenPin(t *testing.T) {
+// repin moves a legacy team to the installed path without creating a copy.
+func TestRepinMigratesLegacyCopy(t *testing.T) {
 	st := testStore(t)
 	must(t, st.update(func(s *State) error { s.Active = false; return nil }))
-	if err := repinTeam(st, false); err == nil || !strings.Contains(err.Error(), "installed csquad executable") {
-		t.Fatalf("unpinned team: %v", err)
+	if err := repinTeam(st, false); err == nil || !strings.Contains(err.Error(), "already uses the installed") {
+		t.Fatalf("installed team: %v", err)
 	}
-	self, err := pin.Create()
-	must(t, err)
-	pinTo(t, st, self)
-	if err = repinTeam(st, false); err == nil || !strings.Contains(err.Error(), "intact") {
-		t.Fatalf("intact pin: %v", err)
-	}
-	must(t, os.Chmod(self.Path, 0700))
-	must(t, os.Remove(self.Path))
-	must(t, repinTeam(st, false))
-	must(t, pin.Verify(self))
-
-	gone := fakePin(t, "0.0.1", []byte("an older build"))
-	pinTo(t, st, gone)
-	must(t, os.Chmod(gone.Path, 0700))
-	must(t, os.Remove(gone.Path))
+	legacy := fakePin(t, "0.0.1", []byte("old build"))
+	pinTo(t, st, legacy)
+	must(t, os.Chmod(legacy.Path, 0700))
+	must(t, os.Remove(legacy.Path))
 	previous := confirm
 	t.Cleanup(func() { confirm = previous })
-	confirm = func(string) bool { return false }
-	if err = repinTeam(st, false); err == nil {
-		t.Fatal("an unordered build re-pinned without confirmation")
-	}
 	confirm = func(string) bool { return true }
 	must(t, repinTeam(st, false))
 	s, err := st.read()
 	must(t, err)
-	if s.Executable != self.Path {
-		t.Fatalf("pinned to %s, want this build %s", s.Executable, self.Path)
+	want, err := installedExecutable()
+	must(t, err)
+	if s.Executable != want {
+		t.Fatalf("executable = %q, want installed %q", s.Executable, want)
+	}
+	if _, err := os.Stat(legacy.Path); !os.IsNotExist(err) {
+		t.Fatalf("private copy was recreated: %v", err)
 	}
 	t.Setenv("CSQUAD_MEMBER_ID", "a")
 	if err = Execute([]string{"repin"}, options{"team": st.Dir}, nil); err == nil {
@@ -217,72 +205,20 @@ func pinBuild(t *testing.T, version string) string {
 	return path
 }
 
-// A newer csquad forwards a team command to the team's pinned build, with the
-// argv, cwd and environment unchanged, however the team was selected. Exempt
-// commands run where they are, a second forward is a loop, and a missing pin
-// fails with the recovery command without writing.
-func TestForwardingToThePinnedBuild(t *testing.T) {
-	binary := pinBuild(t, "0.2.0")
-	home := t.TempDir()
-	capture := filepath.Join(t.TempDir(), "capture")
-	script := []byte("#!/bin/sh\n{ printf '%s\\n' \"$@\"; echo \"FORWARDED=$CSQUAD_FORWARDED\"; pwd; } > " + shellQuote(capture) + "\n")
-	p := fakePin(t, "0.1.0", script)
-	st := namedTeamStore(t, home, "fwd")
-	pinTo(t, st, p)
-	must(t, os.WriteFile(filepath.Join(home, "last-team"), []byte(st.Dir), 0600))
-	cwd := t.TempDir()
-	run := func(env []string, args ...string) (string, error) {
-		t.Helper()
-		_ = os.Remove(capture)
-		cmd := exec.Command(binary, args...)
-		cmd.Dir = cwd
-		cmd.Env = append(append(os.Environ(), "CSQUAD_HOME="+home, "TMUX="), env...)
-		out, err := cmd.CombinedOutput()
-		return string(out), err
+// Installed csquad commands never execute a legacy team's private copy.
+func TestLegacyCommandsDoNotLaunchPrivateCopy(t *testing.T) {
+	st := testStore(t)
+	marker := filepath.Join(t.TempDir(), "executed")
+	legacy := fakePin(t, "0.0.1", []byte("#!/bin/sh\ntouch "+shellQuote(marker)+"\n"))
+	pinTo(t, st, legacy)
+	runAs(t, strings.Repeat("0", 64))
+	s, err := st.read()
+	must(t, err)
+	if err := forward(s); err == nil || !strings.Contains(err.Error(), "csquad stop") {
+		t.Fatalf("legacy command: %v", err)
 	}
-	for _, args := range [][]string{
-		{"--team", st.Dir, "board"},
-		{"--state-dir", st.Dir, "task", "list"},
-		{"--team-name", "fwd", "member", "list"},
-		{"stop", "fwd"},
-		{"attach", "fwd"},
-		{"board"},
-	} {
-		if out, err := run(nil, args...); err != nil {
-			t.Fatalf("%v: %v %s", args, err, out)
-		}
-		data, err := os.ReadFile(capture)
-		if err != nil {
-			t.Fatalf("%v was not forwarded", args)
-		}
-		want := strings.Join(args, "\n") + "\nFORWARDED=" + p.SHA256 + "\n" + cwd + "\n"
-		if string(data) != want {
-			t.Fatalf("%v forwarded as:\n%s", args, data)
-		}
-	}
-	for _, args := range [][]string{{"version"}, {"list"}} {
-		if out, err := run(nil, args...); err != nil {
-			t.Fatalf("%v: %v %s", args, err, out)
-		}
-		if _, err := os.Stat(capture); err == nil {
-			t.Fatalf("exempt %v was forwarded", args)
-		}
-	}
-	if out, err := run([]string{forwardedEnv + "=" + p.SHA256}, "--team", st.Dir, "board"); err == nil || !strings.Contains(out, "forwarding loop") {
-		t.Fatalf("second forward: %v %s", err, out)
-	}
-	must(t, os.Chmod(p.Path, 0700))
-	must(t, os.WriteFile(p.Path, []byte("#!/bin/sh\necho tampered\n"), 0700))
-	before := ledgerJSON(t, st)
-	if out, err := run(nil, "--team", st.Dir, "board"); err == nil || !strings.Contains(out, "csquad repin fwd") {
-		t.Fatalf("damaged pin: %v %s", err, out)
-	}
-	must(t, os.Remove(p.Path))
-	if out, err := run(nil, "stop", "fwd"); err == nil || !strings.Contains(out, "csquad repin fwd") {
-		t.Fatalf("missing pin: %v %s", err, out)
-	}
-	if ledgerJSON(t, st) != before {
-		t.Fatal("a failed forward wrote the ledger")
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("legacy executable ran: %v", err)
 	}
 }
 
@@ -356,11 +292,17 @@ func TestTeamUsesInstalledExecutableAcrossStartAndResume(t *testing.T) {
 	if _, pinned := teamPin(state()); pinned {
 		t.Fatal("new team unexpectedly uses a private copy")
 	}
-	cli(install, "stop", "pinned")
 	data, err := os.ReadFile(older)
 	must(t, err)
 	legacy := fakePin(t, "0.0.1", data)
 	pinTo(t, st, legacy)
+	if out, err := run(install, "--team", dir, "board"); err == nil || !strings.Contains(out, "csquad stop") {
+		t.Fatalf("legacy command should request migration without running the copy: %v %s", err, out)
+	}
+	cli(install, "stop", "pinned")
+	if got := state().Executable; got != install {
+		t.Fatalf("stop executable = %q, want installed path %q", got, install)
+	}
 	cli(install, "resume", "pinned", "--detach")
 	if got := state().Executable; got != install {
 		t.Fatalf("legacy resume executable = %q, want installed path %q", got, install)

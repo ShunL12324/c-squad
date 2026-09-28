@@ -112,6 +112,7 @@ func TestFilteredToolEnvironmentRetainsLedgerIdentity(t *testing.T) {
 		s.Members["master"].State = MemberStateStopped
 		return nil
 	}))
+	recordInstalledTestBuild(t, st, binary)
 	s, err := st.read()
 	must(t, err)
 	env, err := st.memberEnvironment(s, s.Members["a"])

@@ -426,9 +426,9 @@ func reapProjectTeams(base string) error {
 			continue
 		}
 		s, err := st.read()
-		if err == nil && !isPinnedBuild(s) {
+		if err == nil && !isTeamBuild(s) {
 			// Another build owns that team; its own csquad cleans it up.
-			fmt.Fprintf(os.Stderr, "csquad: team %s is pinned to another csquad build; not cleaning it up from this one\n", s.ID)
+			fmt.Fprintf(os.Stderr, "csquad: team %s uses another csquad build; not cleaning it up from this one\n", s.ID)
 			unlock()
 			_ = st.DB.Close()
 			continue

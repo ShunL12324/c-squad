@@ -125,6 +125,9 @@ func Run(o Options) error {
 		_, _ = fmt.Fprintln(o.Out, ch.Hint)
 		return fmt.Errorf("csquad cannot update a %s installation itself", ch.Name)
 	}
+	if err := requireStoppedTeams(o); err != nil {
+		return err
+	}
 	var download *debPackage
 	if ch.deb {
 		if download, err = prepareDeb(o.Out); err != nil {
@@ -134,7 +137,6 @@ func Run(o Options) error {
 		ch.Commands = [][]string{{"sudo", "apt-get", "install", download.path}}
 	}
 	describe(o.Out, ch)
-	warnUnpinned(o)
 	switch {
 	case ch.Root && !isTTY():
 		return errors.New("these commands need sudo, which csquad runs only in an interactive terminal; run them yourself")
@@ -180,15 +182,20 @@ func quoteAll(argv []string) []string {
 	return out
 }
 
-func warnUnpinned(o Options) {
+func requireStoppedTeams(o Options) error {
 	if o.Teams == nil {
-		return
+		return nil
 	}
+	var active []string
 	for _, t := range o.Teams() {
 		if t.Active && !t.Pinned {
-			_, _ = fmt.Fprintf(o.Out, "Warning: team %s is running from the installed csquad executable. Stop it before updating, then resume it afterward.\n", t.Name)
+			active = append(active, t.Name)
 		}
 	}
+	if len(active) > 0 {
+		return fmt.Errorf("stop active teams before updating (%s), then resume them afterward", strings.Join(active, ", "))
+	}
+	return nil
 }
 
 // report reads the version from the channel's stable entry, since the upgrade

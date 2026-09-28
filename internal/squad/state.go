@@ -189,6 +189,7 @@ type State struct {
 	Root        string               `json:"root"`
 	Socket      string               `json:"tmux_socket"`
 	Executable  string               `json:"executable"`
+	BuildSHA256 string               `json:"build_sha256,omitempty"`
 	Active      bool                 `json:"active"`
 	Members     map[string]*Member   `json:"members"`
 	Tasks       map[string]*Task     `json:"tasks"`
@@ -252,8 +253,8 @@ type Store struct {
 	DB         *sql.DB
 	Actor      string
 	Generation int
-	// transition lets one re-pin transaction write before this process is the
-	// team's pinned build. Only transitionPin sets it.
+	// transition permits the lifecycle transaction that adopts the installed
+	// build after all processes from the previous build have been stopped.
 	transition bool
 }
 
@@ -307,8 +308,8 @@ func (st *Store) update(fn func(*State) error) error {
 			return ErrStaleGeneration
 		}
 	}
-	// Compared in every transaction against the pin just read, so a process
-	// that passed before a re-pin cannot keep writing after it.
+	// Compare every transaction against the recorded build, so a process from
+	// before an executable transition cannot keep writing afterward.
 	if err = st.checkWriter(&s); err != nil {
 		return err
 	}

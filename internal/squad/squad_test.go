@@ -1,6 +1,8 @@
 package squad
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -159,18 +161,45 @@ func TestTransactionRollback(t *testing.T) {
 	}
 }
 
-// actAsPinnedBuild lets in-process test code write a team that a built csquad
-// binary started and pinned. The self check refuses every other build, and
-// this test binary is one; the override stands in for running the pinned copy.
+// actAsPinnedBuild lets in-process test code mutate a team started by a built
+// csquad binary. The test executable is a different installed image.
 func actAsPinnedBuild(t *testing.T, st *Store) {
 	t.Helper()
 	s, err := st.read()
 	must(t, err)
+	previousTransition := st.transition
+	st.transition = true
+	t.Cleanup(func() { st.transition = previousTransition })
 	p, ok := teamPin(s)
 	if !ok {
+		image, err := os.Stat(s.Executable)
+		must(t, err)
+		priorImage, priorImageErr, priorSHA := runningImageInfo, runningImageErr, selfSHA256
+		runningImageInfo, runningImageErr = image, nil
+		selfSHA256 = func() (string, error) { return s.BuildSHA256, nil }
+		t.Cleanup(func() {
+			runningImageInfo, runningImageErr, selfSHA256 = priorImage, priorImageErr, priorSHA
+		})
 		return
 	}
 	previous := selfSHA256
 	selfSHA256 = func() (string, error) { return p.SHA256, nil }
 	t.Cleanup(func() { selfSHA256 = previous })
+}
+
+// recordInstalledTestBuild makes a synthetic team runnable by a separately
+// built csquad, while allowing this test process to inspect and edit its state.
+func recordInstalledTestBuild(t *testing.T, st *Store, binary string) {
+	t.Helper()
+	data, err := os.ReadFile(binary)
+	must(t, err)
+	sha := sha256.Sum256(data)
+	previous := st.transition
+	st.transition = true
+	must(t, st.update(func(s *State) error {
+		s.Executable = binary
+		s.BuildSHA256 = hex.EncodeToString(sha[:])
+		return nil
+	}))
+	t.Cleanup(func() { st.transition = previous })
 }

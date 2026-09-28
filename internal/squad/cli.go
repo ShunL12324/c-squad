@@ -397,12 +397,16 @@ func start(o options) error {
 	if e != nil {
 		return e
 	}
+	buildSHA, e := selfSHA256()
+	if e != nil {
+		return e
+	}
 	socket := filepath.Join(os.TempDir(), fmt.Sprintf("csq-%d-%s.sock", os.Getuid(), hex.EncodeToString(b)))
 	if v := os.Getenv("TMUX"); v != "" {
 		socket = strings.Split(v, ",")[0]
 	}
 	e = st.update(func(s *State) error {
-		*s = State{Version: stateVersion, Epoch: 1, Phase: TeamPhaseStarting, OwnSocket: os.Getenv("TMUX") == "", Config: &cfg, ID: id, Root: root, Socket: socket, Executable: bin, Active: true, Members: map[string]*Member{}, Tasks: map[string]*Task{}, Questions: map[string]*Question{}, Messages: []*Message{}, Events: []Event{}}
+		*s = State{Version: stateVersion, Epoch: 1, Phase: TeamPhaseStarting, OwnSocket: os.Getenv("TMUX") == "", Config: &cfg, ID: id, Root: root, Socket: socket, Executable: bin, BuildSHA256: buildSHA, Active: true, Members: map[string]*Member{}, Tasks: map[string]*Task{}, Questions: map[string]*Question{}, Messages: []*Message{}, Events: []Event{}}
 		s.Members["master"] = &Member{Color: tmux.Color(o["color"]), Env: masterEnv, ID: "master", Engine: master.Engine, Model: master.Model, Profile: masterProfile, Session: "csq-" + id + "-master", Cwd: root, State: MemberStateStarting, Generation: 1}
 		return nil
 	})

@@ -137,8 +137,10 @@ func TestCustomCommandsAcrossLifecycle(t *testing.T) {
 				must(t, err)
 				defer st.DB.Close()
 				defer func() {
-					if err := stop(st); err != nil {
-						t.Errorf("stop test team: %v", err)
+					cmd := exec.Command(binary, "stop", "custom")
+					cmd.Dir, cmd.Env = root, env
+					if out, err := cmd.CombinedOutput(); err != nil {
+						t.Errorf("stop test team: %v %s", err, out)
 					}
 				}()
 				cli("member", "add", "worker", "--instructions", "capture the launch")

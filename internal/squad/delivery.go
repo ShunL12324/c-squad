@@ -274,8 +274,8 @@ func (st *Store) syncMessages() error {
 	if e != nil {
 		return e
 	}
-	// Delivery writes the ledger; on a pinned team only its own build does it.
-	if !isPinnedBuild(s) {
+	// Delivery writes the ledger; only the team's recorded build may do it.
+	if !isTeamBuild(s) {
 		return nil
 	}
 	var failed []string

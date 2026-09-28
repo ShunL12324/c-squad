@@ -11,7 +11,7 @@ import (
 // runtimeProtocol must change whenever the persisted ledger schema changes. A
 // runtime left from an older binary rewrites the whole ledger with its own
 // structs, so keeping it alive after an upgrade silently drops new fields.
-const runtimeProtocol = "9"
+const runtimeProtocol = "10"
 
 func runtimeName(s *State) string { return "csq-" + s.ID + "-runtime" }
 func (st *Store) startRuntime() error {
@@ -29,7 +29,7 @@ func (st *Store) startRuntime() error {
 	}
 	// Only the team's own build may replace its runtime; a newer caller would
 	// otherwise see a protocol mismatch and restart it on every call.
-	if !isPinnedBuild(s) {
+	if !isTeamBuild(s) {
 		return nil
 	}
 	if e = ensurePin(s); e != nil {

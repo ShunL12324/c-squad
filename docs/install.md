@@ -16,7 +16,8 @@ Create a named team with `csquad new -s NAME`; `csquad start --name NAME`
 remains compatible. Use `list` to find teams, `attach NAME` to enter a running
 team, `resume NAME` to restore a stopped team, and `stop NAME` to stop it.
 
-Or run `npx csquad`. Install npm inside WSL 2 when using Windows.
+For one-off commands, run `npx csquad`. Install csquad persistently before
+starting or resuming a team. Install npm inside WSL 2 when using Windows.
 The package contains native binaries for macOS and Linux on x64 and arm64;
 installation needs no Go compiler, lifecycle scripts, or GitHub downloads.
 
@@ -179,10 +180,12 @@ own records:
 ### Running teams keep their version
 
 New teams run the installed csquad executable at a stable path. `start` and
-`resume` do not create private binary copies. Package manager updates replace
-that executable, so stop running teams before updating and resume them after
-the update. A running team's later hooks and restarts may otherwise use the new
-build before the team has been resumed.
+`resume` do not create private binary copies. Temporary `npx` and `go run`
+paths cannot host a persistent team. Stop running teams before a package
+manager update and resume them afterward. `csquad update` refuses an update
+when it finds an active team using the installed executable. If another updater
+replaces the executable, the old runtime and team commands refuse writes until
+`stop` and `resume` migrate the team safely.
 
 Teams created by csquad 0.12.0 through 0.12.9 may still use a private copy.
 Use `csquad stop TEAM` followed by `csquad resume TEAM` once to move them to

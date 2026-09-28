@@ -59,6 +59,7 @@ func TestPanelsPreserveEngineAndMasterLifecycle(t *testing.T) {
 		s.Members["master"].Pane = pane
 		return nil
 	}))
+	recordInstalledTestBuild(t, st, binary)
 	s, _ := st.read()
 	workerPane, err := tm(s, "new-session", "-d", "-s", "panel-worker", "-x", "180", "-y", "35", "-P", "-F", "#{pane_id}", "cat")
 	must(t, err)
@@ -207,6 +208,7 @@ func reproTeam(t *testing.T, newbieWidth, newbieHeight string) (*Store, string) 
 		s.Members["b"].Session = "layout-b"
 		return nil
 	}))
+	recordInstalledTestBuild(t, st, binary)
 	s, _ := st.read()
 	// "a" was already visited at the client's size; "b" stands in for a freshly
 	// created member, born detached at a geometry no client is using.

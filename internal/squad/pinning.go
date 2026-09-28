@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/x/term"
@@ -13,15 +15,48 @@ import (
 	"github.com/ShunL12324/c-squad/internal/buildinfo"
 	"github.com/ShunL12324/c-squad/internal/filelock"
 	"github.com/ShunL12324/c-squad/internal/pin"
+	"github.com/ShunL12324/c-squad/internal/process"
 	"github.com/ShunL12324/c-squad/internal/update"
 )
 
-// ErrWrongBuild refuses a write to a pinned team from any other csquad build.
-// Each team is written by exactly one build: the one recorded in its pin.
-var ErrWrongBuild = errors.New("this csquad build is not the one the team is pinned to")
+// ErrWrongBuild refuses writes from a different build or a replaced install.
+var ErrWrongBuild = errors.New("this csquad build is not the one recorded for the team")
 
 // selfSHA256 is replaceable in tests, whose binary is a Go test executable.
 var selfSHA256 = pin.SelfSHA256
+
+// Capture the executable's file identity at process start. The path may later
+// be replaced by a package manager while this process is still running.
+var runningImageInfo, runningImageErr = func() (os.FileInfo, error) {
+	path, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	return os.Stat(path)
+}()
+
+func installedImageUnchanged(path string) bool {
+	if runningImageErr != nil || path == "" {
+		return false
+	}
+	current, err := os.Stat(path)
+	return err == nil && os.SameFile(runningImageInfo, current) &&
+		runningImageInfo.Size() == current.Size() && runningImageInfo.ModTime().Equal(current.ModTime())
+}
+
+func temporaryExecutable(path string) bool {
+	for _, part := range strings.Split(filepath.Clean(path), string(os.PathSeparator)) {
+		if part == "_npx" {
+			return true
+		}
+		if strings.HasPrefix(part, "go-build") {
+			if _, err := strconv.ParseUint(strings.TrimPrefix(part, "go-build"), 10, 64); err == nil {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 // installedExecutable prefers a PATH entry for this exact executable, so
 // package-manager symlinks remain valid when their versioned target changes.
@@ -31,6 +66,9 @@ func installedExecutable() (string, error) {
 	self, err := os.Executable()
 	if err != nil {
 		return "", err
+	}
+	if !strings.HasSuffix(filepath.Base(self), ".test") && temporaryExecutable(self) {
+		return "", fmt.Errorf("%s is a temporary csquad installation; install csquad in a persistent location before starting or resuming a team", self)
 	}
 	selfInfo, err := os.Stat(self)
 	if err != nil {
@@ -53,38 +91,48 @@ func teamPin(s *State) (pin.Pin, bool) {
 	return pin.Parse(s.Executable)
 }
 
-// checkWriter is the per-transaction self check: on a pinned team the running
-// image must hash to the pin. The path is not compared; identical bytes are the
-// same build wherever they run from. Only a re-pin's transition transaction may
-// pass with a different hash.
+// checkWriter fences every ledger transaction to the team's recorded build.
+// Only the lifecycle transition may write a different build.
 func (st *Store) checkWriter(s *State) error {
 	p, pinned := teamPin(s)
-	if !pinned || st.transition {
+	if st.transition {
+		return nil
+	}
+	if !pinned && s.BuildSHA256 == "" {
 		return nil
 	}
 	sha, err := selfSHA256()
 	if err != nil {
 		return fmt.Errorf("hash the running csquad: %w", err)
 	}
-	if sha != p.SHA256 {
+	if pinned && sha != p.SHA256 {
 		return fmt.Errorf("%w (team %s uses csquad %s, %s…; this is %s, %s…); %s", ErrWrongBuild, s.ID, p.Version, p.SHA256[:12], buildinfo.Version, sha[:12], pinHint(s))
+	}
+	if !pinned && (sha != s.BuildSHA256 || !installedImageUnchanged(s.Executable)) {
+		return fmt.Errorf("%w: team %s uses a different installed csquad build; stop and resume it from an outside terminal", ErrWrongBuild, s.ID)
 	}
 	return nil
 }
 
-// isPinnedBuild reports whether the running build may drive the team's runtime
-// and delivery. On an unpinned team every build may, as before pinning.
-func isPinnedBuild(s *State) bool {
+// isTeamBuild reports whether the running build may drive the team's runtime.
+func isTeamBuild(s *State) bool {
 	p, pinned := teamPin(s)
 	if !pinned {
-		return true
+		if s.BuildSHA256 == "" {
+			return true
+		}
+		if !installedImageUnchanged(s.Executable) {
+			return false
+		}
+		sha, err := selfSHA256()
+		return err == nil && sha == s.BuildSHA256
 	}
 	sha, err := selfSHA256()
 	return err == nil && sha == p.SHA256
 }
 
 func pinHint(s *State) string {
-	return "run it through the team's own build (any csquad command forwards there), or run: csquad repin " + s.ID
+	return "from an outside terminal run: csquad stop " + s.ID + ", then csquad resume " + s.ID
 }
 
 // ensurePin verifies the pinned copy before csquad starts or forwards to it.
@@ -112,10 +160,13 @@ func ensurePin(s *State) error {
 // The user must stop and resume it once before normal team commands continue.
 func forward(s *State) error {
 	_, pinned := teamPin(s)
-	if !pinned {
+	if !pinned && (s.Executable == "" || s.BuildSHA256 != "") {
+		if s.BuildSHA256 != "" && !isTeamBuild(s) {
+			return fmt.Errorf("%w: team %s uses a different installed csquad build; from an outside terminal run: csquad stop %s, then csquad resume %s", ErrWrongBuild, s.ID, s.ID, s.ID)
+		}
 		return nil
 	}
-	return fmt.Errorf("team %s still uses a private csquad copy; from an outside terminal run: csquad stop %s, then csquad resume %s", s.ID, s.ID, s.ID)
+	return fmt.Errorf("team %s needs a one-time executable migration; from an outside terminal run: csquad stop %s, then csquad resume %s", s.ID, s.ID, s.ID)
 }
 
 func stderrIsTerminal() bool { return term.IsTerminal(os.Stderr.Fd()) }
@@ -138,7 +189,7 @@ func decideRepin(s *State) error {
 	case pin.Older:
 		return fmt.Errorf("team %s is pinned to csquad %s; this is %s, which is older. Use that build: %s resume %s", s.ID, p.Version, buildinfo.Version, p.Path, s.ID)
 	}
-	question := fmt.Sprintf("team %s is pinned to csquad %s (%s…); this is csquad %s (%s…), and their order cannot be determined. Pin the team to this build? [y/N] ", s.ID, p.Version, p.SHA256[:12], buildinfo.Version, sha[:12])
+	question := fmt.Sprintf("team %s is pinned to csquad %s (%s…); this is csquad %s (%s…), and their order cannot be determined. Move the team to this installed build? [y/N] ", s.ID, p.Version, p.SHA256[:12], buildinfo.Version, sha[:12])
 	if !confirm(question) {
 		return fmt.Errorf("team %s keeps csquad %s; use that build: %s resume %s", s.ID, p.Version, p.Path, s.ID)
 	}
@@ -156,20 +207,94 @@ var confirm = func(question string) bool {
 	return answer == "y" || answer == "yes"
 }
 
-// transitionExecutable retires a legacy private copy when a team resumes.
-// The one transition transaction may be written by the installed build; once
-// the ordinary path is recorded, the existing unpinned-team rules apply.
+// transitionExecutable records the new build after all old processes stop.
 func (st *Store) transitionExecutable(path string) error {
+	sha, err := selfSHA256()
+	if err != nil {
+		return err
+	}
 	st.transition = true
 	defer func() { st.transition = false }()
 	return st.update(func(s *State) error {
 		s.Executable = path
+		s.BuildSHA256 = sha
+		s.Active = false
+		s.Phase = TeamPhaseStopping
 		return nil
 	})
 }
 
-// adoptInstalledExecutable is used by lifecycle commands that retire a
-// legacy pin. They hold team-lifecycle before changing the ledger.
+// quiesceOldBuild stops every process that might still write the old schema.
+// The caller holds team-lifecycle; these locks exclude concurrent member and
+// runtime launches until the new build is committed to the ledger.
+func (st *Store) quiesceOldBuild(s *State) error {
+	var unlocks []func()
+	defer func() {
+		for i := len(unlocks) - 1; i >= 0; i-- {
+			unlocks[i]()
+		}
+	}()
+	names := []string{"runtime-start"}
+	for id := range s.Members {
+		names = append(names, "member-"+id)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		unlock, err := filelock.Acquire(st.Dir, name, false)
+		if err != nil {
+			return err
+		}
+		unlocks = append(unlocks, unlock)
+	}
+	name := runtimeName(s)
+	if _, err := tm(s, "has-session", "-t", "="+name); err == nil {
+		out, err := tm(s, "display-message", "-p", "-t", "="+name+":", "#{pane_pid} #{pane_dead}")
+		if err != nil {
+			return err
+		}
+		fields := strings.Fields(out)
+		if len(fields) != 2 || (fields[1] != "0" && fields[1] != "1") {
+			return fmt.Errorf("cannot identify old runtime process: %q", out)
+		}
+		if fields[1] == "0" {
+			pid, err := strconv.Atoi(fields[0])
+			if err != nil || pid <= 1 {
+				return fmt.Errorf("cannot identify old runtime process: %q", out)
+			}
+			all, err := process.Snapshot()
+			if err != nil {
+				return err
+			}
+			if identity, ok := all[pid]; ok {
+				if err := process.StopTree(pid, identity.Start); err != nil {
+					return fmt.Errorf("stop old runtime: %w", err)
+				}
+			}
+		}
+		if _, err := tm(s, "kill-session", "-t", "="+name); err != nil {
+			if _, stillPresent := tm(s, "has-session", "-t", "="+name); stillPresent == nil {
+				return err
+			}
+		}
+	}
+	ids := make([]string, 0, len(s.Members))
+	for id := range s.Members {
+		if id != "master" {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	ids = append(ids, "master")
+	for _, id := range ids {
+		if err := killMember(st, id); err != nil {
+			return fmt.Errorf("stop old member %s: %w", id, err)
+		}
+	}
+	return nil
+}
+
+// adoptInstalledExecutable is used by lifecycle commands changing the saved
+// build. They hold team-lifecycle before changing the ledger.
 func (st *Store) adoptInstalledExecutable(s *State) (string, error) {
 	path, err := installedExecutable()
 	if err != nil {
@@ -180,7 +305,14 @@ func (st *Store) adoptInstalledExecutable(s *State) (string, error) {
 			return "", err
 		}
 	}
-	if s.Executable != path {
+	sha, err := selfSHA256()
+	if err != nil {
+		return "", err
+	}
+	if s.Executable != path || s.BuildSHA256 != sha {
+		if err = st.quiesceOldBuild(s); err != nil {
+			return "", fmt.Errorf("stop old csquad processes before changing builds: %w", err)
+		}
 		if err = st.transitionExecutable(path); err != nil {
 			return "", fmt.Errorf("select installed csquad for the team: %w", err)
 		}

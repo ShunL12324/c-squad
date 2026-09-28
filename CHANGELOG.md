@@ -4,6 +4,17 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
+## v0.12.11 — 2026-09-28
+
+### Fixed
+
+- Stop legacy runtime and member processes before switching their team to the
+  installed executable, so an older build cannot rewrite the migrated state.
+- Record each team's installed build and reject commands from a replaced build
+  until the team is stopped and resumed. Refuse `csquad update` while a known
+  team using the installed executable is active.
+- Reject temporary `npx` and `go run` executable paths for persistent teams.
+
 ## v0.12.10 — 2026-09-28
 
 ### Changed

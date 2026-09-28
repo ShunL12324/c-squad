@@ -61,6 +61,20 @@ func TestInstalledExecutableKeepsPathSymlink(t *testing.T) {
 	}
 }
 
+func TestTemporaryExecutablePaths(t *testing.T) {
+	for _, path := range []string{
+		"/tmp/go-build123/b001/exe/csquad",
+		"/home/user/.npm/_npx/123/node_modules/csquad/native/linux-x64/csquad",
+	} {
+		if !temporaryExecutable(path) {
+			t.Fatalf("accepted temporary executable %s", path)
+		}
+	}
+	if temporaryExecutable("/usr/local/bin/csquad") {
+		t.Fatal("rejected persistent executable")
+	}
+}
+
 // Every transaction compares the running build with the pin it has just read,
 // so a process that wrote before a re-pin is refused after it; only the
 // transition transaction may write with another hash.
@@ -74,7 +88,7 @@ func TestSelfCheckRunsInEveryTransaction(t *testing.T) {
 	pinTo(t, st, second)
 	before := ledgerJSON(t, st)
 	err := st.update(func(s *State) error { s.Members["a"].Handoff = "stale writer"; return nil })
-	if !errors.Is(err, ErrWrongBuild) || !strings.Contains(err.Error(), "csquad repin test") {
+	if !errors.Is(err, ErrWrongBuild) || !strings.Contains(err.Error(), "csquad stop test") {
 		t.Fatalf("stale build wrote: %v", err)
 	}
 	if ledgerJSON(t, st) != before {
@@ -309,6 +323,16 @@ func TestTeamUsesInstalledExecutableAcrossStartAndResume(t *testing.T) {
 	}
 	if _, pinned := teamPin(state()); pinned {
 		t.Fatal("resumed team still uses its legacy private copy")
+	}
+	newer := pinBuild(t, "0.2.0")
+	put(newer)
+	if out, err := run(install, "--team", dir, "board"); err == nil || !strings.Contains(out, "csquad stop") {
+		t.Fatalf("replaced build entered active team: %v %s", err, out)
+	}
+	cli(install, "stop", "pinned")
+	cli(install, "resume", "pinned", "--detach")
+	if got := state().BuildSHA256; got == "" {
+		t.Fatal("resumed team has no build fingerprint")
 	}
 	if entries, err := os.ReadDir(versions); err == nil && len(entries) != 0 {
 		t.Fatalf("start or resume created private copies: %v", entries)

@@ -4,6 +4,17 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
+## v0.12.10 — 2026-09-28
+
+### Changed
+
+- Start and resume teams with the installed csquad executable instead of
+  making a new private binary copy. This keeps the executable path stable for
+  antivirus allowlists. Existing teams with private copies move to the installed
+  path when resumed; their saved work remains intact.
+- Warn that teams using the installed executable should be stopped before a
+  package update and resumed afterward.
+
 ## v0.12.9 — 2026-09-26
 
 ### Changed

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -26,6 +27,30 @@ const forwardedEnv = "CSQUAD_FORWARDED"
 
 // selfSHA256 is replaceable in tests, whose binary is a Go test executable.
 var selfSHA256 = pin.SelfSHA256
+
+// installedExecutable prefers a PATH entry for this exact executable, so
+// package-manager symlinks remain valid when their versioned target changes.
+// It never selects a different csquad installation merely because it is first
+// on PATH.
+func installedExecutable() (string, error) {
+	self, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	selfInfo, err := os.Stat(self)
+	if err != nil {
+		return "", err
+	}
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		candidate := filepath.Join(dir, "csquad")
+		if info, err := os.Stat(candidate); err == nil && os.SameFile(selfInfo, info) {
+			return filepath.Abs(candidate)
+		}
+	}
+	// os.Executable is absolute on supported platforms, including when the
+	// command is launched through a wrapper instead of a PATH symlink.
+	return self, nil
+}
 
 // teamPin reports the build a team is pinned to. Teams started before pinning
 // record an ordinary install path and are unpinned.
@@ -93,9 +118,6 @@ func ensurePin(s *State) error {
 func forward(s *State) error {
 	p, pinned := teamPin(s)
 	if !pinned {
-		if s.Active && stderrIsTerminal() {
-			fmt.Fprintf(os.Stderr, "csquad: team %s is not pinned to a csquad version; stop and resume it to pin\n", s.ID)
-		}
 		return nil
 	}
 	sha, err := selfSHA256()
@@ -176,6 +198,18 @@ func (st *Store) transitionPin() (pin.Pin, error) {
 	})
 }
 
+// transitionExecutable retires a legacy private copy when a team resumes.
+// The one transition transaction may be written by the installed build; once
+// the ordinary path is recorded, the existing unpinned-team rules apply.
+func (st *Store) transitionExecutable(path string) error {
+	st.transition = true
+	defer func() { st.transition = false }()
+	return st.update(func(s *State) error {
+		s.Executable = path
+		return nil
+	})
+}
+
 // repinTeam is the one recovery for a team whose pinned copy is missing or
 // damaged. It refuses an intact pin, restores an identical build from itself,
 // applies the downgrade rule, and otherwise moves the team to this build. A
@@ -193,7 +227,7 @@ func repinTeam(st *Store, yes bool) error {
 	}
 	p, pinned := teamPin(s)
 	if !pinned {
-		return fmt.Errorf("team %s is not pinned to a csquad build; stop it and resume it with this csquad to pin it", s.ID)
+		return fmt.Errorf("team %s uses the installed csquad executable; repin only repairs legacy private copies", s.ID)
 	}
 	if pin.Verify(p) == nil {
 		return fmt.Errorf("team %s's pinned csquad %s is intact; nothing to repair. To move it to this build, stop and resume it", s.ID, p.Version)

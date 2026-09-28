@@ -3,16 +3,13 @@ package squad
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/ShunL12324/c-squad/internal/buildinfo"
 	"github.com/ShunL12324/c-squad/internal/config"
@@ -48,6 +45,20 @@ func runAs(t *testing.T, sha string) {
 	previous := selfSHA256
 	selfSHA256 = func() (string, error) { return sha, nil }
 	t.Cleanup(func() { selfSHA256 = previous })
+}
+
+func TestInstalledExecutableKeepsPathSymlink(t *testing.T) {
+	self, err := os.Executable()
+	must(t, err)
+	dir := t.TempDir()
+	link := filepath.Join(dir, "csquad")
+	must(t, os.Symlink(self, link))
+	t.Setenv("PATH", dir)
+	got, err := installedExecutable()
+	must(t, err)
+	if got != link {
+		t.Fatalf("installed executable = %q, want stable link %q", got, link)
+	}
 }
 
 // Every transaction compares the running build with the pin it has just read,
@@ -146,7 +157,7 @@ func TestRepinDowngradeRule(t *testing.T) {
 func TestRepinRecoversOnlyABrokenPin(t *testing.T) {
 	st := testStore(t)
 	must(t, st.update(func(s *State) error { s.Active = false; return nil }))
-	if err := repinTeam(st, false); err == nil || !strings.Contains(err.Error(), "not pinned") {
+	if err := repinTeam(st, false); err == nil || !strings.Contains(err.Error(), "installed csquad executable") {
 		t.Fatalf("unpinned team: %v", err)
 	}
 	self, err := pin.Create()
@@ -275,17 +286,14 @@ func TestForwardingToThePinnedBuild(t *testing.T) {
 	}
 }
 
-// The whole contract on a real team of fake Codex members: it runs a private
-// copy of the build that started it, keeps running it after the installed file
-// is replaced and deleted, a resume with a newer build moves every generated
-// entry point to the new copy, and an older build cannot resume it.
-func TestPinnedTeamSurvivesReplacementAndResumeRepins(t *testing.T) {
+// A team uses the installed executable for both start and resume.
+func TestTeamUsesInstalledExecutableAcrossStartAndResume(t *testing.T) {
 	for _, tool := range []string{"tmux", "python3"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Skip(tool + " unavailable")
 		}
 	}
-	older, newer := pinBuild(t, "0.1.0"), pinBuild(t, "0.2.0")
+	older := pinBuild(t, "0.1.0")
 	temp := t.TempDir()
 	tools := filepath.Join(temp, "tools")
 	must(t, os.Mkdir(tools, 0700))
@@ -322,7 +330,8 @@ func TestPinnedTeamSurvivesReplacementAndResumeRepins(t *testing.T) {
 	must(t, err)
 	configPath := filepath.Join(root, "config.toml")
 	must(t, os.WriteFile(configPath, document, 0600))
-	environ := append(os.Environ(), "PATH="+tools, "CSQUAD_CONFIG="+configPath, "CSQUAD_HOME="+filepath.Join(root, "state"), "TMUX=", "TMUX_PANE=")
+	versions := filepath.Join(root, "versions")
+	environ := append(os.Environ(), "PATH="+tools, "CSQUAD_CONFIG="+configPath, "CSQUAD_HOME="+filepath.Join(root, "state"), "CSQUAD_VERSIONS_DIR="+versions, "TMUX=", "TMUX_PANE=")
 	run := func(binary string, args ...string) (string, error) {
 		cmd := exec.Command(binary, args...)
 		cmd.Dir, cmd.Env = root, environ
@@ -339,86 +348,30 @@ func TestPinnedTeamSurvivesReplacementAndResumeRepins(t *testing.T) {
 	cli(install, "start", "pinned", "--detach")
 	st, err := openStore(dir)
 	must(t, err)
-	t.Cleanup(func() { _, _ = run(newer, "stop", "pinned"); _ = st.DB.Close() })
+	t.Cleanup(func() { _, _ = run(install, "stop", "pinned"); _ = st.DB.Close() })
 	state := func() *State { s, err := st.read(); must(t, err); return s }
-	first, ok := teamPin(state())
-	if !ok || first.Version != "0.1.0" || first.Path == install {
-		t.Fatalf("team not pinned to a private copy: %q", state().Executable)
+	if got := state().Executable; got != install {
+		t.Fatalf("start executable = %q, want installed path %q", got, install)
 	}
-	cli(install, "member", "add", "worker", "--instructions", "capture the launch")
-	launched := func(id string, generation int) commandCapture {
-		t.Helper()
-		for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
-			files, _ := filepath.Glob(filepath.Join(capture, "*.json"))
-			for _, file := range files {
-				var r commandCapture
-				data, _ := os.ReadFile(file)
-				if json.Unmarshal(data, &r) == nil && r.Member == id && r.Generation == strconv.Itoa(generation) && len(r.Args) > 3 && r.Args[3] != "app-server" && r.Args[3] != "agents" && r.Args[3] != "queue" {
-					return r
-				}
-			}
-		}
-		t.Fatalf("no launch captured for %s generation %d", id, generation)
-		return commandCapture{}
+	if _, pinned := teamPin(state()); pinned {
+		t.Fatal("new team unexpectedly uses a private copy")
 	}
-	launched("worker", 1)
-	tmuxOut := func(args ...string) string {
-		t.Helper()
-		out, err := exec.Command("tmux", append([]string{"-S", state().Socket}, args...)...).CombinedOutput()
-		must(t, err)
-		return string(out)
-	}
-	runtimePID := func() string { return tmuxOut("display-message", "-p", "-t", "=csq-pinned-runtime:", "#{pane_pid}") }
-	pid := runtimePID()
-	// Replace the installed file with a newer build, then delete it. Team
-	// commands through the newer build are forwarded to the pin, and exempt
-	// commands never touch the pinned runtime.
-	put(newer)
-	cli(install, "list")
-	cli(install, "member", "restart", "worker")
-	restarted := launched("worker", 2)
-	must(t, os.Remove(install))
-	cli(newer, "sync")
-	if runtimePID() != pid {
-		t.Fatal("another build restarted the pinned runtime")
-	}
-	panes := tmuxOut("list-panes", "-a", "-F", "#{pane_start_command}")
-	if !strings.Contains(panes, first.Path) || strings.Contains(panes, newer) {
-		t.Fatalf("sessions do not run the pinned copy:\n%s", panes)
-	}
-	if hooks := strings.Join(restarted.Args, " "); !strings.Contains(hooks, first.Path) {
-		t.Fatalf("restarted member's hooks do not run the pin: %s", hooks)
-	}
-	// Resume with the newer build moves every generated entry point.
-	cli(newer, "stop", "pinned")
-	cli(newer, "resume", "pinned", "--detach")
-	second, _ := teamPin(state())
-	if second.Version != "0.2.0" || second.Path == first.Path {
-		t.Fatalf("resume did not move the team to the newer build: %q", state().Executable)
-	}
-	resumed := launched("worker", state().Members["worker"].Generation)
-	wrapper, err := os.ReadFile(filepath.Join(dir, "runtime", "worker", strconv.Itoa(state().Members["worker"].Generation), "bin", "csquad"))
+	cli(install, "stop", "pinned")
+	data, err := os.ReadFile(older)
 	must(t, err)
-	for name, text := range map[string]string{
-		"keys":    tmuxOut("list-keys"),
-		"panes":   tmuxOut("list-panes", "-a", "-F", "#{pane_start_command}"),
-		"hooks":   strings.Join(resumed.Args, " "),
-		"wrapper": string(wrapper),
-	} {
-		if strings.Contains(text, first.Path) {
-			t.Fatalf("%s still reference the old pin %s:\n%s", name, first.Path, text)
-		}
+	legacy := fakePin(t, "0.0.1", data)
+	pinTo(t, st, legacy)
+	cli(install, "resume", "pinned", "--detach")
+	if got := state().Executable; got != install {
+		t.Fatalf("legacy resume executable = %q, want installed path %q", got, install)
 	}
-	if !strings.Contains(string(wrapper), second.Path) || !strings.Contains(tmuxOut("list-panes", "-a", "-F", "#{pane_start_command}"), second.Path) {
-		t.Fatal("the new pin is not what the team runs")
+	if _, pinned := teamPin(state()); pinned {
+		t.Fatal("resumed team still uses its legacy private copy")
 	}
-	// The older build cannot take the team back.
-	cli(newer, "stop", "pinned")
-	if out, err := run(older, "resume", "pinned", "--detach"); err == nil || !strings.Contains(out, "older") {
-		t.Fatalf("older build resumed the team: %v %s", err, out)
-	}
-	if got, _ := teamPin(state()); got != second {
-		t.Fatal("a refused downgrade changed the pin")
+	if entries, err := os.ReadDir(versions); err == nil && len(entries) != 0 {
+		t.Fatalf("start or resume created private copies: %v", entries)
+	} else if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
 	}
 }
 

@@ -1,6 +1,7 @@
 // Package update upgrades csquad through whichever package manager installed
 // it. It never replaces files a package manager owns itself, and it never
-// touches a team: running teams keep their pinned build until they resume.
+// touches a team. Teams using an installed executable should be stopped before
+// updating because the package manager replaces that executable.
 // See docs/design/update.md.
 package update
 
@@ -185,7 +186,7 @@ func warnUnpinned(o Options) {
 	}
 	for _, t := range o.Teams() {
 		if t.Active && !t.Pinned {
-			_, _ = fmt.Fprintf(o.Out, "Warning: team %s is running and not pinned to a csquad build; the upgrade reaches it at once. Stop it first, then resume it after the update to pin it.\n", t.Name)
+			_, _ = fmt.Fprintf(o.Out, "Warning: team %s is running from the installed csquad executable. Stop it before updating, then resume it afterward.\n", t.Name)
 		}
 	}
 }
@@ -208,7 +209,7 @@ func report(o Options, ch Channel) error {
 			if t.Pinned {
 				_, _ = fmt.Fprintf(o.Out, "team %s: csquad %s (pinned); resume it to move to the new build\n", t.Name, t.Version)
 			} else {
-				_, _ = fmt.Fprintf(o.Out, "team %s: not pinned; stop and resume it to pin\n", t.Name)
+				_, _ = fmt.Fprintf(o.Out, "team %s: uses the installed csquad executable\n", t.Name)
 			}
 		}
 	}

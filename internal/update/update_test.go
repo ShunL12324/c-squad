@@ -409,7 +409,7 @@ func TestRunRules(t *testing.T) {
 		}
 		must(t, Run(Options{Out: &out, Teams: teams}))
 		text := out.String()
-		for _, want := range []string{"Updated: csquad 0.12.0", "team live: csquad " + buildinfo.Version + " (pinned); resume it", "Warning: team old is running and not pinned", "team old: not pinned"} {
+		for _, want := range []string{"Updated: csquad 0.12.0", "team live: csquad " + buildinfo.Version + " (pinned); resume it", "Warning: team old is running from the installed csquad executable", "team old: uses the installed csquad executable"} {
 			if !strings.Contains(text, want) {
 				t.Fatalf("report lacks %q:\n%s", want, text)
 			}

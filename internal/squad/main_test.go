@@ -23,8 +23,8 @@ var hermeticKeys = []string{"CSQUAD_STATE_DIR", "CSQUAD_MEMBER_ID", "CSQUAD_GENE
 // loading now migrates legacy files and writes the result back. A suite left on
 // the fallback would rewrite the developer's own config.toml.
 func TestMain(m *testing.M) {
-	// start and resume pin the running build and run the copy with "version" to
-	// confirm it; in this suite the running build is the test binary.
+	// Legacy pin tests run the current test binary with "version" to verify
+	// private copies without launching a member session.
 	if len(os.Args) == 2 && os.Args[1] == "version" {
 		fmt.Println(buildinfo.String())
 		os.Exit(0)

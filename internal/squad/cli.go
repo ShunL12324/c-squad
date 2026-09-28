@@ -16,7 +16,6 @@ import (
 	"github.com/ShunL12324/c-squad/internal/buildinfo"
 	"github.com/ShunL12324/c-squad/internal/config"
 	"github.com/ShunL12324/c-squad/internal/filelock"
-	"github.com/ShunL12324/c-squad/internal/pin"
 	"github.com/ShunL12324/c-squad/internal/preflight"
 	"github.com/ShunL12324/c-squad/internal/tmux"
 	"github.com/ShunL12324/c-squad/internal/update"
@@ -145,9 +144,8 @@ func Execute(p []string, values map[string]string, engineArgs []string) error {
 	if e != nil {
 		return e
 	}
-	// Resolved exactly as the command resolves it, and before anything writes:
-	// every other command runs on the team's pinned build. resume and repin
-	// move the pin and run on this build by design.
+	// Legacy pinned teams forward commands to their private copy. Resume moves
+	// them to the installed executable; repin remains a legacy repair command.
 	if p[0] != "resume" && p[0] != "repin" {
 		if e = forward(s); e != nil {
 			return e
@@ -393,13 +391,12 @@ func start(o options) error {
 		return err
 	}
 
-	// The team runs a private copy of this build, so replacing the installed
-	// csquad never changes it. See docs/design/update.md.
-	pinned, e := pin.Create()
+	// Use the installed executable. A private copy changes its pathname on
+	// every build and causes antivirus software to treat each launch as new.
+	bin, e := installedExecutable()
 	if e != nil {
-		return fmt.Errorf("pin this csquad build for the team: %w", e)
+		return e
 	}
-	bin := pinned.Path
 	socket := filepath.Join(os.TempDir(), fmt.Sprintf("csq-%d-%s.sock", os.Getuid(), hex.EncodeToString(b)))
 	if v := os.Getenv("TMUX"); v != "" {
 		socket = strings.Split(v, ",")[0]

@@ -268,24 +268,25 @@ func resumeTeam(st *Store, o options) (err error) {
 	if notice := profileDriftNotice(drifted); notice != "" {
 		fmt.Fprintln(os.Stderr, notice)
 	}
-	// Move the team to this build first, in the one transaction allowed to
-	// write before this process is the pin. Everything above only read. From
-	// here on this process is the team's build: the reaping, reconcile and
-	// relaunch below pass the self check, and any process left from the old
-	// build is refused if it writes before it is reaped.
-	if e = decideRepin(s); e != nil {
+	// Older teams may still have a private copy. Move them to the installed
+	// executable before cleanup so this process can write their ledger. New
+	// teams already use the installed executable and need no transition.
+	binary, e := installedExecutable()
+	if e != nil {
 		return e
 	}
-	pinned, e := st.transitionPin()
-	if e != nil {
-		return fmt.Errorf("pin this csquad build for the team: %w", e)
+	if _, pinned := teamPin(s); pinned {
+		if e = decideRepin(s); e != nil {
+			return e
+		}
 	}
-	// From here the team belongs to this build. A failure below leaves it so,
-	// and an older build is refused, so the retry must use this build.
+	if e = st.transitionExecutable(binary); e != nil {
+		return fmt.Errorf("select installed csquad for the team: %w", e)
+	}
 	started := false
 	defer func() {
 		if err != nil && !started {
-			err = fmt.Errorf("%w; team %s is now pinned to csquad %s, so retry with that build: %s resume %s", err, s.ID, pinned.Version, pinned.Path, s.ID)
+			err = fmt.Errorf("%w; retry with this csquad: %s resume %s", err, binary, s.ID)
 		}
 	}()
 	// Reap old process identities before changing socket or clearing PID records.
@@ -314,7 +315,6 @@ func resumeTeam(st *Store, o options) (err error) {
 	if _, e = rand.Read(random); e != nil {
 		return e
 	}
-	binary := pinned.Path
 	if e = st.update(func(cur *State) error {
 		// The profiles a member inherited from are kept aside before the snapshot
 		// adopts the current tables, so an edit shows up as a difference instead of

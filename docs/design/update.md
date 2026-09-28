@@ -1,6 +1,8 @@
 # Design: team version pinning and `csquad update`
 
-Status: implemented (T224). The implementation notes at the end list where the code refines this design.
+Status: historical design (T224). Since v0.12.10, new and resumed teams use the
+installed executable without a private copy. Existing private copies remain
+supported until those teams resume. See [installation](../install.md).
 
 ## Goal
 

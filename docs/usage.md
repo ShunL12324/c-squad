@@ -419,11 +419,11 @@ remove your loading line yourself if you stop using C Squad.
 - **Local state stays local.** `.csquad/` holds recovery data and should not be
   committed. Use local disk for the SQLite ledger. A per-team runtime handles
   delivery and cleanup; no system service is installed.
-- **Running teams keep their csquad build.** Each team runs a private copy of
-  the build it started with until `resume`; `csquad update` and package
-  managers change only what new and resumed teams use. See
-  [Updating](install.md#updating), including the one-time step for teams
-  started by 0.11 or earlier.
+- **Teams use the installed csquad executable.** `start` and `resume` keep its
+  installed path instead of creating a private binary copy. Stop running teams
+  before updating csquad, then resume them after the update. Teams created by
+  earlier 0.12 releases keep their private copy until they resume. See
+  [Updating](install.md#updating).
 
 ## How tasks are coordinated
 

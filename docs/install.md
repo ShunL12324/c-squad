@@ -178,44 +178,23 @@ own records:
 
 ### Running teams keep their version
 
-Installing a new csquad no longer changes a running team:
+New teams run the installed csquad executable at a stable path. `start` and
+`resume` do not create private binary copies. Package manager updates replace
+that executable, so stop running teams before updating and resume them after
+the update. A running team's later hooks and restarts may otherwise use the new
+build before the team has been resumed.
 
-- Each team runs a private copy of the csquad build it started with, stored
-  under `~/.local/share/csquad/versions/` (`$XDG_DATA_HOME` is honoured). Set
-  `CSQUAD_VERSIONS_DIR` to use another directory, for example when your home
-  is mounted `noexec`.
-- A newer `csquad` on PATH hands team commands to the team's own copy.
-- `csquad resume` moves a stopped team to the installed version. It refuses
-  an older release. It asks first when the two builds cannot be ordered, such
-  as development builds or two builds with the same version.
-- If a resume fails after it has moved the team, the team stays on the new
-  version, and the older build can no longer resume it. Retry with the new
-  build; the error names the command.
-- If a team's copy is missing or damaged, commands for that team stop with an
-  error, and `csquad repin TEAM` is the way out. It restores the copy from an
-  identical build, or moves the team to the installed build, stopping it
-  first if it is running.
-- Old copies are not deleted automatically, because csquad cannot find teams
-  in every project. `csquad update --check` shows how much space they use;
-  delete unused ones by hand.
+Teams created by csquad 0.12.0 through 0.12.9 may still use a private copy.
+Their commands continue to work through that copy until the team is stopped.
+`resume` moves them to the installed executable, refusing a known downgrade
+and asking before moving between builds whose order cannot be determined.
+`csquad repin TEAM` remains available to repair a damaged legacy copy. Unused
+copies under `~/.local/share/csquad/versions/` are not removed automatically;
+`csquad update --check` reports their disk usage.
 
-**First upgrade to this version.** Teams started by csquad 0.11 or earlier
-have no private copy, so an upgrade reaches them as soon as it is installed.
-Stop them first, upgrade, then resume them; from then on upgrades leave
-running teams alone.
-
-**macOS.** csquad identifies its own build by hashing the file it was started
-from, because macOS has no `/proc/self/exe`. A csquad process started from an
-install path whose file is replaced in place while it runs is identified by the
-new file's bytes. Processes a team starts run from the pinned copy, which never
-changes, so they are not affected. macOS has not been tested on real hardware.
-
-**Keep one installation.** A csquad earlier on PATH that predates pinning
-still writes teams directly. The same goes for any older csquad: never run it
-against a team a newer one has pinned. It does not understand newer records,
-drops fields it does not know, such as a task's cancellation reason, and a
-resume by it takes the team back to itself. `csquad doctor` lists every csquad
-on PATH and warns when there is more than one.
+**Keep one installation.** Different csquad versions on PATH can disagree
+about team state. `csquad doctor` lists them and warns when there is more than
+one.
 
 ## Building from source
 

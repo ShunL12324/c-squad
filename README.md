@@ -87,13 +87,20 @@ A worker sees only its own prompt, so make each task self-contained.
 csquad ls           # tasks from this directory: state, age, latest message
 csquad ls --all     # every project
 csquad peek T3      # recent conversation of T3's session
+csquad finish T3    # once merged: remove its session, worktree and branch
 csquad cancel T5    # drop a task that has not started
 claude agents       # watch, answer and attach to sessions
 ```
 
-`ls` shows each task as `queued`, `working`, `needs input`, `done`, `failed`,
-`stopped` or `gone`. Sessions that need you also show up in agent view and
-trigger Claude Code's notifications.
+`ls` shows each task as `queued`, `working`, `needs input`, `done`, `failed`
+or `stopped`. Sessions that need you also show up in agent view and trigger
+Claude Code's notifications. Finished and cancelled tasks are hidden
+(`--history` shows them) and deleted after 7 days.
+
+`finish` works out where the session worked from its transcript, with or
+without a worktree. It refuses while any of those branches is not merged into
+the main checkout's branch (or `--into BRANCH`) or a worktree has uncommitted
+files; `--dry-run` shows the plan.
 
 ## How it works
 

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -19,6 +20,7 @@ import (
 	"github.com/ShunL12324/c-squad/internal/claude"
 	"github.com/ShunL12324/c-squad/internal/config"
 	"github.com/ShunL12324/c-squad/internal/dispatch"
+	"github.com/ShunL12324/c-squad/internal/finish"
 	"github.com/ShunL12324/c-squad/internal/paths"
 	"github.com/ShunL12324/c-squad/internal/prompts"
 	"github.com/ShunL12324/c-squad/internal/queue"
@@ -27,6 +29,10 @@ import (
 
 // pollInterval is how often the dispatcher checks for free slots.
 const pollInterval = 5 * time.Second
+
+// keepEnded is how long cancelled, failed and finished tasks stay listed with
+// --history before they are deleted.
+const keepEnded = 7 * 24 * time.Hour
 
 // console replaces this process with an interactive claude session that has
 // the console prompt appended.
@@ -123,13 +129,15 @@ func readInput(stdin io.Reader, file string) ([]byte, error) {
 }
 
 func lsCommand() *cobra.Command {
-	var all bool
+	var all, history bool
 	var limit int
 	cmd := &cobra.Command{
 		Use:   "ls",
 		Short: "List tasks with live session state",
 		Long: "List tasks queued from this directory or below (--all for every project),\n" +
-			"with the live state of their sessions and each session's latest message.",
+			"with the live state of their sessions and each session's latest message.\n\n" +
+			"Tasks whose session was removed count as finished. Finished and cancelled\n" +
+			"tasks are hidden unless --history is given, and deleted after 7 days.",
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			markExecuted(c)
@@ -138,9 +146,18 @@ func lsCommand() *cobra.Command {
 				return err
 			}
 			defer func() { _ = store.Close() }()
+			sessions, sessErr := claude.Sessions(c.Context())
+			if sessErr != nil {
+				_, _ = fmt.Fprintln(c.ErrOrStderr(), "csquad: session state unavailable:", sessErr)
+			} else if err := sweep(store, sessions, time.Now()); err != nil {
+				return err
+			}
 			tasks, err := store.List("")
 			if err != nil {
 				return err
+			}
+			if !history {
+				tasks = slices.DeleteFunc(tasks, func(t queue.Task) bool { return t.State == queue.Finished || t.State == queue.Cancelled })
 			}
 			here, err := paths.Canonical(".")
 			if err != nil {
@@ -151,10 +168,6 @@ func lsCommand() *cobra.Command {
 			}
 			if limit > 0 && len(tasks) > limit {
 				tasks = tasks[len(tasks)-limit:]
-			}
-			sessions, sessErr := claude.Sessions(c.Context())
-			if sessErr != nil {
-				_, _ = fmt.Fprintln(c.ErrOrStderr(), "csquad: session state unavailable:", sessErr)
 			}
 			now := time.Now()
 			w := tabwriter.NewWriter(c.OutOrStdout(), 0, 0, 2, ' ', 0)
@@ -183,8 +196,27 @@ func lsCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "Show tasks from every project")
+	cmd.Flags().BoolVar(&history, "history", false, "Include finished and cancelled tasks")
 	cmd.Flags().IntVarP(&limit, "limit", "n", 20, "Show at most N most recent tasks (0 for all)")
 	return cmd
+}
+
+// sweep marks launched tasks whose session no longer exists as finished and
+// deletes tasks that ended more than keepEnded ago.
+func sweep(store *queue.Store, sessions map[string]claude.Session, now time.Time) error {
+	launched, err := store.List(queue.Launched)
+	if err != nil {
+		return err
+	}
+	for _, t := range launched {
+		if _, ok := sessions[t.Session]; !ok && now.Sub(t.LaunchedAt) >= time.Minute {
+			if err := store.Finish(t.ID); err != nil {
+				return err
+			}
+		}
+	}
+	_, err = store.Prune(now.Add(-keepEnded))
+	return err
 }
 
 func within(tasks []queue.Task, dir string) []queue.Task {
@@ -205,6 +237,8 @@ func describe(t queue.Task, sessions map[string]claude.Session, known bool, now 
 		return "queued", t.CreatedAt, ""
 	case queue.Cancelled:
 		return "cancelled", t.CreatedAt, ""
+	case queue.Finished:
+		return "finished", t.EndedAt, ""
 	case queue.Failed:
 		return "launch failed", t.CreatedAt, queue.Summary(t.Error, 60)
 	}
@@ -377,6 +411,107 @@ func printEntry(w io.Writer, e claude.Entry) {
 			break
 		}
 		_, _ = fmt.Fprintln(w, "  "+line)
+	}
+}
+
+func finishCommand() *cobra.Command {
+	var into string
+	var dryRun bool
+	cmd := &cobra.Command{
+		Use:   "finish TASK",
+		Short: "Remove a finished task's session, worktrees and merged branches",
+		Long: "Clean up after a task whose work is merged. finish reads where the session\n" +
+			"worked from its transcript, then checks that every branch it worked on is\n" +
+			"contained in the target branch (default: the branch checked out in the main\n" +
+			"checkout) and that its worktrees have no uncommitted files. Only then does it\n" +
+			"remove the session with 'claude rm', any worktree left behind, and those\n" +
+			"branches. A worker that edited the directory in place, without a worktree,\n" +
+			"is handled the same way. Outside git only the session is removed.",
+		Example: "  csquad finish T3 --dry-run\n  csquad finish T3\n  csquad finish T3 --into develop",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(c *cobra.Command, args []string) error {
+			id, err := queue.ParseID(args[0])
+			if err != nil {
+				return err
+			}
+			markExecuted(c)
+			store, _, err := openStore()
+			if err != nil {
+				return err
+			}
+			defer func() { _ = store.Close() }()
+			t, err := store.Get(id)
+			if err != nil {
+				return err
+			}
+			out := c.OutOrStdout()
+			switch t.State {
+			case queue.Queued:
+				return fmt.Errorf("%s has not started; use 'csquad cancel %s'", t.Label(), t.Label())
+			case queue.Cancelled, queue.Finished:
+				_, _ = fmt.Fprintf(out, "%s is already %s\n", t.Label(), t.State)
+				return nil
+			case queue.Failed:
+				_, _ = fmt.Fprintf(out, "%s never started a session; marked finished\n", t.Label())
+				return store.Finish(t.ID)
+			}
+			sessions, err := claude.Sessions(c.Context())
+			if err != nil {
+				return err
+			}
+			s, live := sessions[t.Session]
+			if live && s.Active() {
+				return fmt.Errorf("%s is still %s; let it finish or stop it with 'claude stop %s'", t.Label(), sessionState(s), t.Session)
+			}
+			trail, err := claude.ReadTrail(t.Session)
+			if err != nil && !errors.Is(err, claude.ErrNoTranscript) {
+				return err
+			}
+			plan, err := finish.Build(t.Cwd, trail, into)
+			if err != nil {
+				return err
+			}
+			printPlan(out, t, plan, live)
+			if len(plan.Blockers) > 0 {
+				return fmt.Errorf("cannot finish %s yet", t.Label())
+			}
+			if dryRun {
+				return nil
+			}
+			err = finish.Run(plan, finish.Session{Live: live, Remove: func() error { return claude.Remove(c.Context(), t.Session, true) }})
+			if err != nil {
+				return err
+			}
+			if err := store.Finish(t.ID); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintf(out, "%s finished\n", t.Label())
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&into, "into", "", "Branch the work must be merged into (default: the main checkout's branch)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be removed without removing it")
+	return cmd
+}
+
+func printPlan(w io.Writer, t queue.Task, p finish.Plan, live bool) {
+	if p.Target != "" {
+		_, _ = fmt.Fprintf(w, "%s · merged into %s?\n", t.Label(), p.Target)
+	}
+	if live {
+		_, _ = fmt.Fprintf(w, "  remove session %s\n", t.Session)
+	}
+	for _, wt := range p.Worktrees {
+		_, _ = fmt.Fprintf(w, "  remove worktree %s\n", shortDir(wt.Path))
+	}
+	for _, b := range p.Branches {
+		_, _ = fmt.Fprintf(w, "  delete branch %s\n", b)
+	}
+	for _, n := range p.Notes {
+		_, _ = fmt.Fprintf(w, "  note: %s\n", n)
+	}
+	for _, b := range p.Blockers {
+		_, _ = fmt.Fprintf(w, "  blocked: %s\n", b)
 	}
 }
 

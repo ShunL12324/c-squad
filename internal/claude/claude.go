@@ -120,6 +120,31 @@ func Launch(ctx context.Context, o LaunchOptions) (string, error) {
 	return string(m[1]), nil
 }
 
+var discardToken = regexp.MustCompile(`--discard-unpushed\s+(\S+)`)
+
+// Remove deletes a background session with `claude rm`, which also removes the
+// worktree it owns. Claude Code refuses when the worktree's commits exist on no
+// remote; with discardUnpushed set, Remove then repeats the command with the
+// confirmation token Claude Code printed. Only pass it once the commits are
+// known to be merged elsewhere.
+func Remove(ctx context.Context, id string, discardUnpushed bool) error {
+	out, err := run(ctx, "", time.Minute, "rm", id)
+	text := string(out)
+	if err != nil {
+		text = err.Error()
+	}
+	// The refusal carries the token whether or not the exit status reports it.
+	m := discardToken.FindStringSubmatch(text)
+	if m == nil {
+		return err
+	}
+	if !discardUnpushed {
+		return fmt.Errorf("claude rm %s refused: %s", id, strings.TrimSpace(text))
+	}
+	_, err = run(ctx, "", time.Minute, "rm", id, "--discard-unpushed", m[1])
+	return err
+}
+
 func run(ctx context.Context, dir string, timeout time.Duration, args ...string) ([]byte, error) {
 	bin, err := Binary()
 	if err != nil {

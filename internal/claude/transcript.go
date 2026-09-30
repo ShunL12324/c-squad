@@ -81,6 +81,8 @@ func ReadTranscript(id string) ([]Entry, error) {
 
 type rawLine struct {
 	Type        string `json:"type"`
+	Cwd         string `json:"cwd"`
+	GitBranch   string `json:"gitBranch"`
 	IsMeta      bool   `json:"isMeta"`
 	IsSidechain bool   `json:"isSidechain"`
 	Message     struct {
@@ -89,9 +91,12 @@ type rawLine struct {
 }
 
 type rawBlock struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-	Name string `json:"name"`
+	Type  string `json:"type"`
+	Text  string `json:"text"`
+	Name  string `json:"name"`
+	Input struct {
+		Command string `json:"command"`
+	} `json:"input"`
 }
 
 var (
@@ -154,6 +159,74 @@ func ParseTranscript(r io.Reader) ([]Entry, error) {
 	}
 	flush()
 	return out, nil
+}
+
+// Location is a directory a session worked in and the branch checked out there.
+type Location struct {
+	Cwd    string
+	Branch string
+}
+
+// Trail is where a session worked and which branches it created.
+type Trail struct {
+	// Locations are the distinct directories and checked-out branches of the
+	// main conversation, in first-seen order. A session that entered a
+	// worktree shows it here even after it left again.
+	Locations []Location
+	// Created are branch names the session's shell commands created. A branch
+	// created and left within one command never appears in Locations.
+	Created []string
+}
+
+// createdBranch matches git commands that create a branch: checkout -b/-B,
+// switch -c/-C, worktree add -b/-B, and `git branch NAME`.
+var createdBranch = regexp.MustCompile(`\bgit\b[^;&|\n]*?\s(?:checkout\s+-[bB]|switch\s+-[cC]|worktree\s+add\s+(?:\S+\s+)*?-[bB]|branch)\s+([A-Za-z0-9._][A-Za-z0-9._/-]*)`)
+
+// ReadTrail returns the trail of a session.
+func ReadTrail(id string) (Trail, error) {
+	path, err := TranscriptPath(id)
+	if err != nil {
+		return Trail{}, err
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return Trail{}, err
+	}
+	defer func() { _ = f.Close() }()
+	return ParseTrail(f)
+}
+
+// ParseTrail extracts the trail from transcript JSONL.
+func ParseTrail(r io.Reader) (Trail, error) {
+	var out Trail
+	reader := bufio.NewReader(r)
+	for {
+		line, err := reader.ReadBytes('\n')
+		var raw rawLine
+		if len(line) > 0 && json.Unmarshal(line, &raw) == nil && !raw.IsSidechain {
+			if loc := (Location{Cwd: raw.Cwd, Branch: raw.GitBranch}); raw.Cwd != "" && !slices.Contains(out.Locations, loc) {
+				out.Locations = append(out.Locations, loc)
+			}
+			if raw.Type == RoleAssistant {
+				for _, b := range blocks(raw.Message.Content) {
+					if b.Type != "tool_use" || b.Input.Command == "" {
+						continue
+					}
+					for _, m := range createdBranch.FindAllStringSubmatch(b.Input.Command, -1) {
+						if !slices.Contains(out.Created, m[1]) {
+							out.Created = append(out.Created, m[1])
+						}
+					}
+				}
+			}
+		}
+		if errors.Is(err, io.EOF) {
+			return out, nil
+		}
+		if err != nil {
+			return Trail{}, err
+		}
+	}
 }
 
 // blocks normalises message content, which is either a string or a list of

@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func open(t *testing.T) *Store {
@@ -72,5 +73,39 @@ func TestParseID(t *testing.T) {
 func TestSummary(t *testing.T) {
 	if got := Summary("\n  hello world  \nnext", 5); got != "hell…" {
 		t.Fatalf("Summary = %q", got)
+	}
+}
+
+func TestFinishAndPrune(t *testing.T) {
+	s := open(t)
+	a, _ := s.Add(Task{Prompt: "a", Cwd: "/a"})
+	b, _ := s.Add(Task{Prompt: "b", Cwd: "/a"})
+	if ok, _ := s.Claim(a.ID); !ok {
+		t.Fatal("claim")
+	}
+	if err := s.Finish(b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Get(b.ID); got.State != Queued {
+		t.Fatalf("finished a queued task: %s", got.State)
+	}
+	if err := s.Finish(a.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.Get(a.ID)
+	if got.State != Finished || got.EndedAt.IsZero() || !got.State.Ended() {
+		t.Fatalf("finished task = %+v", got)
+	}
+	if n, _ := s.Prune(got.EndedAt); n != 0 {
+		t.Fatalf("pruned %d tasks that ended at the cutoff", n)
+	}
+	if n, _ := s.Prune(got.EndedAt.Add(time.Millisecond)); n != 1 {
+		t.Fatalf("pruned %d, want 1", n)
+	}
+	if _, err := s.Get(a.ID); err == nil {
+		t.Fatal("pruned task still present")
+	}
+	if _, err := s.Get(b.ID); err != nil {
+		t.Fatal("pruned a queued task")
 	}
 }

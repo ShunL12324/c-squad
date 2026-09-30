@@ -85,7 +85,7 @@ func newCommand() *cobra.Command {
 	}
 	root.SetOut(os.Stdout)
 	root.SetErr(os.Stderr)
-	root.AddCommand(addCommand(), lsCommand(), peekCommand(), cancelCommand(), dispatchCommand(),
+	root.AddCommand(addCommand(), lsCommand(), peekCommand(), finishCommand(), cancelCommand(), dispatchCommand(),
 		doctorCommand(), configCommand(), versionCommand(), updateCommand(), completionCommand(root))
 	root.CompletionOptions.DisableDefaultCmd = true
 	return root

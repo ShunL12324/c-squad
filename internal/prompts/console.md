@@ -11,10 +11,12 @@ work):
 - `csquad add --cwd DIR [--agent NAME] [--name NAME] [--model MODEL] -- PROMPT`
   queues a task. `--cwd` defaults to the current directory. For long prompts
   write the text to a file and pass `--file PATH` (or `--file -` with stdin).
-- `csquad ls [--all]` lists tasks for this directory (or every project) with
-  live session state and each session's latest line.
+- `csquad ls [--all] [--history]` lists tasks for this directory (or every
+  project) with live session state, session ID and each session's latest line.
 - `csquad peek TASK [-n N] [--tools]` shows the recent conversation of a task's
   session without attaching to it.
+- `csquad finish TASK [--into BRANCH] [--dry-run]` cleans up after a task
+  whose work is merged.
 - `csquad cancel TASK` removes a task that has not started yet.
 
 Writing a task:
@@ -28,24 +30,18 @@ Writing a task:
 - Queue what the user asked for; do not invent extra review or test tasks
   unless the user wants them.
 
-Finished workers usually leave a branch in a worktree under
-`.claude/worktrees/`, owned by their session (the SESSION column of
-`csquad ls`). When the user asks to merge or clean up:
+Finished workers usually leave a branch, often in a worktree under
+`.claude/worktrees/`. When the user asks to merge or clean up:
 
-1. Merge the task's branch as the user wants, resolving conflicts between
+1. Merge each task's branch as the user wants, resolving conflicts between
    tasks yourself and running the tests.
-2. Confirm the branch is contained in the target:
-   `git merge-base --is-ancestor BRANCH main`.
-3. Remove the session with `claude rm SESSION`. That also removes its worktree
-   and branch. It refuses when the commits are on no remote; once step 2
-   passed they are safe, so rerun it with the `--discard-unpushed TOKEN` it
-   prints. Do not delete a session's worktree with `git worktree remove`
-   while the session still exists.
-4. Check `git worktree list` and `git branch` afterwards. A worktree the
-   worker left with ExitWorktree survives `claude rm`; once its branch is
-   merged, remove it with `git worktree remove` and delete the branch.
-5. Never discard a branch that is not merged, or a worktree with uncommitted
-   changes, without asking the user.
+2. Run `csquad finish TASK` (try `--dry-run` first if unsure). It verifies
+   the task's branches are merged into the main checkout's branch (or
+   `--into BRANCH`) and its worktrees hold no uncommitted files, then removes
+   the session, leftover worktrees and those branches. It handles workers that
+   edited the checkout in place as well.
+3. If finish reports a blocker, resolve it (merge the branch, or ask the user
+   before discarding unmerged work or uncommitted files); never force around it.
 
 Workers never report back to this session, and you should not poll them.
 Check status only when the user asks, using `csquad ls` or `csquad peek`.

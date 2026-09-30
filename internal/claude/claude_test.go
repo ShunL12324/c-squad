@@ -137,3 +137,45 @@ func TestLaunchPassesOptionsAndParsesID(t *testing.T) {
 		t.Fatalf("launch failure lost the CLI output: %v", err)
 	}
 }
+
+func TestParseTrail(t *testing.T) {
+	in := `{"type":"user","cwd":"/r","gitBranch":"main"}
+{"type":"assistant","cwd":"/r","gitBranch":"main","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git checkout -b docs && git commit -qm x && git switch -q main; git branch -d old; git -C /r switch -c feat/a\ngit worktree add -b wt-b ../p main; git branch --list"}}]}}
+{"type":"assistant","cwd":"/r/.claude/worktrees/x","gitBranch":"worktree-x"}
+{"type":"assistant","isSidechain":true,"cwd":"/elsewhere","gitBranch":"y"}
+{"type":"assistant","cwd":"/r/.claude/worktrees/x","gitBranch":"worktree-x"}
+{"type":"user","cwd":"/r","gitBranch":"main"}
+`
+	trail, err := ParseTrail(strings.NewReader(in))
+	if err != nil || len(trail.Locations) != 2 || trail.Locations[1] != (Location{Cwd: "/r/.claude/worktrees/x", Branch: "worktree-x"}) {
+		t.Fatalf("locations = %+v, %v", trail.Locations, err)
+	}
+	if strings.Join(trail.Created, ",") != "docs,feat/a,wt-b" {
+		t.Fatalf("created = %v", trail.Created)
+	}
+}
+
+func TestRemoveRetriesWithDiscardToken(t *testing.T) {
+	dir := t.TempDir()
+	log := filepath.Join(dir, "log")
+	fake := filepath.Join(dir, "claude")
+	for _, status := range []string{"0", "1"} {
+		script := "#!/bin/sh\necho \"$@\" >> " + log + "\ncase \"$*\" in *discard*) echo removed; exit 0;; esac\n" +
+			"echo '  push them, or discard: claude rm abc --discard-unpushed 1234@abcd' >&2\nexit " + status + "\n"
+		if err := os.WriteFile(fake, []byte(script), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		_ = os.Remove(log)
+		t.Setenv("CSQUAD_CLAUDE", fake)
+		if err := Remove(context.Background(), "abc", false); err == nil || !strings.Contains(err.Error(), "refused") {
+			t.Fatalf("exit %s without discard: %v", status, err)
+		}
+		if err := Remove(context.Background(), "abc", true); err != nil {
+			t.Fatalf("exit %s with discard: %v", status, err)
+		}
+		calls, _ := os.ReadFile(log)
+		if !strings.HasSuffix(string(calls), "rm abc\nrm abc --discard-unpushed 1234@abcd\n") {
+			t.Fatalf("exit %s calls:\n%s", status, calls)
+		}
+	}
+}

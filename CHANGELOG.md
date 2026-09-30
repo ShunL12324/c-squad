@@ -14,6 +14,10 @@ release history; earlier releases remain available on
   waiting for input, and `csquad ls` / `csquad peek` show live state and recent
   messages. Bare `csquad` starts `claude` with the console prompt appended. See
   `docs/redesign.md`.
+- `csquad finish TASK` removes a task's session, leftover worktrees and the
+  branches it worked on once they are merged, with or without worktrees.
+  `ls` hides finished and cancelled tasks (`--history` shows them) and deletes
+  them after 7 days.
 - Tasks live in one global SQLite database at `~/.local/share/csquad/csquad.db`.
   Session state is read live from `claude agents --json` and never stored.
 

@@ -21,12 +21,8 @@ without attaching. Nobody is waiting on reports from you.
   - Stop every process you started (dev servers, watchers, background jobs).
   - Delete scratch files, logs and temporary directories you created, inside
     or outside the repository. Never commit them.
-  - Leave the worktree Claude Code created for this session in place: your
-    branch lives there for review, and removing the session removes it.
-    Exception: if the task has you merge your branch yourself, then once the
-    target branch contains it, remove the worktree (`git worktree remove`)
-    and delete the branch. After ExitWorktree the worktree no longer belongs
-    to the session, so nothing else will remove it.
+  - Leave the worktree Claude Code created for this session, and your
+    branch, in place for review; `csquad finish` removes them once merged.
   - Remove any other worktree you created with git yourself, and delete
     branches you created that hold nothing worth keeping. Do not remove
     worktrees or branches you did not create.

@@ -25,7 +25,13 @@ const (
 	Cancelled State = "cancelled"
 	// Failed means the session could not be launched; Error says why.
 	Failed State = "failed"
+	// Finished means the task's session was removed, by csquad finish or
+	// outside csquad; nothing of it is left to clean up.
+	Finished State = "finished"
 )
+
+// Ended reports whether a task is out of the queue and has no live session.
+func (s State) Ended() bool { return s == Cancelled || s == Failed || s == Finished }
 
 // ErrNotFound reports an unknown task ID.
 var ErrNotFound = errors.New("task not found")
@@ -44,6 +50,8 @@ type Task struct {
 	Error      string
 	CreatedAt  time.Time
 	LaunchedAt time.Time
+	// EndedAt is when the task was cancelled, failed or finished.
+	EndedAt time.Time
 }
 
 // Label is the short identifier shown to users, e.g. T12.
@@ -93,7 +101,7 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := db.Exec(schema); err != nil {
+	if err := migrate(db); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("initialise %s: %w", path, err)
 	}
@@ -111,8 +119,25 @@ const schema = `CREATE TABLE IF NOT EXISTS tasks (
 	session     TEXT NOT NULL DEFAULT '',
 	error       TEXT NOT NULL DEFAULT '',
 	created_at  INTEGER NOT NULL,
-	launched_at INTEGER NOT NULL DEFAULT 0
+	launched_at INTEGER NOT NULL DEFAULT 0,
+	ended_at    INTEGER NOT NULL DEFAULT 0
 )`
+
+// migrate creates the schema and adds columns missing from older databases.
+func migrate(db *sql.DB) error {
+	if _, err := db.Exec(schema); err != nil {
+		return err
+	}
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name = 'ended_at'`).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		_, err := db.Exec(`ALTER TABLE tasks ADD COLUMN ended_at INTEGER NOT NULL DEFAULT 0`)
+		return err
+	}
+	return nil
+}
 
 // Close releases the database.
 func (s *Store) Close() error { return s.db.Close() }
@@ -161,7 +186,7 @@ func (s *Store) Position(id int64) (int, error) {
 // Cancel removes a queued task from the queue. A task that already launched
 // cannot be cancelled here; its session is stopped through Claude Code.
 func (s *Store) Cancel(id int64) error {
-	res, err := s.db.Exec(`UPDATE tasks SET state = ? WHERE id = ? AND state = ?`, Cancelled, id, Queued)
+	res, err := s.db.Exec(`UPDATE tasks SET state = ?, ended_at = ? WHERE id = ? AND state = ?`, Cancelled, time.Now().UnixMilli(), id, Queued)
 	if err != nil {
 		return err
 	}
@@ -198,12 +223,27 @@ func (s *Store) SetSession(id int64, session string) error {
 
 // Fail records a launch failure for a claimed task.
 func (s *Store) Fail(id int64, cause string) error {
-	_, err := s.db.Exec(`UPDATE tasks SET state = ?, error = ? WHERE id = ?`, Failed, cause, id)
+	_, err := s.db.Exec(`UPDATE tasks SET state = ?, error = ?, ended_at = ? WHERE id = ?`, Failed, cause, time.Now().UnixMilli(), id)
 	return err
 }
 
+// Finish records that a launched or failed task has nothing left to clean up.
+func (s *Store) Finish(id int64) error {
+	_, err := s.db.Exec(`UPDATE tasks SET state = ?, ended_at = ? WHERE id = ? AND state IN (?, ?)`, Finished, time.Now().UnixMilli(), id, Launched, Failed)
+	return err
+}
+
+// Prune deletes tasks that ended before cutoff and returns how many it removed.
+func (s *Store) Prune(cutoff time.Time) (int64, error) {
+	res, err := s.db.Exec(`DELETE FROM tasks WHERE state IN (?, ?, ?) AND ended_at > 0 AND ended_at < ?`, Cancelled, Failed, Finished, cutoff.UnixMilli())
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 func (s *Store) query(clause string, args ...any) ([]Task, error) {
-	rows, err := s.db.Query(`SELECT id, prompt, name, cwd, agent, model, state, session, error, created_at, launched_at FROM tasks `+clause, args...)
+	rows, err := s.db.Query(`SELECT id, prompt, name, cwd, agent, model, state, session, error, created_at, launched_at, ended_at FROM tasks `+clause, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -211,13 +251,16 @@ func (s *Store) query(clause string, args ...any) ([]Task, error) {
 	var out []Task
 	for rows.Next() {
 		var t Task
-		var created, launched int64
-		if err := rows.Scan(&t.ID, &t.Prompt, &t.Name, &t.Cwd, &t.Agent, &t.Model, &t.State, &t.Session, &t.Error, &created, &launched); err != nil {
+		var created, launched, ended int64
+		if err := rows.Scan(&t.ID, &t.Prompt, &t.Name, &t.Cwd, &t.Agent, &t.Model, &t.State, &t.Session, &t.Error, &created, &launched, &ended); err != nil {
 			return nil, err
 		}
 		t.CreatedAt = time.UnixMilli(created)
 		if launched > 0 {
 			t.LaunchedAt = time.UnixMilli(launched)
+		}
+		if ended > 0 {
+			t.EndedAt = time.UnixMilli(ended)
 		}
 		out = append(out, t)
 	}

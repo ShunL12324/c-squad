@@ -31,8 +31,9 @@ session's recent conversation without switching to it.
 - **Soft constraints in prompts, not code.** Worktrees, branches, commits,
   review and merging are prompt-level conventions. Claude Code already moves
   background sessions into `.claude/worktrees/` by default; if that is disabled
-  or unavailable, work continues in place. C Squad has no worktree, branch,
-  merge or evidence code.
+  or unavailable, work continues in place. C Squad never creates worktrees or
+  merges; the one exception is cleanup of already merged work
+  (`csquad finish`), which works with or without worktrees.
 - **No roles in code.** There is no Master process and no planner. The user
   opens a session with `csquad` and publishes tasks from it, or runs
   `csquad add` from any shell. Specialised behaviour comes from Claude Code
@@ -51,6 +52,8 @@ csquad ls [--all]              List tasks for this directory (or all) with live
 csquad peek TASK [-n N]        Show the last N conversation messages of a task's
                                session, tool calls folded into one-line counts
                                (--tools to show them)
+csquad finish TASK             Once its work is merged, remove the session, its
+                               worktrees and branches (--into, --dry-run)
 csquad cancel TASK             Remove a queued task that has not started
 csquad dispatch                Run the dispatcher in the foreground (normally
                                started automatically by add)
@@ -73,11 +76,12 @@ CREATE TABLE tasks (
   cwd         TEXT NOT NULL,
   agent       TEXT NOT NULL DEFAULT '',
   model       TEXT NOT NULL DEFAULT '',
-  state       TEXT NOT NULL,          -- queued | launched | cancelled | failed
+  state       TEXT NOT NULL,          -- queued | launched | cancelled | failed | finished
   session     TEXT NOT NULL DEFAULT '', -- Claude Code background session id
   error       TEXT NOT NULL DEFAULT '', -- launch failure
   created_at  INTEGER NOT NULL,
-  launched_at INTEGER
+  launched_at INTEGER,
+  ended_at    INTEGER                 -- cancelled, failed or finished
 );
 ```
 
@@ -128,6 +132,35 @@ Kept: user text and assistant text. Folded into a count line such as
 sidechains, system reminders and command wrappers. Unknown entry types are
 skipped, since the transcript format is internal and can change.
 
+## Finishing a task
+
+Prompt-level cleanup proved unreliable: `claude rm` refuses a worktree whose
+commits exist on no remote even when they are merged locally, and a worker that
+leaves its worktree with ExitWorktree detaches it from the session, so
+`claude rm` no longer removes it. `csquad finish TASK` closes that gap without
+making worktrees mandatory:
+
+1. The session transcript records the `cwd` and `gitBranch` of every message,
+   and the shell commands it ran. From these it collects the linked worktrees
+   the session worked in, the branches checked out there or in the main
+   checkout, and branches its commands created (`checkout -b`, `switch -c`,
+   `worktree add -b`, `branch NAME`); a branch created and left within one
+   command never appears as a location.
+2. Every such branch except the target must be contained in the target
+   (default: the branch checked out in the main checkout), and every worktree
+   must have no uncommitted or untracked files. Otherwise it stops and lists
+   the blockers.
+3. It removes the session with `claude rm`, confirming the discard of
+   "unpushed" commits it has just verified are merged, then removes worktrees
+   that survived, deletes the branches, and marks the task finished.
+
+A worker that edited the main checkout directly on the target branch leaves
+nothing but its session. Outside git, only the session is removed.
+
+`ls` marks launched tasks whose session was removed elsewhere as finished,
+hides finished and cancelled tasks unless `--history` is given, and deletes
+tasks that ended more than 7 days ago.
+
 ## Prompts
 
 - **Console prompt** (appended to the `csquad` session): how to publish
@@ -138,11 +171,9 @@ skipped, since the transcript format is internal and can change.
   result (what changed, branch, commit, anything unresolved), decide reasonable
   questions yourself and ask the user only when genuinely blocked, never send
   status reports to other sessions, and never wait for replies to messages.
-  Workers also clean up after themselves: stop processes they started, delete
-  scratch files, and remove worktrees and branches they created once the work
-  is committed or merged. The old runtime left thousands of worktree files and
-  stale branches behind; since csquad no longer owns worktrees, the prompt is
-  the only cleanup mechanism.
+  Workers also clean up after themselves: stop processes they started and
+  delete scratch files. They leave their branch and session worktree for
+  review; `csquad finish` removes those once merged.
 
 ## Configuration
 

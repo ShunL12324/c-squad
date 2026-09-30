@@ -28,7 +28,12 @@ import (
 )
 
 // pollInterval is how often the dispatcher checks for free slots.
+// CSQUAD_DISPATCH_INTERVAL overrides it, for tests.
 const pollInterval = 5 * time.Second
+
+// maxPrompt keeps the prompt below Linux's 128 KiB limit on one argument,
+// since it reaches claude as a command-line argument.
+const maxPrompt = 96 << 10
 
 // keepEnded is how long cancelled, failed and finished tasks stay listed with
 // --history before they are deleted.
@@ -80,6 +85,9 @@ func addCommand() *cobra.Command {
 			if prompt == "" {
 				return errors.New("the task prompt is empty")
 			}
+			if len(prompt) > maxPrompt {
+				return fmt.Errorf("the prompt is %d KiB; the limit is %d KiB. Put long material in a file in the repository and reference it", len(prompt)>>10, maxPrompt>>10)
+			}
 			markExecuted(c)
 			dir, err := paths.Canonical(cwd)
 			if err != nil {
@@ -87,6 +95,11 @@ func addCommand() *cobra.Command {
 			}
 			if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 				return fmt.Errorf("task directory %s is not a directory", dir)
+			}
+			if home, err := os.UserHomeDir(); err == nil {
+				if h, err := paths.Canonical(home); err == nil && h == dir {
+					return errors.New("claude cannot start background sessions in the home directory without asking; use a project directory")
+				}
 			}
 			store, dataDir, err := openStore()
 			if err != nil {
@@ -202,17 +215,24 @@ func lsCommand() *cobra.Command {
 }
 
 // sweep marks launched tasks whose session no longer exists as finished and
-// deletes tasks that ended more than keepEnded ago.
+// deletes tasks that ended more than keepEnded ago. A task claimed for launch
+// that never recorded a session lost its dispatcher mid-launch; it failed.
 func sweep(store *queue.Store, sessions map[string]claude.Session, now time.Time) error {
 	launched, err := store.List(queue.Launched)
 	if err != nil {
 		return err
 	}
 	for _, t := range launched {
-		if _, ok := sessions[t.Session]; !ok && now.Sub(t.LaunchedAt) >= time.Minute {
-			if err := store.Finish(t.ID); err != nil {
-				return err
-			}
+		if _, ok := sessions[t.Session]; ok || now.Sub(t.LaunchedAt) < time.Minute {
+			continue
+		}
+		if t.Session == "" {
+			err = store.Fail(t.ID, "the dispatcher stopped before the session was recorded; if a session did start, find it in agent view")
+		} else {
+			err = store.Finish(t.ID)
+		}
+		if err != nil {
+			return err
 		}
 	}
 	_, err = store.Prune(now.Add(-keepEnded))
@@ -478,7 +498,7 @@ func finishCommand() *cobra.Command {
 			if dryRun {
 				return nil
 			}
-			err = finish.Run(plan, finish.Session{Live: live, Remove: func() error { return claude.Remove(c.Context(), t.Session, true) }})
+			err = finish.Run(plan, finish.Session{Live: live, Remove: func(discard bool) error { return claude.Remove(c.Context(), t.Session, discard) }})
 			if err != nil {
 				return err
 			}
@@ -560,8 +580,12 @@ func dispatchCommand() *cobra.Command {
 			defer func() { _ = store.Close() }()
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
+			interval := pollInterval
+			if v, err := time.ParseDuration(os.Getenv("CSQUAD_DISPATCH_INTERVAL")); err == nil && v > 0 {
+				interval = v
+			}
 			d := &dispatch.Dispatcher{Store: store, Config: cfg, Log: c.OutOrStdout()}
-			err = d.Run(ctx, dataDir, pollInterval)
+			err = d.Run(ctx, dataDir, interval)
 			if errors.Is(err, dispatch.ErrRunning) {
 				_, _ = fmt.Fprintln(c.OutOrStdout(), "dispatcher already running")
 				return nil

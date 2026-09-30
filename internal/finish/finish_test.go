@@ -1,6 +1,7 @@
 package finish
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,7 +46,13 @@ func repo(t *testing.T) (root, wt string) {
 }
 
 func removed(called *bool) Session {
-	return Session{Live: true, Remove: func() error { *called = true; return nil }}
+	return Session{Live: true, Remove: func(discard bool) error {
+		*called = true
+		if !discard {
+			return errors.New("refused: unpushed commits")
+		}
+		return nil
+	}}
 }
 
 func exists(ref, root string) bool {
@@ -163,8 +170,43 @@ func TestOutsideGit(t *testing.T) {
 	if err != nil || p.Root != "" || len(p.Notes) != 1 {
 		t.Fatalf("plan = %+v, %v", p, err)
 	}
+	// Nothing verified the session's work, so its removal must not discard.
 	var called bool
-	if err := Run(p, removed(&called)); err != nil || !called {
-		t.Fatalf("outside git: %v %v", called, err)
+	if err := Run(p, removed(&called)); err == nil || !called || p.Verified {
+		t.Fatalf("outside git discarded: %v %v", called, err)
+	}
+}
+
+func TestMissingTranscriptIsNotVerified(t *testing.T) {
+	root, _ := repo(t)
+	p, err := Build(root, claude.Trail{}, "")
+	if err != nil || p.Verified || len(p.Blockers) != 0 {
+		t.Fatalf("plan = %+v, %v", p, err)
+	}
+	var called bool
+	if err := Run(p, removed(&called)); err == nil {
+		t.Fatal("removed a session with unverified work")
+	}
+}
+
+func TestWorktreeDeletedByHand(t *testing.T) {
+	root, wt := repo(t)
+	run(t, root, "merge", "-q", "task")
+	if err := os.RemoveAll(wt); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Build(root, claude.Trail{Locations: []claude.Location{{Cwd: wt, Branch: "task"}}}, "")
+	if err != nil || len(p.Blockers) != 0 || len(p.Worktrees) != 1 || p.Worktrees[0].Exists {
+		t.Fatalf("plan = %+v, %v", p, err)
+	}
+	var called bool
+	if err := Run(p, removed(&called)); err != nil {
+		t.Fatal(err)
+	}
+	if exists("refs/heads/task", root) {
+		t.Fatal("branch of the deleted worktree kept")
+	}
+	if list := run(t, root, "worktree", "list"); strings.Contains(list, wt) {
+		t.Fatalf("stale worktree still registered:\n%s", list)
 	}
 }

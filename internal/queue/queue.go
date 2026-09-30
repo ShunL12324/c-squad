@@ -92,20 +92,54 @@ func ParseID(s string) (int64, error) {
 // several processes: SQLite serialises writers and WAL lets readers proceed.
 type Store struct{ db *sql.DB }
 
+// openTimeout bounds how long Open waits for other processes initialising or
+// writing the same database.
+const openTimeout = 10 * time.Second
+
 // Open opens or creates the database at path.
+//
+// Many csquad processes may open it at once, e.g. a burst of `add` calls.
+// Switching to WAL and creating the schema need locks for which SQLite does not
+// always consult the busy timeout, so a busy failure here is retried.
 func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)")
+	deadline := time.Now().Add(openTimeout)
+	for delay := 5 * time.Millisecond; ; delay = min(2*delay, 200*time.Millisecond) {
+		db, err := openDB(path)
+		if err == nil {
+			return &Store{db: db}, nil
+		}
+		if !busy(err) || time.Now().After(deadline) {
+			return nil, fmt.Errorf("initialise %s: %w", path, err)
+		}
+		time.Sleep(delay)
+	}
+}
+
+func openDB(path string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(10000)")
 	if err != nil {
 		return nil, err
 	}
-	if err := migrate(db); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("initialise %s: %w", path, err)
+	var mode string
+	if err = db.QueryRow(`PRAGMA journal_mode`).Scan(&mode); err == nil && !strings.EqualFold(mode, "wal") {
+		err = db.QueryRow(`PRAGMA journal_mode=WAL`).Scan(&mode)
 	}
-	return &Store{db: db}, nil
+	if err == nil {
+		err = migrate(db)
+	}
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return db, nil
+}
+
+func busy(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "SQLITE_BUSY") || strings.Contains(msg, "database is locked")
 }
 
 const schema = `CREATE TABLE IF NOT EXISTS tasks (

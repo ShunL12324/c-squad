@@ -40,6 +40,10 @@ type Plan struct {
 	Blockers []string
 	// Notes are harmless observations shown with the plan.
 	Notes []string
+	// Verified means the plan knows where the session worked: the task is in
+	// git and its transcript was read. Only then may unpushed commits be
+	// discarded when the session is removed.
+	Verified bool
 }
 
 // Build inspects the task directory and the session's trail and decides what
@@ -47,6 +51,9 @@ type Plan struct {
 // branch checked out in the main checkout.
 func Build(dir string, trail claude.Trail, into string) (Plan, error) {
 	var p Plan
+	if len(trail.Locations) == 0 {
+		p.Notes = append(p.Notes, "no transcript found; the session is removed only if it holds no unpushed commits")
+	}
 	top, err := git(dir, "rev-parse", "--show-toplevel")
 	if err != nil {
 		p.Notes = append(p.Notes, "not a git repository; only the session is removed")
@@ -92,7 +99,13 @@ func Build(dir string, trail claude.Trail, into string) (Plan, error) {
 	for _, b := range p.Branches {
 		p.check(b)
 	}
-	for _, w := range p.Worktrees {
+	p.Verified = len(trail.Locations) > 0
+	for i, w := range p.Worktrees {
+		if _, err := os.Stat(w.Path); err != nil {
+			// Deleted by hand but still registered; prune forgets it.
+			p.Worktrees[i].Exists = false
+			continue
+		}
 		if status, err := git(w.Path, "status", "--porcelain"); err != nil {
 			p.Blockers = append(p.Blockers, fmt.Sprintf("cannot read worktree %s: %v", w.Path, err))
 		} else if status != "" {
@@ -129,8 +142,9 @@ func (p *Plan) check(branch string) {
 type Session struct {
 	// Live reports whether the session still exists.
 	Live bool
-	// Remove deletes it, confirming the discard of unpushed commits.
-	Remove func() error
+	// Remove deletes it. With discard set it confirms the discard of commits
+	// that exist on no remote; Run sets it only when the plan verified them.
+	Remove func(discard bool) error
 }
 
 // Run removes the session, then any worktree and branch the plan lists that
@@ -140,8 +154,10 @@ func Run(p Plan, s Session) error {
 		return errors.New("plan has blockers")
 	}
 	if s.Live {
-		// Every branch is merged, so discarding "unpushed" commits loses nothing.
-		if err := s.Remove(); err != nil {
+		// Every branch the trail found is merged, so discarding "unpushed"
+		// commits loses nothing. Without a verified trail (outside git, or no
+		// transcript), let Claude Code's own refusal protect the work.
+		if err := s.Remove(p.Verified); err != nil {
 			return err
 		}
 	}

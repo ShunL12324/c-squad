@@ -27,6 +27,10 @@ const launchGrace = time.Minute
 // lockName is the lock file that keeps one dispatcher per data directory.
 const lockName = "dispatcher"
 
+// giveUpAfter ends a dispatcher whose steps keep failing, e.g. because claude
+// is missing or signed out. Queued tasks stay queued; the next add retries.
+const giveUpAfter = 2 * time.Minute
+
 // ErrRunning reports that another dispatcher holds the lock.
 var ErrRunning = errors.New("dispatcher already running")
 
@@ -160,11 +164,21 @@ func (d *Dispatcher) Run(ctx context.Context, dataDir string, interval time.Dura
 	}
 	defer func() { release() }()
 	_, _ = fmt.Fprintf(d.Log, "%s dispatcher started (pid %d, %d slots)\n", stamp(d.now()), os.Getpid(), d.Config.Slots)
+	var failingSince time.Time
 	for {
 		remaining, err := d.Step(ctx)
 		if err != nil {
 			_, _ = fmt.Fprintf(d.Log, "%s %v\n", stamp(d.now()), err)
-		} else if remaining == 0 {
+			if failingSince.IsZero() {
+				failingSince = d.now()
+			} else if d.now().Sub(failingSince) >= giveUpAfter {
+				_, _ = fmt.Fprintf(d.Log, "%s giving up after %s of errors; queued tasks stay queued\n", stamp(d.now()), giveUpAfter)
+				return err
+			}
+		} else {
+			failingSince = time.Time{}
+		}
+		if err == nil && remaining == 0 {
 			release()
 			queued, err := d.Store.List(queue.Queued)
 			if err == nil && len(queued) == 0 {

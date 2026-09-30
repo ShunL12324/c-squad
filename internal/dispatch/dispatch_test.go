@@ -142,3 +142,37 @@ func TestRunLaunchesTaskQueuedDuringLastStep(t *testing.T) {
 		t.Fatalf("launched %+v", f.launched)
 	}
 }
+
+func TestRunGivesUpOnPersistentErrors(t *testing.T) {
+	dir := t.TempDir()
+	store, err := queue.Open(filepath.Join(dir, "q.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+	if _, err := store.Add(queue.Task{Prompt: "x", Cwd: "/w"}); err != nil {
+		t.Fatal(err)
+	}
+	clock := time.Now()
+	calls := 0
+	d := &Dispatcher{
+		Store:  store,
+		Config: config.Config{Slots: 1},
+		Sessions: func(context.Context) (map[string]claude.Session, error) {
+			calls++
+			return nil, errors.New("claude missing")
+		},
+		now: func() time.Time { clock = clock.Add(30 * time.Second); return clock },
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := d.Run(ctx, dir, time.Millisecond); err == nil || errors.Is(err, context.DeadlineExceeded) || calls < 3 {
+		t.Fatalf("Run = %v after %d calls", err, calls)
+	}
+	if queued, _ := store.List(queue.Queued); len(queued) != 1 {
+		t.Fatal("gave up by dropping the queued task")
+	}
+	if Running(dir) {
+		t.Fatal("lock held after giving up")
+	}
+}

@@ -1,6 +1,9 @@
 package queue
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -107,5 +110,50 @@ func TestFinishAndPrune(t *testing.T) {
 	}
 	if _, err := s.Get(b.ID); err != nil {
 		t.Fatal("pruned a queued task")
+	}
+}
+
+// A burst of processes opening a new database at once must not fail on the
+// locks WAL setup and schema creation take. Goroutines in one process do not
+// contend the same way, so the test re-executes itself as helper processes.
+func TestConcurrentOpen(t *testing.T) {
+	if path := os.Getenv("CSQUAD_TEST_OPEN"); path != "" {
+		s, err := Open(path)
+		if err == nil {
+			_, err = s.Add(Task{Prompt: "x", Cwd: "/"})
+			_ = s.Close()
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	path := filepath.Join(t.TempDir(), "q.db")
+	const n = 24
+	errs := make(chan error, n)
+	for range n {
+		go func() {
+			cmd := exec.Command(os.Args[0], "-test.run=^TestConcurrentOpen$")
+			cmd.Env = append(os.Environ(), "CSQUAD_TEST_OPEN="+path)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				err = fmt.Errorf("%w: %s", err, out)
+			}
+			errs <- err
+		}()
+	}
+	for range n {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	if tasks, _ := s.List(""); len(tasks) != n {
+		t.Fatalf("%d tasks, want %d", len(tasks), n)
 	}
 }

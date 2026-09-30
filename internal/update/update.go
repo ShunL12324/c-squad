@@ -1,8 +1,5 @@
 // Package update upgrades csquad through whichever package manager installed
-// it. It never replaces files a package manager owns itself, and it never
-// touches a team. Teams using an installed executable should be stopped before
-// updating because the package manager replaces that executable.
-// See docs/design/update.md.
+// it. It never replaces files a package manager owns itself.
 package update
 
 import (
@@ -41,21 +38,10 @@ type Channel struct {
 	deb bool
 }
 
-// Team is what update reports about a saved team.
-type Team struct {
-	Name    string
-	Active  bool
-	Pinned  bool
-	Version string
-}
-
 // Options configure one run.
 type Options struct {
 	Check bool
 	Yes   bool
-	// Teams lists the saved teams csquad can find, for the before and after
-	// reports. It must only read.
-	Teams func() []Team
 	Out   io.Writer
 }
 
@@ -118,15 +104,11 @@ func Run(o Options) error {
 			_, _ = fmt.Fprintf(o.Out, "Latest: %s\n", latest.Tag)
 		}
 		describe(o.Out, ch)
-		reportStore(o.Out)
 		return nil
 	}
 	if ch.Hint != "" {
 		_, _ = fmt.Fprintln(o.Out, ch.Hint)
 		return fmt.Errorf("csquad cannot update a %s installation itself", ch.Name)
-	}
-	if err := requireStoppedTeams(o); err != nil {
-		return err
 	}
 	var download *debPackage
 	if ch.deb {
@@ -182,24 +164,8 @@ func quoteAll(argv []string) []string {
 	return out
 }
 
-func requireStoppedTeams(o Options) error {
-	if o.Teams == nil {
-		return nil
-	}
-	var active []string
-	for _, t := range o.Teams() {
-		if t.Active && !t.Pinned {
-			active = append(active, t.Name)
-		}
-	}
-	if len(active) > 0 {
-		return fmt.Errorf("stop active teams before updating (%s), then resume them afterward", strings.Join(active, ", "))
-	}
-	return nil
-}
-
 // report reads the version from the channel's stable entry, since the upgrade
-// may have removed the path this process started from, then lists teams.
+// may have removed the path this process started from.
 func report(o Options, ch Channel) error {
 	out, err := output(ch.Entry, "version")
 	if err != nil {
@@ -210,15 +176,6 @@ func report(o Options, ch Channel) error {
 		_, _ = fmt.Fprintf(o.Out, "csquad is up to date: %s\n", installed)
 	} else {
 		_, _ = fmt.Fprintf(o.Out, "Updated: %s\n", installed)
-	}
-	if o.Teams != nil {
-		for _, t := range o.Teams() {
-			if t.Pinned {
-				_, _ = fmt.Fprintf(o.Out, "team %s: csquad %s (pinned); resume it to move to the new build\n", t.Name, t.Version)
-			} else {
-				_, _ = fmt.Fprintf(o.Out, "team %s: uses the installed csquad executable\n", t.Name)
-			}
-		}
 	}
 	return nil
 }

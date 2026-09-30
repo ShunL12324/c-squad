@@ -10,10 +10,7 @@ import (
 
 func runCLI(t *testing.T, args ...string) string {
 	t.Helper()
-	root := newCommand(func([]string, map[string]string, []string) error {
-		t.Fatal("completion setup reached the team backend")
-		return nil
-	})
+	root := newCommand()
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&out)
@@ -159,7 +156,7 @@ func TestCompletionHelpDocumentsInstallWithoutHomebrewCommands(t *testing.T) {
 
 func TestCompletionInstallRejectsUnknownShell(t *testing.T) {
 	t.Setenv("SHELL", "/usr/bin/nushell")
-	root := newCommand(func([]string, map[string]string, []string) error { return nil })
+	root := newCommand()
 	root.SetOut(&bytes.Buffer{})
 	root.SetErr(&bytes.Buffer{})
 	root.SetArgs([]string{"completion", "install", "--dir", t.TempDir()})

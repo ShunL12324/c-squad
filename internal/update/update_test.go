@@ -15,8 +15,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/ShunL12324/c-squad/internal/buildinfo"
 )
 
 func must(t *testing.T, err error) {
@@ -404,28 +402,15 @@ func TestRunRules(t *testing.T) {
 			return nil
 		})
 		var out bytes.Buffer
-		teams := func() []Team {
-			return []Team{{Name: "live", Active: true, Pinned: true, Version: buildinfo.Version}, {Name: "old", Active: false}}
-		}
-		must(t, Run(Options{Out: &out, Teams: teams}))
+		must(t, Run(Options{Out: &out}))
 		text := out.String()
-		for _, want := range []string{"Updated: csquad 0.12.0", "team live: csquad " + buildinfo.Version + " (pinned); resume it", "team old: uses the installed csquad executable"} {
+		for _, want := range []string{"Updated: csquad 0.12.0"} {
 			if !strings.Contains(text, want) {
 				t.Fatalf("report lacks %q:\n%s", want, text)
 			}
 		}
 		if len(*ran) != 1 || (*ran)[0][1] != "upgrade" {
 			t.Fatalf("ran %v", *ran)
-		}
-	})
-	t.Run("active installed team blocks update", func(t *testing.T) {
-		setup(t)
-		ran := recordRuns(t, true, true, nil)
-		err := Run(Options{Yes: true, Out: &bytes.Buffer{}, Teams: func() []Team {
-			return []Team{{Name: "live", Active: true}}
-		}})
-		if err == nil || !strings.Contains(err.Error(), "stop active teams") || len(*ran) != 0 {
-			t.Fatalf("active team update: %v %v", err, *ran)
 		}
 	})
 }

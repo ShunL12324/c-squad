@@ -1,11 +1,12 @@
 # Contributing
 
-C Squad coordinates real local processes and Git workspaces. Changes should keep
-that behavior predictable, observable, and recoverable.
+C Squad queues work for real Claude Code sessions. Changes should keep that
+behavior predictable and observable, and leave everything Claude Code already
+does to Claude Code.
 
 ## Development
 
-Use Go 1.26+, Git, and tmux on Linux, macOS, or WSL 2.
+Use Go 1.26+ and Git on Linux, macOS, or WSL 2.
 
 ```sh
 git clone https://github.com/ShunL12324/c-squad.git
@@ -20,21 +21,23 @@ Run `bin/csquad` to try your build. Use `make install` to install it under
 
 Tests use Go's standard `testing` package. Keep unit tests beside the code they
 exercise. Use temporary directories and cleanup handlers; never point tests at a
-real user's team, configuration, or worktree. Integration tests use real tmux and
-Git with fake agent processes, so the suite does not require paid model accounts.
+real user's configuration, queue database or Claude Code state; set
+`XDG_DATA_HOME`, `XDG_CONFIG_HOME` and `CLAUDE_CONFIG_DIR` to temporary
+directories. Tests replace `claude` with a fake (`CSQUAD_CLAUDE`), so the suite
+does not require a paid model account.
 
 ## Changes
 
 Open an issue for substantial behavior changes before implementing them. For a
-bug report, include the OS, tmux/engine versions, command, expected result, and
+bug report, include the OS, Claude Code version, command, expected result, and
 observed result. Remove credentials and private conversation content.
 
 Keep pull requests focused. Explain the user-visible change, how it was tested,
 and any compatibility limitations. Prefer tests of observable behavior over tests
-that mirror implementation details. Preserve existing task/message encoding and
-recovery semantics unless the change includes a migration.
+that mirror implementation details. Preserve the queue database schema unless the
+change includes a migration.
 
-See [architecture](docs/architecture.md) for package boundaries and invariants,
+See [the design](docs/redesign.md) for the model and its boundaries,
 and [releasing](docs/releasing.md) for distribution maintenance.
 
 Contributions are provided under the project's [MIT license](LICENSE).

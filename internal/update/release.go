@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
@@ -17,8 +16,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/ShunL12324/c-squad/internal/pin"
 )
 
 // releaseAPI is the GitHub endpoint for the latest stable release. GitHub
@@ -298,21 +295,3 @@ func fileSHA256(path string) (string, error) {
 
 // reportStore prints the pinned-copy store and its size. Copies are never
 // removed automatically: a team in another project may still use one.
-func reportStore(w io.Writer) {
-	dir, err := pin.Dir()
-	if err != nil {
-		return
-	}
-	var size int64
-	entries := 0
-	_ = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
-		if err == nil && d.Type().IsRegular() {
-			if info, e := d.Info(); e == nil {
-				size += info.Size()
-				entries++
-			}
-		}
-		return nil
-	})
-	_, _ = fmt.Fprintf(w, "Pinned builds: %d in %s (%.1f MB); remove unused ones by hand\n", entries, dir, float64(size)/(1<<20))
-}

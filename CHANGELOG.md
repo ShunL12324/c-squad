@@ -4,6 +4,26 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
+## Unreleased
+
+### Changed
+
+- **Breaking:** C Squad is now a task queue on top of Claude Code background
+  sessions. `csquad add` queues a task, a dispatcher starts it with
+  `claude --bg` while fewer than `slots` sessions (default 6) are working or
+  waiting for input, and `csquad ls` / `csquad peek` show live state and recent
+  messages. Bare `csquad` starts `claude` with the console prompt appended. See
+  `docs/redesign.md`.
+- Tasks live in one global SQLite database at `~/.local/share/csquad/csquad.db`.
+  Session state is read live from `claude agents --json` and never stored.
+
+### Removed
+
+- The tmux runtime, team UI, members, Master, messaging, stall detection,
+  recovery, pinning, profiles, Codex support, task worktrees, merge and evidence
+  gates, and every command built on them. tmux and procps are no longer package
+  dependencies. Existing `.csquad/` team directories are left untouched.
+
 ## v0.12.11 — 2026-09-28
 
 ### Fixed

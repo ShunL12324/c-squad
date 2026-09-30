@@ -1,7 +1,7 @@
 {
   "name": "csquad",
   "version": "0.0.0",
-  "description": "Coordinate Claude Code and Codex teams in tmux",
+  "description": "Queue tasks as Claude Code background sessions",
   "license": "MIT",
   "author": "ShunL12324",
   "homepage": "https://github.com/ShunL12324/c-squad#readme",
@@ -14,9 +14,7 @@
   },
   "keywords": [
     "claude-code",
-    "codex",
     "agents",
-    "tmux",
     "cli"
   ],
   "bin": {

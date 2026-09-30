@@ -373,11 +373,3 @@ func completionShellNames() func(*cobra.Command, []string, string) ([]string, co
 	}
 	return cobra.FixedCompletions(names, cobra.ShellCompDirectiveNoFileComp)
 }
-
-// markExecuted keeps failures after this point out of the usage-error path.
-func markExecuted(cmd *cobra.Command) {
-	if cmd.Annotations == nil {
-		cmd.Annotations = map[string]string{}
-	}
-	cmd.Annotations["executed"] = "true"
-}

@@ -34,9 +34,7 @@ archives:
       - README.md
       - CONTRIBUTING.md
       - docs/install.md
-      - docs/usage.md
-      - docs/task-evidence.md
-      - docs/architecture.md
+      - docs/redesign.md
       - docs/releasing.md
       - docs/assets/hero.png
       - docs/assets/icon.png
@@ -72,12 +70,9 @@ nfpms:
     homepage: https://github.com/ShunL12324/c-squad
     maintainer: ShunL12324 <ShunL12324@users.noreply.github.com>
     license: MIT
-    description: Coordinate Claude Code and Codex teams in tmux
+    description: Queue tasks as Claude Code background sessions
     section: devel
     priority: optional
-    dependencies:
-      - tmux
-      - procps
     recommends:
       - git
       - bash-completion

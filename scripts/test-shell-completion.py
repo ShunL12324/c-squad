@@ -93,12 +93,12 @@ def main():
             wait_for(b"\r\nCSQ_BOUND\r\n")
             os.write(terminal, b"csqua\t\x18")
             wait_for(b"CSQ_BUFFER=csquad ")
-            os.write(terminal, b"csquad resu\t\x18")
-            wait_for(b"CSQ_BUFFER=csquad resume ")
-            os.write(terminal, b"csquad ne\t\x18")
-            wait_for(b"CSQ_BUFFER=csquad new ")
-            os.write(terminal, b"csquad new --prof\t\x18")
-            wait_for(b"CSQ_BUFFER=csquad new --profile ")
+            os.write(terminal, b"csquad pee\t\x18")
+            wait_for(b"CSQ_BUFFER=csquad peek ")
+            os.write(terminal, b"csquad ad\t\x18")
+            wait_for(b"CSQ_BUFFER=csquad add ")
+            os.write(terminal, b"csquad add --cw\t\x18")
+            wait_for(b"CSQ_BUFFER=csquad add --cwd ")
             # Report the file the completion function came from through a file
             # rather than the terminal, so no echoed command can be mistaken for
             # the answer. Another csquad on the system must not satisfy the test.
@@ -123,7 +123,7 @@ def main():
         loaded = origin.read_text().strip()
         if args.fpath:
             check_origin(loaded, args.fpath)
-        print(f"PASS: Zsh loaded {loaded} and completes csquad, resume, new and new --profile")
+        print(f"PASS: Zsh loaded {loaded} and completes csquad, peek, add and add --cwd")
 
 
 if __name__ == "__main__":

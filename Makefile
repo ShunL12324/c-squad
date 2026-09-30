@@ -33,7 +33,7 @@ check: fmt-check lint test
 PREFIX ?= $(HOME)/.local
 .PHONY: install
 install: build
-	bin/csquad doctor --strict
+	bin/csquad doctor
 	install -d "$(PREFIX)/bin"
 	install -m 755 bin/csquad "$(PREFIX)/bin/csquad.install"
 	mv "$(PREFIX)/bin/csquad.install" "$(PREFIX)/bin/csquad"

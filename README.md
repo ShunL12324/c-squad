@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/hero.png" alt="C Squad — Claude Code + Codex. One team. Your terminal." width="100%">
+  <img src="docs/assets/hero.png" alt="C Squad" width="100%">
 </p>
 
 <p align="center">
@@ -8,44 +8,25 @@
   <img alt="Linux, macOS, WSL 2" src="https://img.shields.io/badge/platforms-Linux_%C2%B7_macOS_%C2%B7_WSL_2-52627a?style=flat-square">
 </p>
 
-# Run Claude Code and Codex as one team
+# Queue work for Claude Code, a few sessions at a time
 
-**C Squad is a CLI that lets you give work to one lead agent, then have it recruit
-and coordinate other Claude Code and Codex agents in your terminal.** The lead
-is called **Master**. You talk to it; it delegates work and reports back.
+**C Squad is a small CLI that turns tasks into Claude Code background sessions.**
+You publish tasks as fast as you think of them; a dispatcher starts each one as
+a `claude --bg` session once a slot is free, so a dozen tasks run six or eight
+at a time instead of all at once.
 
-For example, tell Master:
+Everything else is Claude Code's own: you watch, answer and steer the sessions
+in its agent view (`claude agents`). C Squad adds only what agent view lacks:
 
-> Add a --done filter to this task-list CLI. Use Codex to implement and test it,
-> and Claude to review the change. Ask me before merging.
+- **A queue with a concurrency limit** shared by every project.
+- **Prompt injection** for the sessions it starts: workers work autonomously,
+  prefer an isolated worktree, commit their result, and never send status
+  reports.
+- **A quick look without switching**: `csquad peek` prints a session's recent
+  conversation with tool calls folded away.
 
-Master creates the task, starts the members, and passes work between them. Each
-agent has its own tmux session. You can switch between them to see what they are
-doing, or stay with Master and ask for an update.
-
-![C Squad: member sidebar, native agent terminal, and task cards](docs/assets/workspace.png)
-
-*Click a member to follow its work. Task cards show progress and review evidence.*
-
-## Why use it?
-
-When you already use coding agents, coordinating several of them becomes work:
-opening terminals, repeating context, passing review feedback around, and
-keeping track of who is waiting for whom. C Squad gives that coordination to
-Master.
-
-- **Delegate a whole workflow.** Ask for implementation, tests, and review in one
-  conversation. Members report results and blockers back to Master.
-- **Mix the tools you use.** Choose Claude Code or Codex for each member, with
-  your existing accounts and native CLI configuration.
-- **Keep code work separate.** Each development task gets a Git worktree, so
-  parallel tasks can be reviewed before they reach your main branch.
-- **See the work as it happens.** Open any member's native terminal session;
-  ask Master for progress without manually collecting every agent's response.
-
-It is most useful for work that benefits from separate implementation and review,
-or several independent tasks. For a small one-line fix, one agent is usually enough.
-Each running agent uses its own engine account's quota.
+There is no team, no Master process, no messaging between agents and no custom
+UI. Workers do not report back; you check when you want to.
 
 ## Quick start
 
@@ -75,94 +56,78 @@ sudo apt update
 sudo apt install csquad
 ```
 
-Homebrew and APT install a precompiled C Squad binary and tmux. You also need an installed,
-signed-in **Claude Code or Codex CLI**; set up both to use a mixed-engine team.
-Code tasks need Git, which Homebrew installs and APT normally installs as a
-recommended dependency.
+Homebrew and APT install a precompiled C Squad binary. You also need an
+installed, signed-in **Claude Code** CLI.
 
 Prefer a manual install? Download a package for your platform from
 [Releases](https://github.com/ShunL12324/c-squad/releases/latest).
 See [Installation](docs/install.md) for details. Native Windows is not supported;
 use WSL 2 instead.
 
-### 2. Start in your project
+### 2. Queue tasks
 
 ```sh
 cd /path/to/your/project
 csquad doctor
-csquad new -s my-team
+csquad add 'Add a --done filter to the list command, with tests'
+csquad add --agent reviewer -- 'Review the auth changes on branch feat/login'
+csquad add --file big-task.md
 ```
 
-Create a named team with `csquad new -s NAME`; `csquad start --name NAME`
-remains compatible. Use `list` to find teams, `attach NAME` to enter a running
-team, `resume NAME` to restore a stopped team, and `stop NAME` to stop it.
+Or start a console session and let Claude queue the work for you:
 
-Set `master_profile`, or pass `--profile NAME`, if you want another engine, model
-or account as Master. C Squad opens tmux for you;
-there is no separate server or tmux session to start by hand. For development
-tasks, your project must be a Git repository with at least one commit.
-`start` always creates a new team and rejects an existing name. Continue a saved
-team with `csquad resume my-team`, or connect to a running one with `csquad attach my-team`.
+```sh
+csquad                  # claude with the csquad console prompt appended
+csquad -- --model opus  # arguments after -- go to claude
+```
 
-### 3. Give Master a task
+> Split the refactor plan into independent tasks and queue them.
 
-Type your request into the agent conversation that opens:
+A worker sees only its own prompt, so make each task self-contained.
 
-> Fix the login bug described in issue 42. Have a developer implement the fix
-> and another member review it. Run the tests and ask me before merging.
+### 3. Check on them
 
-Master recruits the members and assigns the work. You do not need to create
-roles, send messages, or manage worktrees yourself. When you want an update,
-ask: **"Who is working on what, and is anyone blocked?"**
+```sh
+csquad ls           # tasks from this directory: state, age, latest message
+csquad ls --all     # every project
+csquad peek T3      # recent conversation of T3's session
+csquad cancel T5    # drop a task that has not started
+claude agents       # watch, answer and attach to sessions
+```
 
-By default, agents run with native permission prompts bypassed. Set
-`bypass_permissions = false` in the configuration to retain those approvals.
-See [configuration and behavior](docs/usage.md#configure-only-what-you-need).
+`ls` shows each task as `queued`, `working`, `needs input`, `done`, `failed`,
+`stopped` or `gone`. Sessions that need you also show up in agent view and
+trigger Claude Code's notifications.
 
-## Move around your team
+## How it works
 
-The left sidebar shows your members. These shortcuts stay local to the team:
+- `csquad add` stores the task in `~/.local/share/csquad/csquad.db` and starts
+  the dispatcher if it is not running.
+- The dispatcher counts sessions that are working or waiting for input, launches
+  queued tasks in order while slots are free, and exits when the queue is empty.
+- Session state is read live from `claude agents --json`; nothing is synced.
+- Before launching in a directory Claude Code has not trusted yet, csquad marks
+  it trusted in `~/.claude.json`. That file is internal to Claude Code; see
+  [the design](docs/redesign.md#workspace-trust) for the trade-off.
 
-| What you want to do | How |
-| --- | --- |
-| Open a member with the mouse | Click its name in the left sidebar |
-| See the next or previous member | `Alt+Down` / `Alt+Up` |
-| Show or hide tasks | Click **Tasks** in the footer, or press `Ctrl-b t` |
-| Open both panels | `csquad ui` |
-| Go back to Master | Press `Ctrl-b`, then `0` |
-| Open a numbered member | Press `Ctrl-b`, then its number |
-| Leave the terminal and keep the team running | Press `Ctrl-b`, then `d` |
-| Reattach from the same project | `csquad attach` |
-| Stop the team | `csquad stop` |
-| List teams | `csquad list` |
-| Resume a stopped team | `csquad resume my-team` |
+## Configuration
 
-The member list stays visible on medium-width terminals; tasks open in a popup
-when both panels do not fit. Scroll to browse without changing the selected
-member. Task cards separate active work from completed tasks and show reported
-milestones and the latest progress update.
+`~/.config/csquad/config.toml` (all optional):
 
-For work spanning several repositories, ask Master to start each member in its
-project directory using `member add --cwd /path/to/project`.
+```toml
+slots = 6                 # concurrent sessions across all projects
+model = ""                # default --model for queued sessions
+permission_mode = ""      # default --permission-mode, e.g. "auto"
+```
 
-**Detaching keeps the team running. Exiting Master stops the team.** Task records
-and worktrees remain in `.csquad/` for recovery. The team binds `Alt+Up` and
-`Alt+Down`, so your agent no longer receives them; remap or release them with
-`previous_member_key` and `next_member_key`. See
-[member switch keys](docs/usage.md#member-switch-keys-and-your-agent).
+`csquad config` shows the effective values.
 
 ## Learn more
 
-- [Installation](docs/install.md): package managers, archives, and dependency checks.
-- [Using C Squad](docs/usage.md): configuration, completion, task coordination,
-  recovery, and compatibility limits.
-- [Contributing](CONTRIBUTING.md): local development and testing.
-- [Architecture](docs/architecture.md) and [Releasing](docs/releasing.md): internals
-  and release maintenance.
-
-**Early-stage software:** real Claude Code/Codex sessions have been exercised on
-Linux. macOS and WSL runtime acceptance is still pending. Native engine updates
-can require compatibility changes.
+- [Installation](docs/install.md): package managers, archives and completion.
+- [Design](docs/redesign.md): why C Squad is built this way, and what it
+  deliberately leaves to Claude Code.
+- [Contributing](CONTRIBUTING.md) and [Releasing](docs/releasing.md).
 
 ## Development
 
@@ -172,11 +137,8 @@ make check  # Formatting, lint, and race tests
 make build  # Build a local binary
 ```
 
-Ordinary pushes and PRs run no GitHub builds. A stable version tag such as
-`v0.1.0` triggers release checks and packaging.
-
 ## License
 
 [MIT](LICENSE) © 2026 ShunL12324. Personal and commercial use are welcome.
 
-C Squad is an independent project, not affiliated with OpenAI or Anthropic.
+C Squad is an independent project, not affiliated with Anthropic.

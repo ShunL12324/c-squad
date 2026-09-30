@@ -53,13 +53,12 @@ apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq csquad zsh python3
 csquad version
 csquad --help >/dev/null
-command -v tmux
-command -v ps
 for f in /usr/share/bash-completion/completions/csquad /usr/share/zsh/vendor-completions/_csquad /usr/share/fish/vendor_completions.d/csquad.fish /usr/share/doc/csquad/copyright; do test -s "$f"; done
 python3 /test-shell-completion.py
 # Package installation must not eagerly create user configuration.
 test ! -e /root/.config/csquad/config.toml
 csquad config >/dev/null
+mkdir -p /root/.config/csquad
 printf '\n# keep user changes\n' >> /root/.config/csquad/config.toml
 mkdir -p /tmp/project/.csquad
 printf 'keep recovery data\n' > /tmp/project/.csquad/sentinel

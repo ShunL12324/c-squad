@@ -9,35 +9,21 @@ You do not need Go or a compiler.
 ```sh
 npm install -g csquad
 csquad doctor
-csquad new -s my-team
 ```
 
-Create a named team with `csquad new -s NAME`; `csquad start --name NAME`
-remains compatible. Use `list` to find teams, `attach NAME` to enter a running
-team, `resume NAME` to restore a stopped team, and `stop NAME` to stop it.
-
 For one-off commands, run `npx csquad`. Install csquad persistently before
-starting or resuming a team. Install npm inside WSL 2 when using Windows.
+queueing tasks, because the dispatcher runs the installed executable. Install
+npm inside WSL 2 when using Windows.
 The package contains native binaries for macOS and Linux on x64 and arm64;
 installation needs no Go compiler, lifecycle scripts, or GitHub downloads.
 
-npm does not manage system packages. Install tmux, ps, and Git separately:
-
-```sh
-# macOS (ps is included with the OS)
-brew install tmux git
-
-# Ubuntu / Debian / WSL 2
-sudo apt install tmux procps git
-```
-
-Install and sign in to your chosen agent CLI separately. Update with
+Install and sign in to Claude Code separately. Update with
 `csquad update` (see [Updating](#updating)); remove with
 `npm uninstall -g csquad`.
 Use one installation channel to avoid competing executables on PATH.
 npm enables no completion by itself. Run `csquad completion install` once and
 apply the line it prints; see
-[npm, npx, and manual installs](usage.md#npm-npx-and-manual-installs).
+[Shell completion](#shell-completion).
 
 ## macOS / Homebrew
 
@@ -49,8 +35,8 @@ brew install ShunL12324/c-squad/csquad
 The source repository also serves as the tap; no separate repository is needed.
 Run `brew tap` once, then use the normal install and upgrade commands.
 The tap downloads the release binary for your OS and CPU architecture, then
-installs tmux, Git, and shell completions. It does not install or sign in to
-Claude Code or Codex.
+installs Git and shell completions. It does not install or sign in to
+Claude Code.
 
 ```sh
 brew update
@@ -88,9 +74,8 @@ sudo apt update
 sudo apt install csquad
 ```
 
-APT installs tmux and procps; Git is recommended and normally installed too.
-If recommendations are disabled, install Git separately before using code tasks.
-Claude Code/Codex installation and authentication remain separate.
+Git is recommended and normally installed too. Claude Code installation and
+authentication remain separate.
 
 ```sh
 sudo apt update
@@ -100,17 +85,6 @@ sudo apt remove csquad
 
 The repository tracks the current stable release. It is a third-party source,
 not part of Ubuntu's or Debian's official archive.
-
-### tmux pane-exit compatibility on Linux
-
-Some Linux tmux builds with libutempter can miss a `pane-died` hook when a pane
-exits during a utmp update. This can delay C Squad's response to an engine or
-Master exit. [tmux issue #4559](https://github.com/tmux/tmux/issues/4559) was
-fixed upstream in [tmux 3.6](https://github.com/tmux/tmux/commit/fa5f3cef3d651b0eb9abfa77fc37ccade81679b5).
-Use tmux 3.6 or later, or a distribution build that backports that fix, for
-reliable pane-exit hooks when libutempter is enabled. Check `tmux -V` and your
-distribution's patch notes; an older version number alone does not establish
-whether the fix is present. C Squad does not replace your system tmux.
 
 Alternatively, download a `.deb` from [GitHub Releases](https://github.com/ShunL12324/c-squad/releases/latest) and install it locally:
 
@@ -131,25 +105,49 @@ install -m 755 ./csquad "$HOME/.local/bin/csquad"
 ```
 
 Add `~/.local/bin` to PATH. Go is not needed for precompiled archives. Install
-tmux, ps, and the chosen agent CLI separately; Git is required for code tasks.
-Archives include Bash, Zsh, and Fish completion scripts in `completions/`, which
-this channel does not enable either; `csquad completion install` does it for
-you. See [npm, npx, and manual installs](usage.md#npm-npx-and-manual-installs).
+Claude Code separately. Archives include Bash, Zsh, and Fish completion scripts
+in `completions/`, which this channel does not enable either; `csquad completion
+install` does it for you. See [Shell completion](#shell-completion).
 
 ## After installation
 
 ```sh
 csquad version
 csquad doctor
-csquad doctor --strict --engine codex   # Or --engine claude
 ```
 
-Installing a package does not require an engine login and does not create user
-configuration. `doctor` checks executable availability, not authentication or
-account quota. `--help` and completion generation work without engine binaries.
+Installing a package does not require a Claude Code login and does not create
+user configuration. `doctor` checks that `claude` runs and reports the
+configuration, database and dispatcher; it does not check authentication or
+quota. `--help` and completion generation work without Claude Code.
 
-Uninstalling the program preserves user configuration and project `.csquad/`
-recovery data. Delete those separately only when you no longer need them.
+Uninstalling the program preserves the configuration
+(`~/.config/csquad/config.toml`) and the task database
+(`~/.local/share/csquad/csquad.db`). Delete them separately only when you no
+longer need them.
+
+## Shell completion
+
+Homebrew and APT install Bash, Zsh, and Fish completions automatically. npm,
+npx and archive installs need one explicit command:
+
+```sh
+csquad completion install           # for your login shell; --shell and --dir override
+csquad completion status            # installed files, and the check for each shell
+```
+
+It writes the script into a directory you own, rewrites it only when the content
+changed, and prints the remaining step instead of editing your shell files:
+
+| Shell | Default target | Remaining step |
+| --- | --- | --- |
+| Bash | `~/.local/share/bash-completion/completions/csquad` | none, but bash-completion v2 must be installed |
+| Zsh | `~/.local/share/zsh/site-functions/_csquad` | run the printed loading line now and add it at the end of `~/.zshrc` |
+| Fish | `~/.config/fish/completions/csquad.fish` | none |
+| PowerShell | `~/.local/share/csquad/csquad.ps1` | source it from `$PROFILE` |
+
+The installed script finds `csquad` on `PATH` when you press Tab, so it keeps
+working across `nvm use`, Node upgrades and `npm install -g csquad@latest`.
 
 ## Updating
 
@@ -172,34 +170,13 @@ own records:
 
 - `sudo` runs only in an interactive terminal, after you confirm.
 - `--yes` skips the question for the commands that need no `sudo`.
-- `update` refuses to run inside a team member's session.
 - `--check` and the local `.deb` path query GitHub. If GitHub cannot be
   reached, or its limit of 60 unauthenticated requests per hour is used up,
   `update` says it was unable to query the latest release.
 
-### Running teams keep their version
-
-New teams run the installed csquad executable at a stable path. `start` and
-`resume` do not create private binary copies. Temporary `npx` and `go run`
-paths cannot host a persistent team. Stop running teams before a package
-manager update and resume them afterward. `csquad update` refuses an update
-when it finds an active team using the installed executable. If another updater
-replaces the executable, the old runtime and team commands refuse writes until
-`stop` and `resume` migrate the team safely.
-
-Teams created by csquad 0.12.0 through 0.12.9 may still use a private copy.
-Use `csquad stop TEAM` followed by `csquad resume TEAM` once to move them to
-the installed executable. Other team commands from the installed build ask for
-this migration instead of launching the private copy. The migration refuses a known downgrade
-and asking before moving between builds whose order cannot be determined.
-`csquad repin TEAM` can also migrate a legacy team, including one whose private
-copy is missing or damaged. It stops an active team first. Unused
-copies under `~/.local/share/csquad/versions/` are not removed automatically;
-`csquad update --check` reports their disk usage.
-
-**Keep one installation.** Different csquad versions on PATH can disagree
-about team state. `csquad doctor` lists them and warns when there is more than
-one.
+**Keep one installation.** Different csquad versions on PATH can start
+different dispatchers. A running dispatcher keeps its old executable until the
+queue empties.
 
 ## Building from source
 

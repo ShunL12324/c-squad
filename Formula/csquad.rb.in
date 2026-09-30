@@ -1,5 +1,5 @@
 class Csquad < Formula
-  desc "Coordinate Claude Code and Codex teams in tmux"
+  desc "Queue tasks as Claude Code background sessions"
   homepage "https://github.com/@REPOSITORY@"
   version "@VERSION@"
   license "@LICENSE@"
@@ -24,7 +24,6 @@ class Csquad < Formula
     end
   end
 
-  depends_on "tmux"
   depends_on "git"
 
   def install

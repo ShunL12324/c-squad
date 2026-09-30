@@ -38,18 +38,6 @@ class ReleaseWorkflowTests(unittest.TestCase):
         cls.jobs = load(WORKFLOW)["jobs"]
         cls.ci_jobs = load(CI_WORKFLOW)["jobs"]
 
-    def test_linux_checks_use_the_same_fixed_tmux_before_tests(self):
-        for name, job in (("CI", self.ci_jobs["check"]),
-                          ("Release", self.jobs["release"])):
-            with self.subTest(workflow=name):
-                runs = scripts(job)
-                install = [i for i, run in enumerate(runs)
-                           if "bash scripts/install-ci-tmux.sh" in run]
-                check = [i for i, run in enumerate(runs) if run == "make check"]
-                self.assertEqual(len(install), 1)
-                self.assertEqual(len(check), 1)
-                self.assertLess(install[0], check[0])
-
     def test_release_becomes_public_only_after_npm_tests(self):
         publishing = [name for name, job in self.jobs.items()
                       if any("--draft=false" in run for run in scripts(job))]

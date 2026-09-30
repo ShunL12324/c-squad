@@ -1,4 +1,4 @@
-// Command csquad manages teams of Claude Code and Codex sessions in tmux.
+// Command csquad queues tasks as Claude Code background sessions.
 package main
 
 import (

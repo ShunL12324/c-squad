@@ -4,6 +4,14 @@ Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
 release history; earlier releases remain available on
 [GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
 
+## v0.13.1 — 2026-09-30
+
+### Fixed
+
+- The Homebrew formula test checked for the configuration file the old
+  `csquad config` created, so v0.13.0 never reached Homebrew. It now checks
+  that `csquad config` reads `$XDG_CONFIG_HOME/csquad/config.toml`.
+
 ## v0.13.0 — 2026-09-30
 
 ### Changed

@@ -36,8 +36,9 @@ class Csquad < Formula
   test do
     assert_match version.to_s, shell_output("#{bin}/csquad version")
     assert_match "Usage:", shell_output("#{bin}/csquad --help")
-    ENV["CSQUAD_CONFIG"] = (testpath/"config.toml").to_s
-    shell_output("#{bin}/csquad config")
-    assert_path_exists testpath/"config.toml"
+    ENV["XDG_CONFIG_HOME"] = testpath.to_s
+    (testpath/"csquad").mkpath
+    (testpath/"csquad/config.toml").write "slots = 2\n"
+    assert_match "slots = 2", shell_output("#{bin}/csquad config")
   end
 end

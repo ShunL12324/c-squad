@@ -93,8 +93,7 @@ def check(root, binary, package):
     assert dump.is_file(), "cold compinit did not create its cache"
     print("REPRO: npm global install alone leaves Zsh completion missing")
     marker = home / "state/csquad/npm-completion-notice-v1"
-    # Agent panes and completion protocol calls must never consume/show the notice.
-    assert "one-time setup" not in interactive(binary, "version", env=dict(user, CSQUAD_STATE_DIR="bound"))
+    # Completion protocol calls must never consume/show the notice.
     assert "one-time setup" not in interactive(binary, "__complete", "sta", env=user)
     assert not marker.exists()
     first = interactive(binary, "--help", env=user)

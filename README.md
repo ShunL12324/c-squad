@@ -1,8 +1,4 @@
 <p align="center">
-  <img src="docs/assets/hero.png" alt="C Squad" width="100%">
-</p>
-
-<p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-287d58?style=flat-square"></a>
   <img alt="Built with Go" src="https://img.shields.io/badge/built_with-Go-287d58?style=flat-square">
   <img alt="Linux, macOS, WSL 2" src="https://img.shields.io/badge/platforms-Linux_%C2%B7_macOS_%C2%B7_WSL_2-52627a?style=flat-square">

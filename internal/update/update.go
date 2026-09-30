@@ -74,15 +74,14 @@ func resolveSelf() (string, error) {
 	return filepath.EvalSymlinks(path)
 }
 
-// ErrMemberSession refuses an update started by an agent.
-var ErrMemberSession = errors.New("csquad update changes system software; run it from a terminal outside the team")
+// ErrAgentSession refuses an update started inside a Claude Code session,
+// where an agent rather than the user would be changing system software.
+var ErrAgentSession = errors.New("csquad update changes system software; run it from your own terminal, not a Claude Code session")
 
 // Run checks for or performs an update.
 func Run(o Options) error {
-	for _, key := range []string{"CSQUAD_MEMBER_ID", "CSQUAD_STATE_DIR"} {
-		if os.Getenv(key) != "" {
-			return fmt.Errorf("%w (%s is set)", ErrMemberSession, key)
-		}
+	if !o.Check && os.Getenv("CLAUDECODE") != "" {
+		return fmt.Errorf("%w (CLAUDECODE is set)", ErrAgentSession)
 	}
 	if o.Out == nil {
 		o.Out = os.Stdout

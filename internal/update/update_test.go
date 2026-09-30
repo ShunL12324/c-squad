@@ -39,8 +39,7 @@ func fakes(t *testing.T, tools map[string]string) string {
 		write(t, filepath.Join(dir, name), "#!/bin/sh\n"+body+"\n", 0700)
 	}
 	t.Setenv("PATH", dir)
-	t.Setenv("CSQUAD_MEMBER_ID", "")
-	t.Setenv("CSQUAD_STATE_DIR", "")
+	t.Setenv("CLAUDECODE", "")
 	return dir
 }
 
@@ -337,11 +336,11 @@ func TestRunRules(t *testing.T) {
 		runningFrom(t, self)
 		return self, prefix
 	}
-	t.Run("member session", func(t *testing.T) {
+	t.Run("agent session", func(t *testing.T) {
 		setup(t)
 		ran := recordRuns(t, true, true, nil)
-		t.Setenv("CSQUAD_MEMBER_ID", "worker")
-		if err := Run(Options{Yes: true, Out: &bytes.Buffer{}}); !errors.Is(err, ErrMemberSession) || len(*ran) != 0 {
+		t.Setenv("CLAUDECODE", "1")
+		if err := Run(Options{Yes: true, Out: &bytes.Buffer{}}); !errors.Is(err, ErrAgentSession) || len(*ran) != 0 {
 			t.Fatalf("agent update: %v %v", err, *ran)
 		}
 	})

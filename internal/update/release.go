@@ -292,6 +292,3 @@ func fileSHA256(path string) (string, error) {
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
-
-// reportStore prints the pinned-copy store and its size. Copies are never
-// removed automatically: a team in another project may still use one.

@@ -3,9 +3,6 @@
 /dist/
 /.tools/
 
-# Local team ledger, recovery data, and task worktrees.
-.csquad/
-
 # Go test and profiling output. Keep test fixtures trackable.
 /coverage.out
 /coverage.html

@@ -27,8 +27,8 @@ if [ ! -x "$binary" ]; then
     exit 1
 fi
 # Completion is a shell setting, not something npm's bin link activates.
-# Keep automation, completion protocol calls and agent panes completely quiet.
-if [ -t 0 ] && [ -t 2 ] && [ -z "${CSQUAD_STATE_DIR:-}" ]; then
+# Keep automation and completion protocol calls completely quiet.
+if [ -t 0 ] && [ -t 2 ]; then
     case "${1:-}" in
         completion|__complete|__completeNoDesc) ;;
         *) . "$base/completion-notice.sh" ;;

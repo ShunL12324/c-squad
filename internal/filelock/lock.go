@@ -9,7 +9,7 @@ import (
 
 // Acquire obtains a process-shared advisory lock in dir/locks.
 // With nonblock set, contention returns immediately. The returned release function
-// is idempotent. Callers determine lock ordering; this package knows no team policy.
+// is idempotent. Callers determine lock ordering.
 func Acquire(dir, name string, nonblock bool) (func(), error) {
 	dir = filepath.Join(dir, "locks")
 	if e := os.MkdirAll(dir, 0700); e != nil {

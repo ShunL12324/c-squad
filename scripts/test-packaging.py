@@ -60,8 +60,6 @@ test ! -e /root/.config/csquad/config.toml
 csquad config >/dev/null
 mkdir -p /root/.config/csquad
 printf '\n# keep user changes\n' >> /root/.config/csquad/config.toml
-mkdir -p /tmp/project/.csquad
-printf 'keep recovery data\n' > /tmp/project/.csquad/sentinel
 old=$(dpkg-query -W -f='${Version}' csquad)
 printf '%s\n' 'deb [signed-by=/repo2/key.asc] file:/repo2 stable main' > /etc/apt/sources.list.d/csquad.list
 apt-get update -qq
@@ -71,8 +69,7 @@ dpkg --compare-versions "$new" gt "$old"
 apt-get purge -y -qq csquad
 test ! -e /usr/bin/csquad
 grep -q 'keep user changes' /root/.config/csquad/config.toml
-test -s /tmp/project/.csquad/sentinel
-printf 'PASS: signed APT install, upgrade, purge, config and recovery preservation\n'
+printf 'PASS: signed APT install, upgrade, purge, and config preservation\n'
 '''
             run("docker", "run", "--rm", "-v", f"{stage / 'repo1'}:/repo1:ro",
                 "-v", f"{stage / 'repo2'}:/repo2:ro",

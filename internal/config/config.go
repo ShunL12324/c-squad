@@ -41,7 +41,7 @@ func Path() (string, error) {
 }
 
 // Load reads the configuration file. A missing file yields the defaults, and
-// unknown keys, including those of the previous team format, are ignored.
+// unknown keys, including those of the previous format, are ignored.
 func Load() (Config, error) {
 	cfg := Config{Slots: DefaultSlots}
 	path, err := Path()

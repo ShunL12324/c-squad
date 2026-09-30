@@ -1,30 +1,29 @@
 class Csquad < Formula
-  desc "Coordinate Claude Code and Codex teams in tmux"
+  desc "Queue tasks as Claude Code background sessions"
   homepage "https://github.com/ShunL12324/c-squad"
-  version "0.12.11"
+  version "0.13.1"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/ShunL12324/c-squad/releases/download/v0.12.11/csquad_0.12.11_darwin_arm64.tar.gz"
-      sha256 "d745efcafad051f4fc9623c37e2fad53c5232e834c506b31186e85141808d5a2"
+      url "https://github.com/ShunL12324/c-squad/releases/download/v0.13.1/csquad_0.13.1_darwin_arm64.tar.gz"
+      sha256 "4e42e7edbeeb82caaf5a997b22eef53f596d0bfbfcb9516632adc3f032a7cb1b"
     else
-      url "https://github.com/ShunL12324/c-squad/releases/download/v0.12.11/csquad_0.12.11_darwin_amd64.tar.gz"
-      sha256 "bb5cb718659b22c2585893d77fa5d454f8b5264f286f17563845eb56311b9a63"
+      url "https://github.com/ShunL12324/c-squad/releases/download/v0.13.1/csquad_0.13.1_darwin_amd64.tar.gz"
+      sha256 "87aea36c8873062d48aef36e4322c7c2ca8451f36814c073e006aa91375a8270"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "https://github.com/ShunL12324/c-squad/releases/download/v0.12.11/csquad_0.12.11_linux_arm64.tar.gz"
-      sha256 "cdab3a9b5ffb3a6d22d90744b8e660f7084190d16c456b6352561d541be8521f"
+      url "https://github.com/ShunL12324/c-squad/releases/download/v0.13.1/csquad_0.13.1_linux_arm64.tar.gz"
+      sha256 "1b6700798a1ff7eddc248b632c434c0df6469b940fb1fafa7d90278b20b0fd52"
     else
-      url "https://github.com/ShunL12324/c-squad/releases/download/v0.12.11/csquad_0.12.11_linux_amd64.tar.gz"
-      sha256 "7d5e978903ad50ad0564336fa73dc47f2c01888bcf37be53ba14b7aeb1781949"
+      url "https://github.com/ShunL12324/c-squad/releases/download/v0.13.1/csquad_0.13.1_linux_amd64.tar.gz"
+      sha256 "b81a3995cb541932b76db6a6d146715ef047f931e4b2fa7bafef86003f161a15"
     end
   end
 
-  depends_on "tmux"
   depends_on "git"
 
   def install
@@ -37,8 +36,9 @@ class Csquad < Formula
   test do
     assert_match version.to_s, shell_output("#{bin}/csquad version")
     assert_match "Usage:", shell_output("#{bin}/csquad --help")
-    ENV["CSQUAD_CONFIG"] = (testpath/"config.toml").to_s
-    shell_output("#{bin}/csquad config")
-    assert_path_exists testpath/"config.toml"
+    ENV["XDG_CONFIG_HOME"] = testpath.to_s
+    (testpath/"csquad").mkpath
+    (testpath/"csquad/config.toml").write "slots = 2\n"
+    assert_match "slots = 2", shell_output("#{bin}/csquad config")
   end
 end

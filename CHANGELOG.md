@@ -9,6 +9,9 @@
   sessions for a human to approve the command, and denies it when nobody
   answers.
 
+- `finish-task` with no task named finishes every done task of the session,
+  skipping those still working or needing input.
+
 ## 1.0.2 - 2026-10-01
 
 ### Changed

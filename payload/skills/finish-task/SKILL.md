@@ -3,11 +3,18 @@ name: finish-task
 description: Merge and clean up finished background tasks (T1, T2, ...): merge their branches, then remove the session, its worktree and merged branches. Use when the user asks to merge, close, finish or clean up tasks.
 ---
 
-# Finish a task
+# Finish tasks
 
 Only finish tasks this session launched (`node {{CSQUAD_DIR}}/tasks.js status`
-lists them); "finish all done tasks" means those. Touch another session's task
-only if the user names it explicitly (peek it with `--all`).
+lists them). Touch another session's task only if the user names it
+explicitly (peek it with `--all`).
+
+Which tasks: the ones the user names. If they name none ("finish", "merge
+them", "wrap up"), finish every task of this session that is done, one after
+another, without asking which. Skip tasks that are still working or need
+input, and list them at the end. If one task hits a blocker (conflict,
+failing tests, unmerged or uncommitted work), stop on that task, report it,
+and carry on with the others.
 
 1. Find what the task left: `node {{CSQUAD_DIR}}/tasks.js peek T12 -n 4`.
    Its final message names the branch, commit and any worktree; the session's

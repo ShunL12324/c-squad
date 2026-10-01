@@ -286,7 +286,7 @@ function lastAssistant(msgs) {
 const crypto = require('crypto');
 
 const MARKER = Buffer.from('launched T');
-const MARKER_LINE = /^launched T(\d+) · .*? · session ([0-9a-f]{6,})/m;
+const MARKER_LINE = /^launched T(\d+) · .*? · session ([0-9a-f]{6,})/gm;
 const LAUNCH_CMD = /\btasks\.js\s+launch\b/;
 const TAIL = 256; // bytes before the cached offset that must still match
 const LOOKBACK = [1 << 20, 8 << 20, 64 << 20]; // window sizes when looking for a tool_use
@@ -365,8 +365,11 @@ function scanLines(fd, buf, base, ids) {
     if (!Array.isArray(blocks)) continue;
     for (const blk of blocks) {
       if (!blk || blk.type !== 'tool_result') continue;
-      const m = MARKER_LINE.exec(resultText(blk.content));
-      if (m && typeof blk.tool_use_id === 'string' && ranLaunch(fd, blk.tool_use_id, base + a)) ids.add(m[2]);
+      // One Bash call may launch several tasks, one marker line each.
+      const found = [...resultText(blk.content).matchAll(MARKER_LINE)].map((m) => m[2]);
+      if (found.length && typeof blk.tool_use_id === 'string' && ranLaunch(fd, blk.tool_use_id, base + a)) {
+        for (const id of found) ids.add(id);
+      }
     }
   }
 }

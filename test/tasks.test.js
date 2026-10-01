@@ -324,6 +324,14 @@ test('statusline: only markers from this session\'s own launches count', () => {
   assert.deepEqual(shown(file).sort(), ['T1', 'T8', 'T9']);
 });
 
+test('statusline: every task launched by one Bash call counts', () => {
+  const [a, b, c] = [session(1, 'one'), session(2, 'two'), session(3, 'three')];
+  setSessions([a, b, c]);
+  const file = path.join(root, 'batch.jsonl');
+  writeLines(file, launchLines(marker(a) + marker(b) + 'some other output\n' + marker(c)));
+  assert.deepEqual(shown(file).sort(), ['T1', 'T2', 'T3']);
+});
+
 test('statusline: a launch whose tool_use is far before its result still counts', () => {
   setSessions([session(1, 'job')]);
   const file = path.join(root, 'far.jsonl');

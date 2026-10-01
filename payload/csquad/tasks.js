@@ -175,8 +175,9 @@ function launchedIds(buf) {
   const marker = Buffer.from('launched T');
   for (let i = buf.indexOf(marker); i !== -1; i = buf.indexOf(marker, i + 1)) {
     let line = buf.toString('utf8', i, Math.min(buf.length, i + 1000));
-    // The record ends at a newline, an escaped \n (JSONL) or a closing quote.
-    line = line.split(/\n|\\n|"/, 1)[0];
+    // The record ends at a newline, an escaped \n (JSONL) or an unescaped
+    // closing quote; a quote inside the title is escaped as \" and kept.
+    line = line.split(/\n|\\n|(?<!\\)"/, 1)[0];
     const m = line.match(/^launched T(\d+) · .*? · session ([0-9a-f]{6,})/);
     if (m) ids.add(m[2]);
   }
@@ -190,7 +191,7 @@ function ownTasks(list, transcript) {
   } catch {
     return [];
   }
-  return list.filter((t) => ids.has(t.id));
+  return list.filter((t) => [...ids].some((id) => t.id === id || t.id.startsWith(id)));
 }
 
 // ---- status and peek ------------------------------------------------------

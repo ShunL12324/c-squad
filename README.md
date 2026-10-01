@@ -49,11 +49,21 @@ Talk to Claude Code normally; the skills are picked up from what you ask.
 | `message-task` | "Tell T3 to also handle the empty-input case." "Ask T5 why it changed the schema." |
 | `finish-task` | "Merge and clean up T2 and T4." "Finish everything that is done." |
 
-`create-task` runs `tasks.js launch`, which prints `launched T7 · ...` (the status line and `status` use that record in the session transcript to show only that session's tasks; `status --all` shows every task), and which numbers the task (one above the
+`create-task` runs `tasks.js launch`, which numbers the task (one above the
 highest T number Claude Code lists, under a lock so parallel launches never
-collide), starts `claude --bg --name "T7 · title"` in the project directory and
-appends the worker rules. `finish-task` merges the task's branch and removes the
+collide), starts `claude --bg --name "T7 · title"` in the project directory,
+appends the worker rules and prints `launched T7 · ...`. `finish-task` merges the task's branch and removes the
 session and its worktree, only after checking the work is merged.
+
+### Which tasks you see
+
+The status line and `status` show only the tasks launched by the **current
+session**: that `launched T7 · ...` line is recorded in the session transcript
+and matched against the running tasks. `npx csquad@latest status` is about the
+install; for tasks run `node <dir>/csquad/tasks.js status --all` (or ask
+Claude "show all tasks") to list every task regardless of session.
+`/clear` starts a new session, so tasks launched before it drop off the status
+line; they still exist, and `status --all` shows them.
 
 ## The status line
 
@@ -98,6 +108,25 @@ Running task sessions are not touched. By hand: copy `statusLine` from
 
 If a launch fails because the workspace is not trusted, open `claude` in that
 directory once and accept the trust prompt.
+
+## Requirements
+
+Node 18+ and Claude Code with background sessions (`claude --bg`,
+`claude agents`), on Linux or macOS.
+
+## Upgrading from the Go CLI (0.x)
+
+1.0 replaces the Go binary with this npm package. Homebrew and APT are
+discontinued. Remove the old install first:
+
+```sh
+brew uninstall csquad            # Homebrew
+sudo apt remove csquad           # APT
+npm uninstall -g csquad          # an old global npm install would shadow npx
+rm -rf ~/.local/share/csquad ~/.config/csquad   # old data and config
+```
+
+Then run `npx csquad@latest install`. Old `T<n>` sessions keep working.
 
 ## Development
 

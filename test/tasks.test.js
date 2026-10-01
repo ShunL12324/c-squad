@@ -161,3 +161,15 @@ test('status: this session by default, everything with --all', () => {
   assert.match(run(['--all'], { CLAUDE_CODE_SESSION_ID: sid }), /## T2 · theirs/);
   assert.match(run([]), /## T2 · theirs/); // variable unset: every task
 });
+
+test('status: finds tasks whose title contains quotes', () => {
+  const t = session(1, 'say "hi"');
+  setSessions([t, session(2, 'theirs')]);
+  const sid = 'beef5678-0000-0000-0000-000000000000';
+  const proj = path.join(dir, 'projects', 'p');
+  fs.mkdirSync(proj, { recursive: true });
+  fs.writeFileSync(path.join(proj, sid + '.jsonl'), JSON.stringify({ type: 'user', message: { content: `launched T1 · say "hi" · session ${t.id} · /x\n` } }) + '\n');
+  const out = spawnSync(process.execPath, [tasksJs, 'status'], { env: { ...env, CLAUDE_CODE_SESSION_ID: sid }, encoding: 'utf8' }).stdout;
+  assert.match(out, /## T1 · say "hi"/);
+  assert.doesNotMatch(out, /T2/);
+});

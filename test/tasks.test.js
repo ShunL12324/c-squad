@@ -51,6 +51,8 @@ before(() => {
   fs.writeFileSync(path.join(bin, 'claude'), FAKE, { mode: 0o755 });
   env = { ...process.env, CLAUDE_CONFIG_DIR: dir, HOME: root, FAKE_STATE: state, PATH: bin + path.delimiter + process.env.PATH };
   delete env.CLAUDE_CODE_SESSION_ID;
+  fs.mkdirSync(path.join(root, 'tmp'));
+  env.TMPDIR = path.join(root, 'tmp'); // the transcript scan cache lives here
   const r = spawnSync(process.execPath, [CLI, 'install'], { env, cwd: root, encoding: 'utf8' });
   assert.equal(r.status, 0, r.stdout + r.stderr);
 });
@@ -65,10 +67,22 @@ const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
 // Display width with CJK and fullwidth characters counted as two columns.
 const dw = (s) => [...s].reduce((w, ch) => w + (/[ᄀ-ᅟ⺀-꓏가-힣＀-｠]/.test(ch) ? 2 : 1), 0);
 
+// launchLines returns the JSONL lines of a Bash call running `command` and its
+// tool_result holding `text`.
+let toolSeq = 0;
+const LAUNCH = "node ~/.claude/csquad/tasks.js launch --title x <<'EOF'\nprompt\nEOF";
+function launchLines(text, command = LAUNCH, id = 'toolu_' + ++toolSeq) {
+  return [
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] } }),
+    JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: text }] } }),
+  ];
+}
+const launchOf = (t, where = root, id) => launchLines(`launched ${t.name} · session ${t.id} · ${where}\n`, LAUNCH, id);
+
 // transcript writes a JSONL transcript in which the session launched `list`.
 function transcript(list, extra = []) {
   const file = path.join(root, 'transcript.jsonl');
-  const lines = list.map((t) => JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: `launched ${t.name} · session ${t.id} · ${root}\n` }] } }));
+  const lines = list.flatMap((t) => launchOf(t));
   fs.writeFileSync(file, [...lines, ...extra].join('\n') + '\n');
   return file;
 }
@@ -162,7 +176,7 @@ function chainDir(name) {
   return d;
 }
 function history(d, id, list, ...tail) {
-  const lines = list.map((t) => JSON.stringify({ type: 'user', message: { content: `launched ${t.name} · session ${t.id} · /x\n` } }));
+  const lines = list.flatMap((t) => launchOf(t, '/x'));
   fs.writeFileSync(path.join(d, id + '.jsonl'), [...lines, ...tail].join('\n') + '\n');
 }
 const continued = (d, id) => statusline(100, JSON.stringify({ session_id: id, transcript_path: path.join(d, id + '.jsonl') }));
@@ -231,7 +245,7 @@ test('status: this session by default, everything with --all', () => {
   const sid = 'abcd1234-0000-0000-0000-000000000000';
   const proj = path.join(dir, 'projects', 'p');
   fs.mkdirSync(proj, { recursive: true });
-  fs.writeFileSync(path.join(proj, sid + '.jsonl'), JSON.stringify({ type: 'user', message: { content: `launched T1 · mine · session ${session(1).id} · /x\n` } }) + '\n');
+  fs.writeFileSync(path.join(proj, sid + '.jsonl'), launchOf(session(1, 'mine'), '/x').join('\n') + '\n');
   const run = (extra, e = {}) => spawnSync(process.execPath, [tasksJs, 'status', ...extra], { env: { ...env, ...e }, encoding: 'utf8' }).stdout;
   const own = run([], { CLAUDE_CODE_SESSION_ID: sid });
   assert.match(own, /## T1 · mine/);
@@ -246,7 +260,7 @@ test('status: finds tasks whose title contains quotes', () => {
   const sid = 'beef5678-0000-0000-0000-000000000000';
   const proj = path.join(dir, 'projects', 'p');
   fs.mkdirSync(proj, { recursive: true });
-  fs.writeFileSync(path.join(proj, sid + '.jsonl'), JSON.stringify({ type: 'user', message: { content: `launched T1 · say "hi" · session ${t.id} · /x\n` } }) + '\n');
+  fs.writeFileSync(path.join(proj, sid + '.jsonl'), launchOf(t, '/x').join('\n') + '\n');
   const out = spawnSync(process.execPath, [tasksJs, 'status'], { env: { ...env, CLAUDE_CODE_SESSION_ID: sid }, encoding: 'utf8' }).stdout;
   assert.match(out, /## T1 · say "hi"/);
   assert.doesNotMatch(out, /T2/);
@@ -259,7 +273,7 @@ function ownSession(list) {
   const sid = Math.random().toString(16).slice(2, 10) + '-0000-0000-0000-000000000000';
   const proj = path.join(dir, 'projects', 'p');
   fs.mkdirSync(proj, { recursive: true });
-  const lines = list.map((t) => JSON.stringify({ type: 'user', message: { content: `launched ${t.name} · session ${t.id} · /x\n` } }));
+  const lines = list.flatMap((t) => launchOf(t, '/x'));
   fs.writeFileSync(path.join(proj, sid + '.jsonl'), lines.join('\n') + '\n');
   return sid;
 }
@@ -276,6 +290,116 @@ test('peek: refuses tasks another session launched', () => {
   assert.match(r.stderr, /T2 was launched by another session; pass --all to peek it anyway/);
   assert.equal(peek('T2', ['--all']).status, 0);
   assert.equal(peek('T2', [], {}).status, 0); // variable unset: any task
+});
+
+// ---- launch marker attribution and the incremental scan ---------------------
+
+const shown = (file) => statusline(200, JSON.stringify({ transcript_path: file })).join('\n').match(/T\d+(?= )/g) || [];
+const marker = (t) => `launched ${t.name} · session ${t.id} · /x\n`;
+const writeLines = (file, lines) => fs.writeFileSync(file, lines.join('\n') + '\n');
+
+test('statusline: only markers from this session\'s own launches count', () => {
+  setSessions([1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => session(n, n === 9 ? 'say "hi"' : 'job')));
+  const s = (n) => session(n, n === 9 ? 'say "hi"' : 'job');
+  const [t1, t8, t9] = [s(1), s(8), s(9)];
+  const file = path.join(root, 'attribution.jsonl');
+  writeLines(file, [
+    ...launchOf(t1),
+    JSON.stringify({ type: 'user', message: { content: marker(s(2)) } }), // pasted
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: marker(s(3)) }] } }), // quoted
+    ...launchLines(marker(s(4)), 'node ~/.claude/csquad/tasks.js peek T12'), // a worker's own launch, peeked
+    ...launchLines(marker(s(5)), 'node ~/.claude/csquad/tasks.js status'),
+    JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'toolu_none', content: marker(s(6)) }] } }), // no tool_use
+    ...launchLines(`worker said: ${marker(s(7))}`), // not at the start of a line
+    ...launchLines([{ type: 'text', text: marker(t8) }]), // content as blocks
+    ...launchOf(t9),
+  ]);
+  assert.deepEqual(shown(file).sort(), ['T1', 'T8', 'T9']);
+});
+
+test('statusline: a launch whose tool_use is far before its result still counts', () => {
+  setSessions([session(1, 'job')]);
+  const file = path.join(root, 'far.jsonl');
+  const [use, result] = launchOf(session(1, 'job'));
+  const filler = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'x'.repeat(1 << 20) }] } });
+  writeLines(file, [use, filler, filler, result]);
+  assert.deepEqual(shown(file), ['T1']);
+});
+
+test('statusline: appended launches are found and only new bytes are scanned', () => {
+  setSessions([session(1, 'one'), session(2, 'two')]);
+  const file = path.join(root, 'inc.jsonl');
+  const pad = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'p'.repeat(600) }] } });
+  writeLines(file, [...launchOf(session(1, 'one')), pad]);
+  assert.deepEqual(shown(file), ['T1']);
+  // Damage the already scanned marker in place (same size): a rescan would lose T1.
+  const buf = fs.readFileSync(file);
+  buf.write('xaunched', buf.indexOf('launched'));
+  fs.writeFileSync(file, buf);
+  assert.deepEqual(shown(file), ['T1']);
+  fs.appendFileSync(file, launchOf(session(2, 'two')).join('\n') + '\n');
+  assert.deepEqual(shown(file).sort(), ['T1', 'T2']);
+});
+
+test('statusline: a marker line split across scans is found once complete', () => {
+  setSessions([session(1, 'one')]);
+  const file = path.join(root, 'split.jsonl');
+  const [use, result] = launchOf(session(1, 'one'));
+  const cut = result.indexOf('launched T1') + 6; // in the middle of the marker
+  fs.writeFileSync(file, use + '\n' + result.slice(0, cut));
+  assert.deepEqual(shown(file), []);
+  fs.appendFileSync(file, result.slice(cut) + '\n');
+  assert.deepEqual(shown(file), ['T1']);
+});
+
+test('statusline: the cache is dropped when the file shrinks, is replaced or is corrupt', () => {
+  const one = session(1, 'one');
+  const two = session(2, 'two');
+  setSessions([one, two]);
+  const file = path.join(root, 'reset.jsonl');
+  const cacheDir = () => {
+    const d = fs.readdirSync(env.TMPDIR).find((n) => n.startsWith('csquad-scan-'));
+    return path.join(env.TMPDIR, d);
+  };
+  writeLines(file, [...launchOf(one), ...launchOf(two)]);
+  assert.deepEqual(shown(file).sort(), ['T1', 'T2']);
+  // Shrunk (same inode).
+  writeLines(file, launchOf(two));
+  assert.deepEqual(shown(file), ['T2']);
+  // Replaced by a different file of the same size.
+  writeLines(file + '.new', launchOf(one));
+  fs.renameSync(file + '.new', file);
+  assert.deepEqual(shown(file), ['T1']);
+  // Corrupt and unwritable caches.
+  for (const f of fs.readdirSync(cacheDir())) fs.writeFileSync(path.join(cacheDir(), f), '{not json');
+  assert.deepEqual(shown(file), ['T1']);
+  const d = cacheDir();
+  fs.rmSync(d, { recursive: true });
+  fs.writeFileSync(d, 'a file where the cache directory should be');
+  try {
+    assert.deepEqual(shown(file), ['T1']);
+  } finally {
+    fs.rmSync(d);
+  }
+});
+
+test('statusline: a rewritten transcript is not mistaken for an appended one', () => {
+  const [one, two, three] = [1, 2, 3].map((n) => session(n, 'job'));
+  setSessions([one, two, three]);
+  const file = path.join(root, 'rewrite.jsonl');
+  const pad = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'p'.repeat(600) }] } });
+  writeLines(file, [...launchOf(one, root, 'toolu_fix'), pad]);
+  assert.deepEqual(shown(file), ['T1']);
+  // Same inode, larger, different content.
+  writeLines(file, [...launchOf(two, root, 'toolu_fix'), pad.replace(/p+/, 'q'.repeat(600)), ...launchOf(three, root, 'toolu_fix')]);
+  assert.deepEqual(shown(file).sort(), ['T2', 'T3']);
+  // A new file (new inode) with the old tail at the old offset.
+  writeLines(file + '.new', [...launchOf(one, root, 'toolu_fix'), pad, ...launchOf(three, root, 'toolu_fix')]);
+  fs.renameSync(file + '.new', file);
+  assert.deepEqual(shown(file).sort(), ['T1', 'T3']);
+  writeLines(file + '.new', [...launchOf(two, root, 'toolu_fix'), pad, ...launchOf(three, root, 'toolu_fix'), pad]);
+  fs.renameSync(file + '.new', file);
+  assert.deepEqual(shown(file).sort(), ['T2', 'T3']);
 });
 
 // ---- hot path, robustness and locks ----------------------------------------

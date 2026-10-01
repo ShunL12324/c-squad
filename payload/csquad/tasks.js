@@ -203,6 +203,13 @@ function readPid(file) {
   }
 }
 
+// busy: the path is taken. Windows reports EPERM or EACCES instead of EEXIST
+// for a file or directory that another process has just deleted but that is
+// not gone yet.
+function busy(e) {
+  return e.code === 'EEXIST' || (IS_WIN && (e.code === 'EPERM' || e.code === 'EACCES'));
+}
+
 // tryLink atomically creates file with the given content; false if it exists.
 function tryLink(file, content) {
   const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}`;
@@ -211,7 +218,7 @@ function tryLink(file, content) {
     fs.linkSync(tmp, file);
     return true;
   } catch (e) {
-    if (e.code !== 'EEXIST') throw e;
+    if (!busy(e)) throw e;
     return false;
   } finally {
     fs.rmSync(tmp, { force: true });
@@ -223,7 +230,7 @@ function breakStale(lock) {
   try {
     fs.mkdirSync(mutex);
   } catch (e) {
-    if (e.code !== 'EEXIST') throw e;
+    if (!busy(e)) throw e;
     // Taking over takes milliseconds; an old mutex belongs to a crashed launcher.
     try {
       if (Date.now() - fs.statSync(mutex).mtimeMs > 30000) fs.rmdirSync(mutex);

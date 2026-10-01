@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.1 - 2026-10-01
+
+### Fixed
+
+- Tasks disappeared from the status line after switching back from agent view,
+  until the next message. Claude continues the conversation in a new session
+  whose transcript does not exist yet; the status line now follows the
+  `continued-in` record back to the previous transcript.
+
 ## 1.0.0 - 2026-10-01
 
 ### Changed

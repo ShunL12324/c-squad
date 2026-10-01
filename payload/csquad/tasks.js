@@ -184,12 +184,74 @@ function launchedIds(buf) {
   return ids;
 }
 
-function ownTasks(list, transcript) {
-  let ids;
+// predecessorOf returns the id of the session that was continued in `id`: the
+// transcript in `dir` whose last line is a continued-in record pointing at it.
+// Only the tail of each file is read.
+function predecessorOf(dir, id) {
+  let names;
   try {
-    ids = launchedIds(fs.readFileSync(transcript));
+    names = fs.readdirSync(dir);
   } catch {
-    return [];
+    return null;
+  }
+  const buf = Buffer.alloc(2048);
+  for (const name of names) {
+    if (!name.endsWith('.jsonl')) continue;
+    let fd;
+    try {
+      fd = fs.openSync(path.join(dir, name), 'r');
+      const n = fs.readSync(fd, buf, 0, buf.length, Math.max(0, fs.fstatSync(fd).size - buf.length));
+      const last = buf.toString('utf8', 0, n).trimEnd().split('\n').pop();
+      if (!last.includes('continued-in')) continue;
+      const e = JSON.parse(last);
+      if (e.type === 'continued-in' && e.continuedInSessionId === id) return name.slice(0, -'.jsonl'.length);
+    } catch {
+      // Unreadable or partial line: not a predecessor.
+    } finally {
+      if (fd !== undefined) fs.closeSync(fd);
+    }
+  }
+  return null;
+}
+
+// historyOf returns the transcripts holding a session's history. Normally that
+// is `file`. When Claude continues a conversation in a new session (leaving
+// and reopening from agent view), the new transcript only appears with the
+// next message; until then the history is in the predecessors, so follow
+// continued-in records backwards (an intermediate file may be a stub).
+function historyOf(file, id) {
+  if (fs.existsSync(file)) return [file];
+  const dir = path.dirname(file);
+  const out = [];
+  const seen = new Set();
+  for (let depth = 0; depth < 10 && id && !seen.has(id); depth++) {
+    seen.add(id);
+    id = predecessorOf(dir, id);
+    if (id) out.push(path.join(dir, id + '.jsonl'));
+  }
+  return out;
+}
+
+// historyOfSession is historyOf for a session id whose transcript location is unknown.
+function historyOfSession(sid) {
+  const file = transcriptPath(sid);
+  if (file) return [file];
+  const root = path.join(CLAUDE_HOME, 'projects');
+  try {
+    for (const d of fs.readdirSync(root, { withFileTypes: true })) {
+      const hist = d.isDirectory() ? historyOf(path.join(root, d.name, sid + '.jsonl'), sid) : [];
+      if (hist.length) return hist;
+    }
+  } catch {}
+  return [];
+}
+
+function ownTasks(list, transcripts) {
+  const ids = new Set();
+  for (const file of transcripts) {
+    try {
+      for (const id of launchedIds(fs.readFileSync(file))) ids.add(id);
+    } catch {}
   }
   return list.filter((t) => [...ids].some((id) => t.id === id || t.id.startsWith(id)));
 }
@@ -219,8 +281,7 @@ function status(args) {
   let list = tasks();
   const sid = process.env.CLAUDE_CODE_SESSION_ID;
   if (!args.all && sid) {
-    const file = transcriptPath(sid);
-    list = file ? ownTasks(list, file) : [];
+    list = ownTasks(list, historyOfSession(sid));
   }
   if (!list.length) {
     console.log(args.all || !sid ? 'No tasks.' : 'No tasks launched by this session (status --all lists every task).');
@@ -348,9 +409,9 @@ function grid(list, columns) {
 // statusline.json as {"present": bool, "statusLine": {...}}, then every task.
 function statusline() {
   const input = fs.readFileSync(0);
-  let transcript;
+  let transcript, sid;
   try {
-    transcript = JSON.parse(input.toString('utf8')).transcript_path;
+    ({ transcript_path: transcript, session_id: sid } = JSON.parse(input.toString('utf8')));
   } catch {}
   const saved = readJSON(path.join(HERE, 'statusline.json'), {});
   const command = saved.statusLine && saved.statusLine.command;
@@ -361,7 +422,8 @@ function statusline() {
   }
   let list;
   try {
-    list = typeof transcript === 'string' ? ownTasks(tasks(), transcript) : [];
+    const id = typeof sid === 'string' && sid ? sid : typeof transcript === 'string' ? path.basename(transcript, '.jsonl') : '';
+    list = typeof transcript === 'string' ? ownTasks(tasks(), historyOf(transcript, id)) : [];
   } catch {
     return;
   }

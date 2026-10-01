@@ -148,6 +148,78 @@ test('statusline: no task line without a readable transcript', () => {
   assert.deepEqual(statusline(100, 'not json'), []);
 });
 
+// Continued sessions: the new session's transcript does not exist yet.
+const cont = (from, to) => JSON.stringify({ type: 'continued-in', sessionId: from, continuedInSessionId: to });
+function chainDir(name) {
+  const d = path.join(root, name);
+  fs.mkdirSync(d, { recursive: true });
+  return d;
+}
+function history(d, id, list, ...tail) {
+  const lines = list.map((t) => JSON.stringify({ type: 'user', message: { content: `launched ${t.name} · session ${t.id} · /x\n` } }));
+  fs.writeFileSync(path.join(d, id + '.jsonl'), [...lines, ...tail].join('\n') + '\n');
+}
+const continued = (d, id) => statusline(100, JSON.stringify({ session_id: id, transcript_path: path.join(d, id + '.jsonl') }));
+
+test('statusline: a continued session shows its predecessor\'s tasks', () => {
+  setSessions([session(1, 'mine'), session(2, 'theirs')]);
+  const d = chainDir('cont1');
+  history(d, 'aaa', [session(1, 'mine')], cont('aaa', 'bbb'));
+  const rows = continued(d, 'bbb');
+  assert.equal(rows.length, 1);
+  assert.match(rows[0], /T1\s+mine/);
+});
+
+test('statusline: follows a chain of continued sessions', () => {
+  setSessions([session(1, 'mine')]);
+  const d = chainDir('cont2');
+  history(d, 'aaa', [session(1, 'mine')], cont('aaa', 'bbb'));
+  history(d, 'bbb', [], cont('bbb', 'ccc')); // stub without history
+  const rows = continued(d, 'ccc');
+  assert.equal(rows.length, 1);
+  assert.match(rows[0], /T1\s+mine/);
+});
+
+test('statusline: ignores continued-in records that do not match', () => {
+  setSessions([session(1, 'mine')]);
+  const d = chainDir('cont3');
+  history(d, 'aaa', [session(1, 'mine')], cont('aaa', 'zzz')); // points elsewhere
+  history(d, 'bbb', [session(1, 'mine')], cont('bbb', 'ccc'), JSON.stringify({ type: 'user' })); // not the last line
+  assert.deepEqual(continued(d, 'ccc'), []);
+});
+
+test('statusline: a continued-in cycle terminates', () => {
+  setSessions([session(1, 'mine')]);
+  const d = chainDir('cont4');
+  fs.writeFileSync(path.join(d, 'aaa.jsonl'), cont('aaa', 'bbb') + '\n');
+  fs.writeFileSync(path.join(d, 'bbb.jsonl'), cont('bbb', 'aaa') + '\n');
+  fs.writeFileSync(path.join(d, 'ccc.jsonl'), cont('ccc', 'ccc') + '\n');
+  assert.deepEqual(continued(d, 'aaa'), []);
+  assert.deepEqual(continued(d, 'ddd'), []);
+});
+
+test('statusline: agent view host without a transcript prints only the own line', () => {
+  setSessions([session(1, 'mine')]);
+  const saved = path.join(dir, 'csquad', 'statusline.json');
+  fs.writeFileSync(saved, JSON.stringify({ present: true, statusLine: { type: 'command', command: 'echo own' } }));
+  try {
+    assert.deepEqual(continued(chainDir('cont5'), 'host'), ['own']);
+  } finally {
+    fs.rmSync(saved);
+  }
+});
+
+test('statusline: an existing transcript is not resolved through predecessors', () => {
+  setSessions([session(1, 'mine'), session(2, 'decoy')]);
+  const d = chainDir('cont6');
+  history(d, 'aaa', [session(1, 'mine')]);
+  // A predecessor of aaa; scanning the directory would add its task.
+  history(d, 'zzz', [session(2, 'decoy')], cont('zzz', 'aaa'));
+  const rows = continued(d, 'aaa');
+  assert.equal(rows.length, 1);
+  assert.doesNotMatch(rows[0], /decoy/);
+});
+
 test('status: this session by default, everything with --all', () => {
   setSessions([session(1, 'mine'), session(2, 'theirs')]);
   const sid = 'abcd1234-0000-0000-0000-000000000000';

@@ -39,5 +39,9 @@ After launching, do not poll or wait: workers never report back. The user
 checks progress in agent view, in the status line, or by asking you
 (task-status).
 
+Only if the user explicitly asks to be told when the tasks finish or need input
+(e.g. "dispatch X and let me know when it's done"), follow the watch-task skill
+for the tasks just launched. Otherwise do not monitor.
+
 If the launch fails because the workspace is not trusted, ask the user to open
 `claude` in that directory once and accept the trust prompt.

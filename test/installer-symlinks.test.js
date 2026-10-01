@@ -10,7 +10,7 @@ const { spawnSync } = require('node:child_process');
 const { test, beforeEach, afterEach } = require('node:test');
 
 const CLI = path.join(__dirname, '..', 'bin', 'csquad.js');
-const SKILLS = ['create-task', 'task-status', 'message-task', 'finish-task'];
+const SKILLS = ['create-task', 'task-status', 'message-task', 'watch-task', 'finish-task'];
 
 let root, dir, settings;
 

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- `watch-task` skill and `tasks.js wait T12 [T13 ...]`, an opt-in monitor. It
+  polls `claude agents` every 10 s without the model and exits when a named task
+  needs input, finishes, fails, is stopped or is removed (a new state must show
+  on two consecutive polls), printing one line per task. It never runs unless
+  you ask to watch tasks; `create-task` still does not poll by default.
+
 ### Changed
 
 - `worker.md` and `finish-task` tell Claude to use literal paths (or

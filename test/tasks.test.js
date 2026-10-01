@@ -551,3 +551,131 @@ test('launch: a lock held by a live process is never taken over', async () => {
     holder.kill();
   }
 });
+
+// ---- wait ----------------------------------------------------------
+
+const FAST = { CSQUAD_WAIT_INTERVAL_MS: '30', CSQUAD_WAIT_GRACE_MS: '200' };
+
+// runWait runs `tasks.js wait`; `script` is a list of [ms, sessions] steps that
+// rewrite the fake claude's sessions while it runs.
+function runWait(args, { script = [], e = {} } = {}) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [tasksJs, 'wait', ...args], { env: { ...env, ...FAST, ...e } });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (d) => (stdout += d));
+    child.stderr.on('data', (d) => (stderr += d));
+    for (const [ms, list] of script) setTimeout(() => setSessions(list), ms);
+    // A broken wait would otherwise run for its default four hours.
+    const guard = setTimeout(() => child.kill('SIGKILL'), 8000);
+    child.on('close', (status) => {
+      clearTimeout(guard);
+      resolve({ status, stdout, stderr });
+    });
+  });
+}
+const T = (n, title, st) => session(n, title, st);
+
+test('wait: reports a task that finishes, needs input, fails, stops or vanishes', async () => {
+  for (const [st, text] of [['done', 'done'], ['blocked', 'needs input'], ['failed', 'failed'], ['stopped', 'stopped']]) {
+    setSessions([T(12, 'fix login')]);
+    const r = await runWait(['T12'], { script: [[150, [T(12, 'fix login', st)]]] });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout, `T12 · fix login · ${text}\n`);
+  }
+  setSessions([T(12, 'fix login'), T(13, 'other')]);
+  const r = await runWait(['12'], { script: [[150, [T(13, 'other')]]] });
+  assert.equal(r.stdout, 'T12 · fix login · removed\n');
+});
+
+test('wait: a state seen on one poll only is not reported', async () => {
+  // A claude whose n-th `agents` call returns the n-th snapshot (the last one repeats).
+  const bin = path.join(root, 'seq-bin');
+  fs.mkdirSync(bin, { recursive: true });
+  fs.writeFileSync(path.join(bin, 'claude'), `#!/usr/bin/env node
+const fs = require('fs');
+const f = process.env.FAKE_STATE + '.seq';
+const n = fs.existsSync(f) ? Number(fs.readFileSync(f, 'utf8')) : 0;
+fs.writeFileSync(f, String(n + 1));
+const seq = JSON.parse(process.env.FAKE_SEQ);
+console.log(JSON.stringify([{ id: 'aaaaaaaa', sessionId: 's12', kind: 'background', name: 'T12 · fix login', state: seq[Math.min(n, seq.length - 1)], cwd: '/', startedAt: 0 }]));
+`, { mode: 0o755 });
+  const run = (seq) => {
+    fs.rmSync(state + '.seq', { force: true });
+    return runWait(['T12'], { e: { PATH: bin + path.delimiter + env.PATH, FAKE_SEQ: JSON.stringify(seq) } });
+  };
+  // Poll 0 is the start state; "done" on poll 2 only, then back to working.
+  let r = await run(['working', 'working', 'done', 'working', 'working', 'failed', 'failed']);
+  assert.equal(r.stdout, 'T12 · fix login · failed\n');
+  r = await run(['working', 'done', 'done']);
+  assert.equal(r.stdout, 'T12 · fix login · done\n');
+});
+
+test('wait: events within the grace period share one exit', async () => {
+  setSessions([T(1, 'a'), T(2, 'b'), T(3, 'c')]);
+  const r = await runWait(['T2', 'T1', 'T3'], {
+    e: { CSQUAD_WAIT_GRACE_MS: '800' },
+    script: [[150, [T(1, 'a', 'done'), T(2, 'b'), T(3, 'c')]], [350, [T(1, 'a', 'done'), T(2, 'b', 'blocked'), T(3, 'c')]]],
+  });
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, 'T1 · a · done\nT2 · b · needs input\n');
+});
+
+test('wait: a task already finished is reported at once', async () => {
+  setSessions([T(5, 'old job', 'done'), T(6, 'busy')]);
+  const t0 = Date.now();
+  const r = await runWait(['T5', 'T6'], { e: { CSQUAD_WAIT_INTERVAL_MS: '60000', CSQUAD_WAIT_GRACE_MS: '50' } });
+  assert.equal(r.stdout, 'T5 · old job · already done\n');
+  assert.ok(Date.now() - t0 < 5000);
+});
+
+test("wait: unknown labels and other sessions' tasks", async () => {
+  setSessions([T(1, 'mine'), T(2, 'theirs')]);
+  let r = await runWait(['T1', 'T9']);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /T9 is not listed by claude agents/);
+  assert.equal(r.stdout, '');
+  r = await runWait(['banana']);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /expected a task like T12/);
+  const sid = ownSession([launched(1, 'mine')]);
+  r = await runWait(['T2'], { e: { CLAUDE_CODE_SESSION_ID: sid } });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /T2 was launched by another session; pass --all/);
+  setSessions([T(1, 'mine'), T(2, 'theirs', 'done')]);
+  r = await runWait(['T2', '--all'], { e: { CLAUDE_CODE_SESSION_ID: sid } });
+  assert.equal(r.stdout, 'T2 · theirs · already done\n');
+});
+
+test('wait: timeout reports the tasks still working', async () => {
+  setSessions([T(12, 'fix login'), T(13, 'tests')]);
+  const r = await runWait(['T12', 'T13', '--timeout', '0.01']);
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, 'T12 · fix login · still working after 0m\nT13 · tests · still working after 0m\n');
+});
+
+test('wait: retries brief claude failures, gives up with exit 1 after continuous ones', async () => {
+  setSessions([T(12, 'fix login')]);
+  const r = await runWait(['T12'], { e: { CSQUAD_WAIT_FAIL_MS: '300', FAKE_STATE: state + '.missing' } });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /claude agents keeps failing/);
+  assert.equal(r.stdout, '');
+  // Unreadable at first, valid 150 ms later: retried, not fatal.
+  fs.writeFileSync(state, 'not json');
+  const ok = await runWait(['T12'], { e: { CSQUAD_WAIT_FAIL_MS: '5000' }, script: [[150, [T(12, 'fix login', 'done')]]] });
+  assert.equal(ok.status, 0);
+  assert.equal(ok.stdout, 'T12 · fix login · already done\n');
+});
+
+test('wait: SIGTERM exits quietly', async () => {
+  setSessions([T(12, 'fix login')]);
+  const child = spawn(process.execPath, [tasksJs, 'wait', 'T12'], { env: { ...env, ...FAST } });
+  let out = '';
+  child.stdout.on('data', (d) => (out += d));
+  child.stderr.on('data', (d) => (out += d));
+  await new Promise((r) => setTimeout(r, 300));
+  child.kill('SIGTERM');
+  const code = await new Promise((r) => child.on('close', r));
+  assert.equal(code, 0);
+  assert.equal(out, '');
+});

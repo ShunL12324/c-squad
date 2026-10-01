@@ -6,6 +6,8 @@
 //   tasks.js launch --title TITLE [--cwd DIR] [--model M] < PROMPT
 //   tasks.js status [--all]        (this session's tasks; --all lists every task)
 //   tasks.js peek T12 [-n N] [--all]   (refuses tasks other sessions launched)
+//   tasks.js wait T12 [T13 ...] [--timeout MIN] [--all]   (opt-in monitor: exits
+//                                  when a named task needs input, finishes or vanishes)
 //   tasks.js statusline            (status line command; reads Claude's JSON)
 'use strict';
 
@@ -565,6 +567,119 @@ function clip(text, max) {
   return text.length > max ? text.slice(0, max - 1) + '…' : text;
 }
 
+// ---- wait -----------------------------------------------------------------
+//
+// An opt-in monitor, run only when the user asks to be told about specific
+// tasks (the watch-task skill runs it as a background shell command). It polls
+// `claude agents` without any model involvement and exits once a named task
+// changes into a state the user must hear about. A new state counts only when
+// seen on two consecutive polls. Several waits may run at once; each is
+// independent and leaves nothing behind.
+
+const REPORT = new Set(['blocked', 'done', 'failed', 'stopped', 'removed']);
+const REPORT_TEXT = { ...STATE, removed: 'removed' };
+
+const envMs = (name, fallback) => (process.env[name] && Number(process.env[name]) >= 0 ? Number(process.env[name]) : fallback);
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function span(min) {
+  return min < 120 ? `${Math.round(min)}m` : `${Math.round(min / 60)}h`;
+}
+
+async function wait(args) {
+  const interval = envMs('CSQUAD_WAIT_INTERVAL_MS', 10000);
+  const grace = envMs('CSQUAD_WAIT_GRACE_MS', 5000);
+  const failLimit = envMs('CSQUAD_WAIT_FAIL_MS', 120000);
+  const minutes = args.timeout === undefined ? 240 : Number(args.timeout);
+  if (!args._.length) fail('usage: tasks.js wait T12 [T13 ...] [--timeout MINUTES] [--all]');
+  if (!(minutes > 0)) fail('--timeout expects a number of minutes');
+  const nums = args._.map((l) => {
+    const m = String(l).match(/^[Tt]?(\d+)$/);
+    if (!m) fail('expected a task like T12, got ' + l);
+    return Number(m[1]);
+  });
+  process.on('SIGTERM', () => process.exit(0));
+  process.on('SIGINT', () => process.exit(0));
+
+  const started = Date.now();
+  const deadline = started + minutes * 60000;
+  // watched: num -> { title, label, state (confirmed), seen (candidate), seenCount }
+  let watched = null;
+  const events = [];
+  let firstFailure = 0;
+  let stop = 0; // when to stop collecting events
+
+  for (;;) {
+    let list = null;
+    try {
+      list = tasks(30000);
+      firstFailure = 0;
+    } catch (e) {
+      if (!firstFailure) firstFailure = Date.now();
+      if (Date.now() - firstFailure >= failLimit) fail('claude agents keeps failing: ' + String(e.stderr || e.message).replace(ANSI, '').trim().split('\n')[0]);
+    }
+    if (list) {
+      const byNum = new Map(list.map((t) => [t.num, t]));
+      if (!watched) {
+        const sid = process.env.CLAUDE_CODE_SESSION_ID;
+        const missing = nums.filter((n) => !byNum.has(n));
+        if (missing.length) fail(`T${missing[0]} is not listed by claude agents (removed or never started)`);
+        if (!args.all && sid) {
+          const own = ownTasks(nums.map((n) => byNum.get(n)), launchedBy(historyOfSession(sid)));
+          const other = nums.find((n) => !own.some((t) => t.num === n));
+          if (other) fail(`T${other} was launched by another session; pass --all to wait for it anyway`);
+        }
+        watched = new Map();
+        for (const n of new Set(nums)) {
+          const t = byNum.get(n);
+          const state = t.state || 'unknown';
+          const w = { label: t.label, title: t.title, state, seen: state, count: 0, done: false };
+          watched.set(n, w);
+          if (REPORT.has(state)) {
+            w.done = true;
+            events.push({ num: n, text: `${t.label} · ${t.title} · already ${REPORT_TEXT[state]}` });
+          }
+        }
+      } else {
+        for (const [n, w] of watched) {
+          if (w.done) continue;
+          const t = byNum.get(n);
+          const state = t ? t.state || 'unknown' : 'removed';
+          if (t) w.title = t.title;
+          if (state === w.state) {
+            w.seen = state;
+            w.count = 0;
+            continue;
+          }
+          if (state === w.seen) w.count++;
+          else {
+            w.seen = state;
+            w.count = 1;
+          }
+          if (w.count < 2) continue;
+          w.state = state;
+          w.count = 0;
+          if (REPORT.has(state)) {
+            w.done = true;
+            events.push({ num: n, text: `${w.label} · ${w.title} · ${REPORT_TEXT[state]}` });
+          }
+        }
+      }
+      if (events.length && !stop) stop = Date.now() + grace;
+    }
+    const now = Date.now();
+    if (events.length && now >= stop) break;
+    if (watched && [...watched.values()].every((w) => w.done)) break;
+    if (now >= deadline) {
+      for (const [n, w] of watched || []) if (!w.done) events.push({ num: n, text: `${w.label} · ${w.title} · still working after ${span(minutes)}` });
+      break;
+    }
+    await delay(Math.max(0, Math.min(interval, events.length ? stop - now : deadline - now)) || 1);
+  }
+  events.sort((a, b) => a.num - b.num);
+  console.log(events.map((e) => e.text).join('\n'));
+}
+
 // ---- status line ----------------------------------------------------------
 
 const C = {
@@ -696,11 +811,11 @@ function parse(argv) {
 }
 
 const [command, ...rest] = process.argv.slice(2);
-const commands = { launch, status, peek, statusline };
-if (!commands[command]) fail('usage: tasks.js launch|status|peek|statusline');
-try {
-  commands[command](parse(rest));
-} catch (e) {
-  if (command === 'statusline') process.exit(0);
-  fail(e.stderr ? String(e.stderr).replace(ANSI, '').trim() : e.message);
-}
+const commands = { launch, status, peek, wait, statusline };
+if (!commands[command]) fail('usage: tasks.js launch|status|peek|wait|statusline');
+Promise.resolve()
+  .then(() => commands[command](parse(rest)))
+  .catch((e) => {
+    if (command === 'statusline') process.exit(0);
+    fail(e.stderr ? String(e.stderr).replace(ANSI, '').trim() : e.message);
+  });

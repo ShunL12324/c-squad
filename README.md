@@ -64,6 +64,7 @@ Just ask; Claude picks the skill from what you say.
 | `create-task` | Starts one background session per task, numbered `T1`, `T2`, ... | "Create a task to retry on SQLite busy errors." "Queue three tasks: ..." |
 | `task-status` | Reports state and latest message of each task: needs input, failed, done, working | "How are my tasks going?" "Which tasks need input?" |
 | `message-task` | Sends follow-up instructions to a task (Claude Code's native `SendMessage`) | "Tell T3 to also handle the empty-input case." |
+| `watch-task` | Opt-in: runs a background command that checks the named tasks every 10 s and tells you when one needs input, finishes, fails or disappears. Never runs unless you ask | "Watch T3." "Tell me when T2 is done." "Stop watching." |
 | `finish-task` | Merges a done task, then removes its session, worktree and branch, only after checking the work is merged | "Merge and clean up T2 and T4." "Finish everything that is done." |
 
 ## The status line
@@ -105,7 +106,7 @@ same way for every command:
 
 ```text
 csquad/tasks.js  csquad/worker.md  csquad/manifest.json  csquad/statusline.json
-skills/{create-task,task-status,message-task,finish-task}/SKILL.md
+skills/{create-task,task-status,message-task,watch-task,finish-task}/SKILL.md
 ```
 
 Install and update are idempotent. If you edited an installed file, the next

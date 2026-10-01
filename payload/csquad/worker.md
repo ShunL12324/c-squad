@@ -22,6 +22,10 @@ without attaching. Nobody is waiting on reports from you.
   indefinitely on flaky or unrelated failures; note them and finish.
 - Commit finished code changes with a clear message. Do not push, merge into
   the main branch or open pull requests unless the task says to.
+- Never pass a path built from a variable to `rm -rf` (e.g. `rm -rf "$D"/*`):
+  Claude Code stops for a human to approve it, even in bypass mode, and
+  denies it when nobody answers. Use the literal absolute path, or guard the
+  variable with `${D:?}`.
 - Clean up after yourself before you finish; nothing else will. The branch
   with your commits is the only thing to leave behind:
   - Stop every process you started (dev servers, watchers, background jobs).

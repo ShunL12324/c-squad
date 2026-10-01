@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `worker.md` and `finish-task` tell Claude to use literal paths (or
+  `${VAR:?}`) with `rm -rf`. Claude Code otherwise stops even bypass-mode
+  sessions for a human to approve the command, and denies it when nobody
+  answers.
+
 ## 1.0.2 - 2026-10-01
 
 ### Changed

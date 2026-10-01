@@ -117,6 +117,17 @@ test('uninstall restores settings.json byte for byte', () => {
   assert.ok(fs.existsSync(path.join(dir, 'csquad', 'config.json')));
 });
 
+test('install migrates the hand-made setup that saved {"command": ...}', () => {
+  const wrapper = `node ${path.join(dir, 'csquad', 'tasks.js')} statusline`;
+  seed({ statusLine: { type: 'command', command: wrapper, refreshInterval: 5 } });
+  fs.mkdirSync(path.join(dir, 'csquad'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'csquad', 'statusline.json'), '{"command":"echo mine"}');
+  ok('install');
+  assert.deepEqual(json('csquad', 'statusline.json'), { present: true, statusLine: { type: 'command', command: 'echo mine' } });
+  ok('uninstall');
+  assert.deepEqual(json('settings.json').statusLine, { type: 'command', command: 'echo mine' });
+});
+
 test('uninstall removes the statusLine key when there was none, and the dirs', () => {
   const content = JSON.stringify({ theme: 'dark' }, null, 2) + '\n';
   seed({ theme: 'dark' });

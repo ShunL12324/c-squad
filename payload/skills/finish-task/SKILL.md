@@ -7,7 +7,7 @@ description: Merge and clean up finished background tasks (T1, T2, ...): merge t
 
 Only finish tasks this session launched (`node {{CSQUAD_DIR}}/tasks.js status`
 lists them); "finish all done tasks" means those. Touch another session's task
-only if the user names it explicitly.
+only if the user names it explicitly (peek it with `--all`).
 
 1. Find what the task left: `node {{CSQUAD_DIR}}/tasks.js peek T12 -n 4`.
    Its final message names the branch, commit and any worktree; the session's
@@ -18,7 +18,7 @@ only if the user names it explicitly.
    tests. Skip this for work outside git.
 3. Verify before deleting anything:
    - `git merge-base --is-ancestor BRANCH TARGET` succeeds for every branch the
-     task created.
+     task created, and for the worktree's `HEAD` if it is detached.
    - `git -C WORKTREE status --porcelain` is empty for its worktree.
 4. Remove the session: `claude rm SESSION_ID`. It also removes the worktree
    Claude Code created for it. If it refuses because commits were never pushed

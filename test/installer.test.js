@@ -128,6 +128,15 @@ test('install migrates the hand-made setup that saved {"command": ...}', () => {
   assert.deepEqual(json('settings.json').statusLine, { type: 'command', command: 'echo mine' });
 });
 
+test('uninstall removes files tasks.js generated', () => {
+  ok('install');
+  fs.mkdirSync(path.join(dir, 'csquad', 'prompts'));
+  fs.writeFileSync(path.join(dir, 'csquad', 'prompts', 'T3.md'), 'big prompt');
+  fs.mkdirSync(path.join(dir, 'csquad', 'launch.lock.takeover'));
+  ok('uninstall');
+  assert.ok(!fs.existsSync(path.join(dir, 'csquad')));
+});
+
 test('uninstall removes the statusLine key when there was none, and the dirs', () => {
   const content = JSON.stringify({ theme: 'dark' }, null, 2) + '\n';
   seed({ theme: 'dark' });

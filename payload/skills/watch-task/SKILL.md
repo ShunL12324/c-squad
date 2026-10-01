@@ -10,7 +10,7 @@ never report back, so this is a plain background command, not polling by you.
 
 ## Start
 
-Run, with the Bash tool's `run_in_background` option, naming only the tasks the
+Run, with the shell tool's (Bash or PowerShell) `run_in_background` option, naming only the tasks the
 user asked about:
 
 ```bash

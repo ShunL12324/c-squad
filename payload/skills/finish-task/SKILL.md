@@ -44,4 +44,5 @@ task did not create alone. Report what was merged and removed.
 
 When deleting, use literal absolute paths: `rm -rf` on a path built from a
 variable (`"$D"/*`) needs a human's approval even in bypass mode; if you must
-use a variable, write `"${D:?}"`.
+use a variable, write `"${D:?}"`. In PowerShell: `Remove-Item -LiteralPath
+'C:\full\path' -Recurse -Force`, again with a literal path.

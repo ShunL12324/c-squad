@@ -3,7 +3,8 @@
 // named "T12 · title". Used by the create-task, task-status, message-task and
 // finish-task skills and by the status line.
 //
-//   tasks.js launch --title TITLE [--cwd DIR] [--model M] < PROMPT
+//   tasks.js launch --title TITLE [--cwd DIR] [--model M] [--prompt-file FILE [--rm-prompt]]
+//                                  (the prompt comes from FILE, or from stdin)
 //   tasks.js status [--all]        (this session's tasks; --all lists every task)
 //   tasks.js peek T12 [-n N] [--all]   (refuses tasks other sessions launched)
 //   tasks.js wait T12 [T13 ...] [--timeout MIN] [--all]   (opt-in monitor: exits
@@ -16,6 +17,7 @@ const os = require('os');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 
+const IS_WIN = process.platform === 'win32';
 const HERE = __dirname;
 // Installed at <claude dir>/csquad, so the Claude config directory is one level up.
 const CLAUDE_HOME = path.dirname(HERE);
@@ -32,9 +34,103 @@ function readJSON(file, fallback) {
 
 const config = { permissionMode: 'bypassPermissions', model: '', ...readJSON(path.join(HERE, 'config.json'), {}) };
 
+// ---- running claude and the user's shell ------------------------------------
+
+// findOnPath looks for `name` in PATH. On Windows it tries the PATHEXT
+// extensions that can be started directly (an extensionless file such as npm's
+// sh shim cannot be).
+function findOnPath(name, env = process.env, win = IS_WIN) {
+  const dirs = (env.PATH || env.Path || '').split(path.delimiter).map((d) => d.replace(/^"|"$/g, '')).filter(Boolean);
+  const exts = win ? (env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter((e) => /^\.(com|exe|bat|cmd)$/i.test(e)) : [''];
+  for (const dir of dirs) {
+    for (const ext of exts) {
+      const file = path.join(dir, name + ext.toLowerCase());
+      if (fs.statSync(file, { throwIfNoEntry: false })?.isFile()) return file;
+    }
+  }
+  return null;
+}
+
+// shimTarget returns the program an npm-style .cmd shim runs, so that it can be
+// started directly: cmd.exe cannot pass newlines in arguments and has its own
+// quoting rules. npm shims end with: "%_prog%"  "%dp0%\path\to\target" %*
+function shimTarget(shim) {
+  let text;
+  try {
+    text = fs.readFileSync(shim, 'utf8');
+  } catch {
+    return null;
+  }
+  const hits = [...text.matchAll(/"%~?dp0%?[\\/]*([^"%\r\n]+)"\s+%\*/gi)];
+  if (!hits.length) return null;
+  const target = path.join(path.dirname(shim), ...hits[hits.length - 1][1].split(/[\\/]/));
+  return fs.existsSync(target) ? target : null;
+}
+
+// cmdQuote escapes one argument for a command line that cmd.exe parses (the
+// cross-spawn algorithm). `twice` is for batch files, which parse it again.
+function cmdQuote(arg, twice) {
+  let a = String(arg);
+  a = a.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1');
+  a = `"${a}"`.replace(/[()%!^"<>&|;, ]/g, '^$&');
+  return twice ? a.replace(/[()%!^"<>&|;, ]/g, '^$&') : a;
+}
+
+// claudeCommand returns what to spawn for `claude args`: plain `claude`
+// outside Windows; there the executable found on PATH. A claude.cmd shim is
+// resolved to the program behind it, and only as a last resort run through
+// cmd.exe, which cannot carry newlines or very long command lines.
+function claudeCommand(args, env = process.env, win = IS_WIN) {
+  if (!win) return { file: 'claude', args, opts: {} };
+  const found = findOnPath('claude', env, true);
+  if (!found) return { file: 'claude', args, opts: {} };
+  if (/\.(exe|com)$/i.test(found)) return { file: found, args, opts: {} };
+  const target = shimTarget(found);
+  if (target && /\.exe$/i.test(target)) return { file: target, args, opts: {} };
+  if (target && /\.[cm]?js$/i.test(target)) return { file: process.execPath, args: [target, ...args], opts: {} };
+  if (args.some((a) => /[\r\n]/.test(a))) {
+    throw new Error(`${found} is a batch file, which cannot pass multi-line arguments; put claude.exe on PATH (the native installer provides it)`);
+  }
+  const line = [found.replace(/[()%!^"<>&|;, ]/g, '^$&'), ...args.map((a) => cmdQuote(a, true))].join(' ');
+  if (line.length > 8000) throw new Error(`${found} is a batch file and the command line is too long for cmd.exe; put claude.exe on PATH`);
+  return { file: env.ComSpec || 'cmd.exe', args: ['/d', '/s', '/c', `"${line}"`], opts: { windowsVerbatimArguments: true } };
+}
+
 function claude(args, opts = {}) {
+  const c = claudeCommand(args);
   // maxBuffer: the default 1 MB is too small for a long `agents --all` list.
-  return execFileSync('claude', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000, maxBuffer: 256 << 20, ...opts });
+  return execFileSync(c.file, c.args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000, maxBuffer: 256 << 20, windowsHide: true, ...c.opts, ...opts });
+}
+
+// gitBash finds Git for Windows' bash, which Claude Code runs status line
+// commands with on Windows.
+function gitBash(env = process.env) {
+  const candidates = [env.CLAUDE_CODE_GIT_BASH_PATH];
+  const git = findOnPath('git', env, true);
+  if (git) candidates.push(path.join(path.dirname(git), '..', 'bin', 'bash.exe'), path.join(path.dirname(git), '..', '..', 'bin', 'bash.exe'));
+  for (const base of [env.ProgramFiles, env['ProgramFiles(x86)'], env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'Programs')]) {
+    if (base) candidates.push(path.join(base, 'Git', 'bin', 'bash.exe'));
+  }
+  return candidates.find((c) => c && fs.statSync(c, { throwIfNoEntry: false })?.isFile()) || null;
+}
+
+// runShell runs a status line command the way Claude Code does: through sh,
+// or on Windows through Git Bash (cmd.exe when Git is not installed).
+function runShell(command, input) {
+  const opts = { input, encoding: 'utf8', timeout: 3000, windowsHide: true };
+  if (!IS_WIN) return spawnSync('sh', ['-c', command], opts);
+  const bash = gitBash();
+  return bash ? spawnSync(bash, ['-c', command], opts) : spawnSync(command, { ...opts, shell: true });
+}
+
+// readStdin returns all of stdin; an absent or closed stdin reads as empty.
+function readStdin() {
+  try {
+    return fs.readFileSync(0);
+  } catch (e) {
+    if (e.code === 'EOF' || e.code === 'EAGAIN' || e.code === 'EBADF') return Buffer.alloc(0);
+    throw e;
+  }
 }
 
 // tasks returns background sessions named like tasks, newest first.
@@ -49,6 +145,10 @@ function tasks(timeout) {
 }
 
 function within(dir, root) {
+  if (IS_WIN) {
+    dir = dir.toLowerCase().replace(/\//g, '\\');
+    root = root.toLowerCase().replace(/\//g, '\\');
+  }
   return dir === root || dir.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
 }
 
@@ -160,18 +260,27 @@ function launch(args) {
   if (!title) fail('--title is required');
   const cwd = canonical(args.cwd || process.cwd());
   if (!fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) fail(cwd + ' is not a directory');
-  const prompt = fs.readFileSync(0, 'utf8').trim();
-  if (!prompt) fail('the prompt (stdin) is empty');
+  const source = args['prompt-file'];
+  let prompt;
+  try {
+    prompt = (source ? fs.readFileSync(source) : readStdin()).toString('utf8').trim();
+  } catch (e) {
+    fail(`cannot read the prompt file ${source}: ${e.message}`);
+  }
+  if (!prompt) fail(source ? `the prompt file ${source} is empty` : 'the prompt (stdin) is empty');
   withLock(() => start(args, cwd, prompt));
+  // The prompt is the task's own copy now; a file made just for this launch goes.
+  if (source && args['rm-prompt']) fs.rmSync(source, { force: true });
 }
 
-// A single argv entry is limited to 128 KB on Linux (MAX_ARG_STRLEN) and all
-// of argv to ARG_MAX on macOS, and claude --help offers no way to read the
+// A single argv entry is limited to 128 KB on Linux (MAX_ARG_STRLEN), all of
+// argv to ARG_MAX on macOS and the whole command line to 32 K characters on
+// Windows, and claude --help offers no way to read the
 // positional prompt from a file or stdin. Larger prompts are therefore written
 // to <csquad dir>/prompts/T<n>.md and the worker is told to read that file.
 // The file stays as the task's record, is deleted if the launch fails, and is
 // pruned by a later launch once `claude rm` has removed its task.
-const MAX_INLINE_PROMPT = 60000;
+const MAX_INLINE_PROMPT = IS_WIN ? 16000 : 60000;
 const PROMPTS = path.join(HERE, 'prompts');
 
 function promptFile(num, prompt) {
@@ -187,6 +296,8 @@ function prunePrompts(live) {
     for (const f of fs.readdirSync(PROMPTS)) {
       const m = f.match(/^T(\d+)\.md$/);
       if (m && !live.has(Number(m[1]))) fs.rmSync(path.join(PROMPTS, f), { force: true });
+      // Prompts staged by the create-task skill that a launch never consumed.
+      else if (!m && /^draft-.*\.md$/.test(f) && Date.now() - fs.statSync(path.join(PROMPTS, f)).mtimeMs > 86400000) fs.rmSync(path.join(PROMPTS, f), { force: true });
     }
   } catch {}
 }
@@ -207,7 +318,8 @@ function start(args, cwd, prompt) {
   const file = promptFile(num, prompt);
   if (file) prompt = `Your full task prompt is too large to pass on the command line. Read all of ${file} first (in chunks with offset and limit if needed, until its end), then carry out the task it describes.`;
   argv.push('--append-system-prompt', system, '--', prompt);
-  const r = spawnSync('claude', argv, { cwd, encoding: 'utf8', timeout: 120000 });
+  const c = claudeCommand(argv);
+  const r = spawnSync(c.file, c.args, { cwd, encoding: 'utf8', timeout: 120000, windowsHide: true, ...c.opts });
   const output = ((r.stdout || '') + (r.stderr || '')).replace(ANSI, '').trim();
   const m = output.match(/backgrounded\s+·\s+([0-9a-f]{6,})/);
   // Throw rather than fail(): process.exit would skip withLock's cleanup.
@@ -289,7 +401,7 @@ const crypto = require('crypto');
 
 const MARKER = Buffer.from('launched T');
 const MARKER_LINE = /^launched T(\d+) · .*? · session ([0-9a-f]{6,})/gm;
-const LAUNCH_CMD = /\btasks\.js\s+launch\b/;
+const LAUNCH_CMD = /\btasks\.js["']?\s+launch\b/; // a quoted path closes its quote before `launch`
 const TAIL = 256; // bytes before the cached offset that must still match
 const LOOKBACK = [1 << 20, 8 << 20, 64 << 20]; // window sizes when looking for a tool_use
 
@@ -767,7 +879,7 @@ function grid(list, columns) {
 // statusline prints the user's own status line, saved at install time in
 // statusline.json as {"present": bool, "statusLine": {...}}, then every task.
 function statusline() {
-  const input = fs.readFileSync(0);
+  const input = readStdin();
   let transcript, sid;
   try {
     ({ transcript_path: transcript, session_id: sid } = JSON.parse(input.toString('utf8')));
@@ -775,7 +887,7 @@ function statusline() {
   const saved = readJSON(path.join(HERE, 'statusline.json'), {});
   const command = saved.statusLine && saved.statusLine.command;
   if (typeof command === 'string' && command) {
-    const r = spawnSync('sh', ['-c', command], { input, encoding: 'utf8', timeout: 3000 });
+    const r = runShell(command, input);
     const own = (r.stdout || '').replace(/\n+$/, '');
     if (own) process.stdout.write(own + '\n');
   }
@@ -804,18 +916,23 @@ function parse(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--all') args.all = true;
-    else if (/^--?[a-z]+$/.test(a) && i + 1 < argv.length) args[a.replace(/^-+/, '')] = argv[++i];
+    else if (a === '--rm-prompt') args['rm-prompt'] = true;
+    else if (/^--?[a-z][a-z-]*$/.test(a) && i + 1 < argv.length) args[a.replace(/^-+/, '')] = argv[++i];
     else args._.push(a);
   }
   return args;
 }
 
-const [command, ...rest] = process.argv.slice(2);
-const commands = { launch, status, peek, wait, statusline };
-if (!commands[command]) fail('usage: tasks.js launch|status|peek|wait|statusline');
-Promise.resolve()
-  .then(() => commands[command](parse(rest)))
-  .catch((e) => {
-    if (command === 'statusline') process.exit(0);
-    fail(e.stderr ? String(e.stderr).replace(ANSI, '').trim() : e.message);
-  });
+if (require.main === module) {
+  const [command, ...rest] = process.argv.slice(2);
+  const commands = { launch, status, peek, wait, statusline };
+  if (!commands[command]) fail('usage: tasks.js launch|status|peek|wait|statusline');
+  Promise.resolve()
+    .then(() => commands[command](parse(rest)))
+    .catch((e) => {
+      if (command === 'statusline') process.exit(0);
+      fail(e.stderr ? String(e.stderr).replace(ANSI, '').trim() : e.message);
+    });
+} else {
+  module.exports = { findOnPath, shimTarget, cmdQuote, claudeCommand, gitBash };
+}

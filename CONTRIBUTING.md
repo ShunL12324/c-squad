@@ -10,7 +10,9 @@ npm test
 ```
 
 - Tests use `node:test`. They must only touch temporary directories: set
-  `CLAUDE_CONFIG_DIR` and `HOME` to one, and put a fake `claude` on `PATH`.
+  `CLAUDE_CONFIG_DIR` and `HOME` (`USERPROFILE` on Windows) to one, and put a
+  fake `claude` on `PATH` (a `claude.cmd` shim on Windows). CI runs Linux, macOS
+  and Windows.
   Never point them at a real `~/.claude`.
 - `payload/` is what users get. Skills reference `{{CSQUAD_DIR}}`, which the
   installer replaces with the real path.

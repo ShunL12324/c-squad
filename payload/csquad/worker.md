@@ -25,7 +25,8 @@ without attaching. Nobody is waiting on reports from you.
 - Never pass a path built from a variable to `rm -rf` (e.g. `rm -rf "$D"/*`):
   Claude Code stops for a human to approve it, even in bypass mode, and
   denies it when nobody answers. Use the literal absolute path, or guard the
-  variable with `${D:?}`.
+  variable with `${D:?}`. In PowerShell use `Remove-Item -LiteralPath
+  'C:\full\path' -Recurse -Force` with a literal path.
 - Clean up after yourself before you finish; nothing else will. The branch
   with your commits is the only thing to leave behind:
   - Stop every process you started (dev servers, watchers, background jobs).

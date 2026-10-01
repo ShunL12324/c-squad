@@ -6,12 +6,16 @@ description: Dispatch work to background Claude Code sessions ("tasks" named T1,
 # Create tasks
 
 Each task runs as its own background Claude Code session, named `T12 · title`,
-that the user watches in agent view (`claude agents`). Start one with:
+that the user watches in agent view (`claude agents`). Start one in two steps,
+which work the same in bash, PowerShell and cmd (no heredoc or quoting of the
+prompt):
+
+1. Write the task prompt with the Write tool to
+   `{{CSQUAD_DIR}}/prompts/draft-SLUG.md` (SLUG: the title in kebab-case; use the path without any quotes).
+2. Launch it; the prompt file is deleted once the task has started:
 
 ```bash
-node {{CSQUAD_DIR}}/tasks.js launch --title "retry sqlite busy on open" [--cwd DIR] [--model MODEL] <<'PROMPT'
-...the task prompt...
-PROMPT
+node {{CSQUAD_DIR}}/tasks.js launch --title "retry sqlite busy on open" --prompt-file {{CSQUAD_DIR}}/prompts/draft-SLUG.md --rm-prompt [--cwd DIR] [--model MODEL]
 ```
 
 It assigns the next task number, starts the session in `--cwd` (default: the

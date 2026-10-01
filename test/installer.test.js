@@ -15,6 +15,20 @@ const SKILLS = ['create-task', 'task-status', 'message-task', 'watch-task', 'fin
 
 let root, dir, settings;
 
+// Windows needs a privilege (or developer mode) to create file symlinks.
+const canSymlink = (() => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'csquad-link-'));
+  try {
+    fs.writeFileSync(path.join(d, 'a'), '');
+    fs.symlinkSync(path.join(d, 'a'), path.join(d, 'b'));
+    return true;
+  } catch {
+    return false;
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+  }
+})();
+
 beforeEach(() => {
   root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'csquad-test-')));
   dir = path.join(root, 'claude');
@@ -26,7 +40,7 @@ function csquad(cmd, { configDir = dir, cwd = root } = {}) {
   const r = spawnSync(process.execPath, [CLI, cmd], {
     cwd,
     encoding: 'utf8',
-    env: { ...process.env, CLAUDE_CONFIG_DIR: configDir, HOME: root },
+    env: { ...process.env, CLAUDE_CONFIG_DIR: configDir, HOME: root, USERPROFILE: root },
   });
   return { code: r.status, out: r.stdout + r.stderr };
 }
@@ -42,7 +56,14 @@ const seed = (obj, indent = 2) => {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(settings, JSON.stringify(obj, null, indent) + '\n');
 };
-const command = () => `node ${path.join(dir, 'csquad', 'tasks.js')} statusline`;
+// What the installer writes as the status line command: Windows paths use
+// forward slashes and double quotes when they need quoting.
+const wrapperCommand = (p) => {
+  if (process.platform !== 'win32') return `node ${p} statusline`;
+  const f = p.replace(/\\/g, '/');
+  return `node ${/[^\w@+=:,./-]/.test(f) ? `"${f}"` : f} statusline`;
+};
+const command = () => wrapperCommand(path.join(dir, 'csquad', 'tasks.js'));
 
 test('install into an empty dir', () => {
   ok('install');
@@ -118,7 +139,7 @@ test('uninstall restores settings.json byte for byte', () => {
 });
 
 test('install migrates the hand-made setup that saved {"command": ...}', () => {
-  const wrapper = `node ${path.join(dir, 'csquad', 'tasks.js')} statusline`;
+  const wrapper = command();
   seed({ statusLine: { type: 'command', command: wrapper, refreshInterval: 5 } });
   fs.mkdirSync(path.join(dir, 'csquad'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'csquad', 'statusline.json'), '{"command":"echo mine"}');
@@ -169,15 +190,16 @@ test('paths follow CLAUDE_CONFIG_DIR, including ones with spaces', () => {
   const odd = path.join(root, 'my claude');
   ok('install', { configDir: odd });
   const skill = fs.readFileSync(path.join(odd, 'skills', 'create-task', 'SKILL.md'), 'utf8');
-  assert.ok(skill.includes(`node '${path.join(odd, 'csquad')}'/tasks.js launch`));
+  const quoted = (p) => (process.platform === 'win32' ? `"${p.replace(/\\/g, '/')}"` : `'${p}'`);
+  assert.ok(skill.includes(process.platform === 'win32' ? `node ${quoted(path.join(odd, 'csquad', 'tasks.js'))} launch` : `node '${path.join(odd, 'csquad')}'/tasks.js launch`));
   assert.ok(!skill.includes('{{CSQUAD_DIR}}'));
   const sl = JSON.parse(fs.readFileSync(path.join(odd, 'settings.json'), 'utf8')).statusLine;
-  assert.equal(sl.command, `node '${path.join(odd, 'csquad', 'tasks.js')}' statusline`);
+  assert.equal(sl.command, `node ${quoted(path.join(odd, 'csquad', 'tasks.js'))} statusline`);
   ok('uninstall', { configDir: odd });
   assert.ok(!fs.existsSync(path.join(odd, 'csquad')));
 
   ok('install');
-  assert.ok(read('skills', 'task-status', 'SKILL.md').includes(`node ${path.join(dir, 'csquad')}/tasks.js status`));
+  assert.ok(read('skills', 'task-status', 'SKILL.md').includes(`node ${path.join(dir, 'csquad').replace(/\\/g, '/')}/tasks.js status`));
 });
 
 test('invalid settings.json aborts without changes', () => {
@@ -224,7 +246,7 @@ test('CRLF and compact settings.json keep their format through install and unins
   assert.equal(read('settings.json'), compact);
 });
 
-test('a symlinked settings.json stays a symlink; its target is edited and restored', () => {
+test('a symlinked settings.json stays a symlink; its target is edited and restored', { skip: !canSymlink && 'symlinks are not permitted here' }, () => {
   const target = path.join(root, 'dotfiles-settings.json');
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(target, JSON.stringify({ theme: 'dark' }, null, 2) + '\n');

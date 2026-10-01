@@ -4,6 +4,16 @@
 
 ### Added
 
+- Windows support. `tasks.js` finds `claude` on `PATH` (`claude.exe`, or the
+  program behind npm's `claude.cmd`), runs your original status line through Git
+  Bash like Claude Code does, and keeps launch prompts under the 32 K command
+  line limit. The status line wrapper is `node "C:/path with spaces/tasks.js"
+  statusline`, valid in every shell; settings and manifest writes retry on
+  EPERM/EBUSY/EACCES; CI now runs on Windows too. The package no longer
+  declares itself unsupported on `win32`.
+- `tasks.js launch --prompt-file FILE [--rm-prompt]` reads the prompt from a
+  file instead of stdin. `create-task` uses it, so launching no longer needs a
+  bash heredoc and works in PowerShell and cmd.exe.
 - `watch-task` skill and `tasks.js wait T12 [T13 ...]`, an opt-in monitor. It
   polls `claude agents` every 10 s without the model and exits when a named task
   needs input, finishes, fails, is stopped or is removed (a new state must show
@@ -12,6 +22,10 @@
 
 ### Changed
 
+- `uninstall` never removes a `skills/` or `csquad/` symlink or junction, even
+  an emptied one (on Windows removing an empty directory link deletes the link).
+- The skills and `worker.md` give the PowerShell equivalent of the `rm -rf`
+  rule, and `watch-task` allows PowerShell's `run_in_background`.
 - `worker.md` and `finish-task` tell Claude to use literal paths (or
   `${VAR:?}`) with `rm -rf`. Claude Code otherwise stops even bypass-mode
   sessions for a human to approve the command, and denies it when nobody

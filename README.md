@@ -133,7 +133,11 @@ directory once and accept the trust prompt.
 
 - Node.js 18 or newer
 - Claude Code with background sessions (`claude --bg`, `claude agents`)
-- Linux, macOS or WSL
+- Linux, macOS, Windows or WSL. On Windows, Claude Code runs status line
+  commands through Git Bash, so csquad does too for your original status line
+  (without Git it falls back to `cmd.exe`). The skills work in Claude Code's Bash
+  or PowerShell tool alike. A native `claude.exe` (the native installer) or the
+  npm `claude.cmd` both work.
 
 ## Upgrading from the Go CLI (0.x)
 

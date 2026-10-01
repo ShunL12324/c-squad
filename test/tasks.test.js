@@ -48,6 +48,28 @@ if (args[0] === 'agents') {
 }
 `;
 
+// installFake puts a fake `claude` into `bin`: a node script with a shebang on
+// Unix; on Windows a node script behind an npm-style claude.cmd shim, the way
+// `npm i -g @anthropic-ai/claude-code` installs it.
+function installFake(bin, source) {
+  if (process.platform !== 'win32') {
+    fs.writeFileSync(path.join(bin, 'claude'), source, { mode: 0o755 });
+    return;
+  }
+  fs.writeFileSync(path.join(bin, 'claude-fake.js'), source.replace(/^#!.*\n/, ''));
+  fs.writeFileSync(path.join(bin, 'claude.cmd'), [
+    '@ECHO off', 'GOTO start', ':find_dp0', 'SET dp0=%~dp0', 'EXIT /b', ':start', 'SETLOCAL', 'CALL :find_dp0', '',
+    'IF EXIST "%dp0%\\node.exe" (', '  SET "_prog=%dp0%\\node.exe"', ') ELSE (', '  SET "_prog=node"', ')', '',
+    'endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\claude-fake.js" %*', '',
+  ].join('\r\n'));
+}
+
+// withPath returns env with `bin` first on PATH, whatever the variable's case.
+function withPath(base, bin) {
+  const key = Object.keys(base).find((k) => k.toLowerCase() === 'path') || 'PATH';
+  return { ...base, [key]: bin + path.delimiter + base[key] };
+}
+
 before(() => {
   root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'csquad-tasks-')));
   dir = path.join(root, 'claude');
@@ -55,11 +77,11 @@ before(() => {
   state = path.join(root, 'sessions.json');
   const bin = path.join(root, 'bin');
   fs.mkdirSync(bin);
-  fs.writeFileSync(path.join(bin, 'claude'), FAKE, { mode: 0o755 });
-  env = { ...process.env, CLAUDE_CONFIG_DIR: dir, HOME: root, FAKE_STATE: state, PATH: bin + path.delimiter + process.env.PATH };
+  installFake(bin, FAKE);
+  env = withPath({ ...process.env, CLAUDE_CONFIG_DIR: dir, HOME: root, USERPROFILE: root, FAKE_STATE: state }, bin);
   delete env.CLAUDE_CODE_SESSION_ID;
   fs.mkdirSync(path.join(root, 'tmp'));
-  env.TMPDIR = path.join(root, 'tmp'); // the transcript scan cache lives here
+  env.TMPDIR = env.TEMP = env.TMP = path.join(root, 'tmp'); // the transcript scan cache lives here
   const r = spawnSync(process.execPath, [CLI, 'install'], { env, cwd: root, encoding: 'utf8' });
   assert.equal(r.status, 0, r.stdout + r.stderr);
 });
@@ -494,6 +516,44 @@ test('launch: a prompt too large for argv goes through a file', () => {
   assert.equal(fs.readFileSync(file, 'utf8'), big + '\n');
 });
 
+const lastArgv = () => JSON.parse(fs.readFileSync(state + '.argv', 'utf8').trim().split('\n').pop());
+
+test('launch: awkward characters in the title and prompt reach claude intact', () => {
+  setSessions([]);
+  fs.rmSync(state + '.argv', { force: true });
+  const title = 'a b "q" \'s\' 100% ^c & (d) | <e> !f! $g `h` \\';
+  const prompt = 'line one\nsays "hi" and \'bye\'\r\n100% ^caret & amp | pipe <in> out\n\nC:\\dir\\ \\\\ trailing\\';
+  const r = spawnSync(process.execPath, [tasksJs, 'launch', '--title', title, '--cwd', root], { env, input: prompt, encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 0, r.stderr);
+  const argv = lastArgv();
+  assert.equal(argv[argv.indexOf('--name') + 1], `T1 · ${title}`);
+  assert.equal(argv[argv.length - 1], prompt);
+  const system = argv[argv.indexOf('--append-system-prompt') + 1];
+  assert.ok(system.includes('\n') && system.endsWith('Your task ID is T1.\n'));
+});
+
+test('launch: --prompt-file reads the prompt from a file and --rm-prompt deletes it afterwards', () => {
+  setSessions([]);
+  const file = path.join(root, 'draft-x.md');
+  fs.writeFileSync(file, 'from a file\nsecond line\n');
+  let r = spawnSync(process.execPath, [tasksJs, 'launch', '--title', 'f', '--prompt-file', file, '--cwd', root], { env, encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(lastArgv().pop(), 'from a file\nsecond line');
+  assert.ok(fs.existsSync(file), 'kept without --rm-prompt');
+  setSessions([]);
+  r = spawnSync(process.execPath, [tasksJs, 'launch', '--title', 'g', '--prompt-file', file, '--rm-prompt', '--cwd', root], { env, encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(!fs.existsSync(file));
+  r = spawnSync(process.execPath, [tasksJs, 'launch', '--title', 'h', '--prompt-file', file, '--cwd', root], { env, encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /cannot read the prompt file/);
+  fs.writeFileSync(file, 'x');
+  setSessions([]);
+  r = spawnSync(process.execPath, [tasksJs, 'launch', '--title', 'FAILME', '--prompt-file', file, '--rm-prompt', '--cwd', root], { env, encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 1);
+  assert.ok(fs.existsSync(file), 'kept when the launch fails');
+});
+
 test('launch: small prompts stay on the command line; prompt files are pruned and removed on failure', () => {
   fs.rmSync(state + '.argv', { force: true });
   const prompts = path.join(dir, 'csquad', 'prompts');
@@ -592,17 +652,17 @@ test('wait: a state seen on one poll only is not reported', async () => {
   // A claude whose n-th `agents` call returns the n-th snapshot (the last one repeats).
   const bin = path.join(root, 'seq-bin');
   fs.mkdirSync(bin, { recursive: true });
-  fs.writeFileSync(path.join(bin, 'claude'), `#!/usr/bin/env node
+  installFake(bin, `#!/usr/bin/env node
 const fs = require('fs');
 const f = process.env.FAKE_STATE + '.seq';
 const n = fs.existsSync(f) ? Number(fs.readFileSync(f, 'utf8')) : 0;
 fs.writeFileSync(f, String(n + 1));
 const seq = JSON.parse(process.env.FAKE_SEQ);
 console.log(JSON.stringify([{ id: 'aaaaaaaa', sessionId: 's12', kind: 'background', name: 'T12 · fix login', state: seq[Math.min(n, seq.length - 1)], cwd: '/', startedAt: 0 }]));
-`, { mode: 0o755 });
+`);
   const run = (seq) => {
     fs.rmSync(state + '.seq', { force: true });
-    return runWait(['T12'], { e: { PATH: bin + path.delimiter + env.PATH, FAKE_SEQ: JSON.stringify(seq) } });
+    return runWait(['T12'], { e: { ...withPath(env, bin), FAKE_SEQ: JSON.stringify(seq) } });
   };
   // Poll 0 is the start state; "done" on poll 2 only, then back to working.
   let r = await run(['working', 'working', 'done', 'working', 'working', 'failed', 'failed']);
@@ -667,7 +727,7 @@ test('wait: retries brief claude failures, gives up with exit 1 after continuous
   assert.equal(ok.stdout, 'T12 · fix login · already done\n');
 });
 
-test('wait: SIGTERM exits quietly', async () => {
+test('wait: SIGTERM exits quietly', { skip: process.platform === 'win32' && 'Windows has no SIGTERM: kill() terminates the process abruptly' }, async () => {
   setSessions([T(12, 'fix login')]);
   const child = spawn(process.execPath, [tasksJs, 'wait', 'T12'], { env: { ...env, ...FAST } });
   let out = '';

@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- The status line, `status`, `peek` and the skills are scoped to the tasks the
+  current session launched. `peek` refuses another session's task unless you
+  pass `--all`; `status --all` still lists every task.
+
+### Fixed
+
+- The status line no longer runs `claude agents` every 5 s in sessions that
+  never launched a task, and gives up after 4 s.
+- A failed `launch` left `launch.lock` behind and blocked the next launch for
+  minutes. The lock now records its pid and is taken over once that process is
+  gone.
+- Long `claude agents --all` lists (over 1 MB) no longer break the status line
+  and `launch`.
+- `status` and `peek` no longer crash before `~/.claude/projects` exists.
+- Control characters in task titles are stripped from the status line.
+- CRLF and one-line `settings.json` files keep their format on install and
+  uninstall; `npx csquad status` tolerates an invalid `settings.json`.
+- `finish-task` also checks a detached worktree `HEAD` before deleting.
+
 ## 1.0.1 - 2026-10-01
 
 ### Fixed

@@ -65,31 +65,81 @@ function canonical(dir) {
 // holds its owner's pid and is stale once that process is gone. A launch takes
 // at most ~3 minutes (listing, then claude --bg), so a live-pid lock that old
 // is a reused pid or a hung process.
+//
+// The lock is created by hard-linking a fully written temp file, so it never
+// exists empty and exactly one linker wins. Removing a stale lock is itself
+// serialized by a mkdir mutex, with a re-check inside: otherwise two launchers
+// could both judge the same lock stale and the slower one would delete the
+// fresh lock the faster one had just taken.
 function withLock(fn) {
   const lock = path.join(HERE, 'launch.lock');
+  const mine = String(process.pid);
   const deadline = Date.now() + 240000;
   for (;;) {
-    try {
-      fs.writeFileSync(lock, String(process.pid), { flag: 'wx' });
-      break;
-    } catch (e) {
-      if (e.code !== 'EEXIST') throw e;
-      if (staleLock(lock, 200000)) fs.rmSync(lock, { force: true });
-      else if (Date.now() > deadline) throw new Error('timed out waiting for ' + lock);
-      else Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
-    }
+    if (tryLink(lock, mine)) break;
+    if (staleLock(lock, 200000)) breakStale(lock);
+    else if (Date.now() > deadline) throw new Error('timed out waiting for ' + lock);
+    else sleep(50);
   }
   try {
     return fn();
   } finally {
-    fs.rmSync(lock, { force: true });
+    // Only remove our own lock: after a long hang someone may have taken over.
+    if (readPid(lock) === process.pid) fs.rmSync(lock, { force: true });
+  }
+}
+
+function sleep(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function readPid(file) {
+  try {
+    return Number(fs.readFileSync(file, 'utf8')) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+// tryLink atomically creates file with the given content; false if it exists.
+function tryLink(file, content) {
+  const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}`;
+  fs.writeFileSync(tmp, content);
+  try {
+    fs.linkSync(tmp, file);
+    return true;
+  } catch (e) {
+    if (e.code !== 'EEXIST') throw e;
+    return false;
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
+}
+
+function breakStale(lock) {
+  const mutex = lock + '.takeover';
+  try {
+    fs.mkdirSync(mutex);
+  } catch (e) {
+    if (e.code !== 'EEXIST') throw e;
+    // Taking over takes milliseconds; an old mutex belongs to a crashed launcher.
+    try {
+      if (Date.now() - fs.statSync(mutex).mtimeMs > 30000) fs.rmdirSync(mutex);
+    } catch {}
+    sleep(20);
+    return;
+  }
+  try {
+    if (staleLock(lock, 200000)) fs.rmSync(lock, { force: true });
+  } finally {
+    fs.rmSync(mutex, { recursive: true, force: true });
   }
 }
 
 function staleLock(file, maxAge) {
   try {
     const age = Date.now() - fs.statSync(file).mtimeMs;
-    const pid = Number(fs.readFileSync(file, 'utf8')) || 0;
+    const pid = readPid(file);
     if (pid > 0) {
       try {
         process.kill(pid, 0);
@@ -113,10 +163,38 @@ function launch(args) {
   withLock(() => start(args, cwd, prompt));
 }
 
+// A single argv entry is limited to 128 KB on Linux (MAX_ARG_STRLEN) and all
+// of argv to ARG_MAX on macOS, and claude --help offers no way to read the
+// positional prompt from a file or stdin. Larger prompts are therefore written
+// to <csquad dir>/prompts/T<n>.md and the worker is told to read that file.
+// The file stays as the task's record, is deleted if the launch fails, and is
+// pruned by a later launch once `claude rm` has removed its task.
+const MAX_INLINE_PROMPT = 60000;
+const PROMPTS = path.join(HERE, 'prompts');
+
+function promptFile(num, prompt) {
+  if (Buffer.byteLength(prompt) <= MAX_INLINE_PROMPT) return null;
+  fs.mkdirSync(PROMPTS, { recursive: true });
+  const file = path.join(PROMPTS, `T${num}.md`);
+  fs.writeFileSync(file, prompt + '\n', { mode: 0o600 });
+  return file;
+}
+
+function prunePrompts(live) {
+  try {
+    for (const f of fs.readdirSync(PROMPTS)) {
+      const m = f.match(/^T(\d+)\.md$/);
+      if (m && !live.has(Number(m[1]))) fs.rmSync(path.join(PROMPTS, f), { force: true });
+    }
+  } catch {}
+}
+
 // start launches the task numbered one above the highest task Claude Code
 // lists; claude --bg returns once the new session is listed.
 function start(args, cwd, prompt) {
-  const num = Math.max(0, ...tasks().map((t) => t.num)) + 1;
+  const listed = tasks();
+  const num = Math.max(0, ...listed.map((t) => t.num)) + 1;
+  prunePrompts(new Set(listed.map((t) => t.num)));
   const label = 'T' + num;
   const name = `${label} · ${args.title}`;
   const system = fs.readFileSync(path.join(HERE, 'worker.md'), 'utf8') + `\nYour task ID is ${label}.\n`;
@@ -124,12 +202,17 @@ function start(args, cwd, prompt) {
   if (config.permissionMode) argv.push('--permission-mode', config.permissionMode);
   const model = args.model || config.model;
   if (model) argv.push('--model', model);
+  const file = promptFile(num, prompt);
+  if (file) prompt = `Your full task prompt is too large to pass on the command line. Read all of ${file} first (in chunks with offset and limit if needed, until its end), then carry out the task it describes.`;
   argv.push('--append-system-prompt', system, '--', prompt);
   const r = spawnSync('claude', argv, { cwd, encoding: 'utf8', timeout: 120000 });
   const output = ((r.stdout || '') + (r.stderr || '')).replace(ANSI, '').trim();
   const m = output.match(/backgrounded\s+·\s+([0-9a-f]{6,})/);
   // Throw rather than fail(): process.exit would skip withLock's cleanup.
-  if (r.status !== 0 || !m) throw new Error(`launching ${name} failed:\n${output || r.error}`);
+  if (r.status !== 0 || !m) {
+    if (file) fs.rmSync(file, { force: true });
+    throw new Error(`launching ${name} failed:\n${output || r.error}`);
+  }
   // The "launched" marker lets the status line and status find, in the
   // launching session's transcript, which tasks that session started.
   console.log(`launched ${name} · session ${m[1]} · ${cwd}`);

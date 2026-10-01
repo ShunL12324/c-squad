@@ -26,6 +26,13 @@ if (args[0] === 'agents') {
   console.log(out);
 } else if (args.includes('--bg')) {
   const name = args[args.indexOf('--name') + 1];
+  // Like MAX_ARG_STRLEN / ARG_MAX: refuse oversized arguments.
+  const max = Number(process.env.FAKE_MAX_ARG || 0);
+  if (max && args.some((a) => Buffer.byteLength(a) > max)) {
+    console.error('Argument list too long');
+    process.exit(1);
+  }
+  fs.appendFileSync(state + '.argv', JSON.stringify(args) + '\\n');
   if (name.includes('FAILME')) {
     console.error('workspace not trusted');
     process.exit(1);
@@ -339,4 +346,76 @@ test('launch: a failing claude is reported and releases the lock', () => {
   assert.equal(r.status, 1);
   assert.match(r.stderr, /launching T1 · FAILME failed:\nworkspace not trusted/);
   assert.ok(!fs.existsSync(launchLock()));
+});
+
+test('launch: a prompt too large for argv goes through a file', () => {
+  setSessions([]);
+  fs.rmSync(state + '.argv', { force: true });
+  const big = 'x'.repeat(300000) + '\nEND-MARKER';
+  const r = spawnSync(process.execPath, [tasksJs, 'launch', '--title', 'big', '--cwd', root], { env: { ...env, FAKE_MAX_ARG: '100000' }, input: big, encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^launched T1 · big · /);
+  const argv = JSON.parse(fs.readFileSync(state + '.argv', 'utf8').trim().split('\n').pop());
+  const prompt = argv[argv.length - 1];
+  const file = path.join(dir, 'csquad', 'prompts', 'T1.md');
+  assert.ok(prompt.length < 1000 && prompt.includes(file));
+  assert.equal(fs.readFileSync(file, 'utf8'), big + '\n');
+});
+
+test('launch: small prompts stay on the command line; prompt files are pruned and removed on failure', () => {
+  fs.rmSync(state + '.argv', { force: true });
+  const prompts = path.join(dir, 'csquad', 'prompts');
+  fs.mkdirSync(prompts, { recursive: true });
+  fs.writeFileSync(path.join(prompts, 'T7.md'), 'old'); // its task is gone
+  setSessions([]);
+  assert.equal(launchProc('small').status, 0);
+  const argv = JSON.parse(fs.readFileSync(state + '.argv', 'utf8').trim().split('\n').pop());
+  assert.equal(argv[argv.length - 1], 'do it');
+  assert.ok(!fs.existsSync(path.join(prompts, 'T7.md')));
+  setSessions([]);
+  const r = spawnSync(process.execPath, [tasksJs, 'launch', '--title', 'FAILME', '--cwd', root], { env, input: 'y'.repeat(100000), encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 1);
+  assert.deepEqual(fs.readdirSync(prompts), []);
+});
+
+const runLaunch = (title) => new Promise((resolve) => {
+  const p = spawn(process.execPath, [tasksJs, 'launch', '--title', title, '--cwd', root], { env });
+  let out = '';
+  p.stdout.on('data', (d) => (out += d));
+  p.stderr.on('data', (d) => (out += d));
+  p.on('close', (code) => resolve({ code, out }));
+  p.stdin.end('go\n');
+});
+
+test('launch: many launchers racing over a stale lock get distinct numbers', async () => {
+  for (let round = 0; round < 3; round++) {
+    setSessions([]);
+    fs.writeFileSync(launchLock(), '2147483646');
+    const results = await Promise.all(Array.from({ length: 10 }, (_, i) => runLaunch('r' + i)));
+    for (const r of results) assert.equal(r.code, 0, r.out);
+    const nums = results.map((r) => Number(r.out.match(/^launched T(\d+) · /)[1])).sort((a, b) => a - b);
+    assert.deepEqual(nums, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    assert.ok(!fs.existsSync(launchLock()));
+    assert.ok(!fs.existsSync(launchLock() + '.takeover'));
+    assert.deepEqual(fs.readdirSync(path.join(dir, 'csquad')).filter((f) => f.startsWith('launch.lock')), []);
+  }
+});
+
+test('launch: a lock held by a live process is never taken over', async () => {
+  setSessions([]);
+  const holder = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)']);
+  try {
+    fs.writeFileSync(launchLock(), String(holder.pid));
+    const p = runLaunch('waits');
+    await new Promise((r) => setTimeout(r, 1500));
+    assert.equal(fs.readFileSync(launchLock(), 'utf8'), String(holder.pid));
+    assert.deepEqual(JSON.parse(fs.readFileSync(state, 'utf8')), []); // still waiting
+    holder.kill();
+    await new Promise((r) => holder.on('close', r));
+    const r = await p;
+    assert.equal(r.code, 0, r.out);
+    assert.ok(!fs.existsSync(launchLock()));
+  } finally {
+    holder.kill();
+  }
 });

@@ -22,7 +22,7 @@
     "csquad": "bin/csquad.js"
   },
   "files": [
-    "bin/",
+    "bin/csquad.js",
     "lib/",
     "payload/"
   ],

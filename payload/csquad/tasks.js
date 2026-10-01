@@ -192,20 +192,144 @@ function lastAssistant(msgs) {
   return '';
 }
 
-// launchedIds returns the ids of the tasks a transcript records as launched.
-// It scans the raw bytes for the marker and parses only around each hit.
-function launchedIds(buf) {
-  const ids = new Set();
-  const marker = Buffer.from('launched T');
-  for (let i = buf.indexOf(marker); i !== -1; i = buf.indexOf(marker, i + 1)) {
-    let line = buf.toString('utf8', i, Math.min(buf.length, i + 1000));
-    // The record ends at a newline, an escaped \n (JSONL) or an unescaped
-    // closing quote; a quote inside the title is escaped as \" and kept.
-    line = line.split(/\n|\\n|(?<!\\)"/, 1)[0];
-    const m = line.match(/^launched T(\d+) · .*? · session ([0-9a-f]{6,})/);
-    if (m) ids.add(m[2]);
+// ---- launch markers -------------------------------------------------------
+//
+// A launch prints `launched T12 · title · session <id> · <dir>`. The status
+// line runs every few seconds in every open session, so transcripts are scanned
+// incrementally: per transcript, a cache file records how far it was read and
+// the ids found so far. Only markers in the tool_result of a Bash call that ran
+// `tasks.js launch` count; quotes in prose, peeks and pastes do not.
+
+const crypto = require('crypto');
+
+const MARKER = Buffer.from('launched T');
+const MARKER_LINE = /^launched T(\d+) · .*? · session ([0-9a-f]{6,})/m;
+const LAUNCH_CMD = /\btasks\.js\s+launch\b/;
+const TAIL = 256; // bytes before the cached offset that must still match
+const LOOKBACK = [1 << 20, 8 << 20, 64 << 20]; // window sizes when looking for a tool_use
+
+function cacheFile(file) {
+  const uid = typeof process.getuid === 'function' ? process.getuid() : 'u';
+  const key = crypto.createHash('sha1').update(file).digest('hex');
+  return path.join(os.tmpdir(), 'csquad-scan-' + uid, key + '.json');
+}
+
+const sha = (buf) => crypto.createHash('sha1').update(buf).digest('hex');
+
+function readAt(fd, pos, len) {
+  const buf = Buffer.alloc(len);
+  let got = 0;
+  while (got < len) {
+    const n = fs.readSync(fd, buf, got, len - got, pos + got);
+    if (!n) break;
+    got += n;
   }
-  return ids;
+  return buf.subarray(0, got);
+}
+
+// resultText returns the text of a tool_result block's content.
+function resultText(c) {
+  if (typeof c === 'string') return c;
+  return Array.isArray(c) ? c.map((b) => (b && typeof b.text === 'string' ? b.text : '')).join('\n') : '';
+}
+
+// ranLaunch reports whether the tool_use `id` ran `tasks.js launch`. The
+// tool_use precedes its result, possibly before the bytes read this time, so
+// look in growing windows of the file before position `before`.
+function ranLaunch(fd, id, before) {
+  const needle = Buffer.from(`"id":${JSON.stringify(id)}`);
+  for (const size of LOOKBACK) {
+    const start = Math.max(0, before - size);
+    const buf = readAt(fd, start, before - start);
+    for (let i = buf.lastIndexOf(needle); i !== -1; i = i > 0 ? buf.lastIndexOf(needle, i - 1) : -1) {
+      const a = buf.lastIndexOf(10, i) + 1;
+      if (a === 0 && start > 0) break; // line cut by the window: widen it
+      let b = buf.indexOf(10, i);
+      if (b === -1) b = buf.length;
+      try {
+        const blocks = JSON.parse(buf.toString('utf8', a, b)).message.content;
+        for (const blk of blocks) {
+          if (blk && blk.type === 'tool_use' && blk.id === id) {
+            const cmd = blk.input && blk.input.command;
+            return typeof cmd === 'string' && LAUNCH_CMD.test(cmd);
+          }
+        }
+      } catch {}
+    }
+    if (start === 0) break;
+  }
+  return false;
+}
+
+// scanLines adds the ids launched in the complete lines of buf, which starts
+// at file position `base`. It finds marker hits by bytes and parses only their
+// lines.
+function scanLines(fd, buf, base, ids) {
+  let lineEnd = -1;
+  for (let i = buf.indexOf(MARKER); i !== -1; i = buf.indexOf(MARKER, i + 1)) {
+    if (i < lineEnd) continue; // same line as the previous hit
+    const a = buf.lastIndexOf(10, i) + 1;
+    let b = buf.indexOf(10, i);
+    if (b === -1) b = buf.length;
+    lineEnd = b;
+    let e;
+    try {
+      e = JSON.parse(buf.toString('utf8', a, b));
+    } catch {
+      continue;
+    }
+    const blocks = e && e.type === 'user' && e.message && e.message.content;
+    if (!Array.isArray(blocks)) continue;
+    for (const blk of blocks) {
+      if (!blk || blk.type !== 'tool_result') continue;
+      const m = MARKER_LINE.exec(resultText(blk.content));
+      if (m && typeof blk.tool_use_id === 'string' && ranLaunch(fd, blk.tool_use_id, base + a)) ids.add(m[2]);
+    }
+  }
+}
+
+// launchedIds returns the session ids a transcript records as launched,
+// reading only what was appended since the cached offset when the cache still
+// matches the file. Any cache trouble means a full scan.
+function launchedIds(file) {
+  const fd = fs.openSync(file, 'r');
+  try {
+    const st = fs.fstatSync(fd);
+    const cf = cacheFile(file);
+    let offset = 0;
+    let ids = new Set();
+    const c = readJSON(cf, null);
+    if (c && c.v === 1 && c.dev === st.dev && c.ino === st.ino && Number.isInteger(c.offset) && c.offset > 0 && c.offset <= st.size && Array.isArray(c.ids)) {
+      const n = Math.min(TAIL, c.offset);
+      if (sha(readAt(fd, c.offset - n, n)) === c.tail) {
+        offset = c.offset;
+        ids = new Set(c.ids.filter((x) => typeof x === 'string'));
+      }
+    }
+    if (offset === st.size) return ids;
+    let buf = readAt(fd, offset, st.size - offset);
+    // Whole lines only; an unterminated last line counts once it parses.
+    let end = buf.lastIndexOf(10) + 1;
+    if (end < buf.length) {
+      try {
+        JSON.parse(buf.toString('utf8', end));
+        end = buf.length;
+      } catch {}
+    }
+    scanLines(fd, buf.subarray(0, end), offset, ids);
+    try {
+      const pos = offset + end;
+      const n = Math.min(TAIL, pos);
+      const rec = { v: 1, dev: st.dev, ino: st.ino, offset: pos, tail: sha(readAt(fd, pos - n, n)), ids: [...ids] };
+      fs.mkdirSync(path.dirname(cf), { recursive: true, mode: 0o700 });
+      const tmp = `${cf}.${process.pid}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(rec), { mode: 0o600 });
+      fs.renameSync(tmp, cf);
+    } catch {} // an unwritable cache only costs a full scan next time
+    return ids;
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 
 // predecessorOf returns the id of the session that was continued in `id`: the
@@ -275,7 +399,7 @@ function launchedBy(transcripts) {
   const ids = new Set();
   for (const file of transcripts) {
     try {
-      for (const id of launchedIds(fs.readFileSync(file))) ids.add(id);
+      for (const id of launchedIds(file)) ids.add(id);
     } catch {}
   }
   return ids;

@@ -1,6 +1,6 @@
 {
   "name": "csquad",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Claude Code skills and a status line for dispatching background tasks (T1, T2, ...)",
   "license": "MIT",
   "author": "ShunL12324",

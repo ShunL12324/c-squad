@@ -1,12 +1,20 @@
 # Changelog
 
-## Unreleased
+## 1.0.2 - 2026-10-01
 
 ### Changed
 
 - The status line, `status`, `peek` and the skills are scoped to the tasks the
   current session launched. `peek` refuses another session's task unless you
   pass `--all`; `status --all` still lists every task.
+- Only launches recorded in this session's own `tasks.js launch` output count;
+  a `launched T…` line that is quoted, pasted or shown by `peek` or `status`
+  no longer adds a task to the status line.
+- The status line scans transcripts incrementally, reading only what was
+  appended since the last refresh.
+- Prompts over 60 KB are passed to the task through a file under
+  `csquad/prompts/`, instead of failing on the per-argument size limit.
+- The README is rewritten, with a new banner.
 
 ### Fixed
 
@@ -22,6 +30,14 @@
 - CRLF and one-line `settings.json` files keep their format on install and
   uninstall; `npx csquad status` tolerates an invalid `settings.json`.
 - `finish-task` also checks a detached worktree `HEAD` before deleting.
+- Taking over a launch lock left by a crashed launch is atomic, so concurrent
+  launches never get the same task number.
+- A dangling `settings.json` symlink is written through instead of being
+  replaced by a regular file; unsafe symlink layouts are refused before any
+  change.
+- Uninstall removes the prompt files and lock directory `tasks.js` writes.
+- Several tasks launched by one Bash call all show in the status line, not
+  only the first.
 
 ## 1.0.1 - 2026-10-01
 

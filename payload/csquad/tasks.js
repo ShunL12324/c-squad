@@ -5,7 +5,8 @@
 //
 //   tasks.js launch --title TITLE [--cwd DIR] [--model M] < PROMPT
 //   tasks.js status [--all]        (this session's tasks; --all lists every task)
-//   tasks.js peek T12 [-n N]
+//   tasks.js peek T12 [-n N] [--all]   (refuses tasks other sessions launched)
+//   tasks.js watch                 (blocks until one of this session's tasks needs input, finishes or fails)
 //   tasks.js statusline            (status line command; reads Claude's JSON)
 'use strict';
 
@@ -307,6 +308,10 @@ function find(label) {
 
 function peek(args) {
   const t = find(args._[0]);
+  const sid = process.env.CLAUDE_CODE_SESSION_ID;
+  if (!args.all && sid && !ownTasks([t], historyOfSession(sid)).length) {
+    fail(`${t.label} was launched by another session; pass --all to peek it anyway`);
+  }
   const n = Number(args.n) || 6;
   console.log(`${t.label} · ${t.title} · ${stateOf(t)} · session ${t.id} · ${shortDir(t.cwd)}\n`);
   for (const m of messages(t.sessionId).slice(-n)) {
@@ -320,6 +325,97 @@ function peek(args) {
 
 function clip(text, max) {
   return text.length > max ? text.slice(0, max - 1) + '…' : text;
+}
+
+// ---- watch ----------------------------------------------------------------
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// lockWatcher makes sure one watcher runs per session. It returns the lock
+// file, or null when a live watcher already holds it; a lock whose pid is dead
+// is taken over.
+function lockWatcher(sid) {
+  const file = path.join(HERE, `watch-${sid.replace(/[^\w-]/g, '_')}.pid`);
+  for (let i = 0; i < 5; i++) {
+    try {
+      fs.writeFileSync(file, String(process.pid), { flag: 'wx' });
+      return file;
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+    }
+    let pid = 0;
+    try {
+      pid = Number(fs.readFileSync(file, 'utf8')) || 0;
+    } catch {}
+    let alive = false;
+    try {
+      alive = pid > 0 && (process.kill(pid, 0), true);
+    } catch (e) {
+      alive = e.code === 'EPERM';
+    }
+    if (alive) return null;
+    fs.rmSync(file, { force: true });
+  }
+  return null;
+}
+
+// The states a task is reported for when it changes into one of them.
+const EVENTS = new Set(['blocked', 'done', 'failed', 'stopped']);
+
+async function watch() {
+  const sid = process.env.CLAUDE_CODE_SESSION_ID;
+  if (!sid) {
+    console.log('not watching: CLAUDE_CODE_SESSION_ID is not set, so this session\'s tasks are unknown');
+    return;
+  }
+  const lock = lockWatcher(sid);
+  if (!lock) {
+    console.log('already watching');
+    return;
+  }
+  const cleanup = () => fs.rmSync(lock, { force: true });
+  process.on('exit', cleanup);
+  for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => process.exit(0));
+
+  const interval = Number(process.env.CSQUAD_WATCH_INTERVAL_MS) || 10000;
+  const giveUp = Number(process.env.CSQUAD_WATCH_GIVEUP_MS) || 120000;
+  const seen = new Map(); // task id -> state when last polled
+  let first = true;
+  let failingSince = 0;
+  for (;; await sleep(interval)) {
+    let own;
+    try {
+      own = ownTasks(tasks(), historyOfSession(sid));
+      failingSince = 0;
+    } catch (e) {
+      failingSince = failingSince || Date.now();
+      if (Date.now() - failingSince >= giveUp) {
+        fail('giving up: claude agents kept failing: ' + String(e.stderr || e.message).replace(ANSI, '').trim());
+      }
+      continue;
+    }
+    const events = [];
+    const current = new Set();
+    for (const t of own) {
+      current.add(t.id);
+      const state = t.state;
+      // A task first seen after the first poll was launched after the watcher
+      // started, so it counts as having been working.
+      const before = seen.has(t.id) ? seen.get(t.id) : first ? state : 'working';
+      if (state !== before && EVENTS.has(state)) events.push(`${t.label} · ${t.title} · ${stateOf(t)}`);
+      seen.set(t.id, state);
+    }
+    for (const id of seen.keys()) if (!current.has(id)) seen.delete(id);
+    first = false;
+    if (events.length) {
+      console.log(events.join('\n'));
+      return;
+    }
+    if (!own.some((t) => t.state === 'working')) {
+      console.log('no open tasks');
+      return;
+    }
+  }
 }
 
 // ---- status line ----------------------------------------------------------
@@ -450,11 +546,14 @@ function parse(argv) {
 }
 
 const [command, ...rest] = process.argv.slice(2);
-const commands = { launch, status, peek, statusline };
-if (!commands[command]) fail('usage: tasks.js launch|status|peek|statusline');
-try {
-  commands[command](parse(rest));
-} catch (e) {
+const commands = { launch, status, peek, watch, statusline };
+if (!commands[command]) fail('usage: tasks.js launch|status|peek|watch|statusline');
+const onError = (e) => {
   if (command === 'statusline') process.exit(0);
   fail(e.stderr ? String(e.stderr).replace(ANSI, '').trim() : e.message);
+};
+try {
+  Promise.resolve(commands[command](parse(rest))).catch(onError);
+} catch (e) {
+  onError(e);
 }

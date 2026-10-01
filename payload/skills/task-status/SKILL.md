@@ -13,6 +13,9 @@ node {{CSQUAD_DIR}}/tasks.js status --all    # every task
 node {{CSQUAD_DIR}}/tasks.js peek T12 -n 8   # recent conversation of one task
 ```
 
+Report only this session's tasks; use `--all` (and `peek --all` for the others)
+only when the user explicitly asks about all or other tasks.
+
 `status` lists the tasks launched by this session (`--all`: every task) with their
 state (needs input, failed, done, working, stopped), age, session, directory and its latest message. `peek` shows the last messages
 without tool calls.

@@ -5,6 +5,10 @@ description: Merge and clean up finished background tasks (T1, T2, ...): merge t
 
 # Finish a task
 
+Only finish tasks this session launched (`node {{CSQUAD_DIR}}/tasks.js status`
+lists them); "finish all done tasks" means those. Touch another session's task
+only if the user names it explicitly.
+
 1. Find what the task left: `node {{CSQUAD_DIR}}/tasks.js peek T12 -n 4`.
    Its final message names the branch, commit and any worktree; the session's
    directory is shown in the header. A task that is still working or needs

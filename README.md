@@ -63,7 +63,19 @@ and matched against the running tasks. `npx csquad@latest status` is about the
 install; for tasks run `node <dir>/csquad/tasks.js status --all` (or ask
 Claude "show all tasks") to list every task regardless of session.
 `/clear` starts a new session, so tasks launched before it drop off the status
-line; they still exist, and `status --all` shows them.
+line; they still exist, and `status --all` shows them. `peek` likewise refuses
+a task another session launched unless you pass `--all`, and the skills only
+report, message and finish this session's tasks unless you name others.
+
+### Notifications
+
+After launching, `create-task` starts `tasks.js watch` in the background. It
+polls `claude agents` every 10 s and exits, printing one line per event, as soon
+as one of this session's tasks needs input, finishes, fails or stops (tasks that
+were already in such a state when it started are not reported). Its exit wakes
+the session, which tells you what happened; it asks before merging a finished
+task and never finishes one on its own. One watcher runs per session
+(`csquad/watch-<session>.pid`).
 
 ## The status line
 

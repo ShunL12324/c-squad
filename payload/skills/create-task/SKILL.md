@@ -31,11 +31,32 @@ Writing a task:
 - Run tasks in the project they belong to. If the user asks for work in another
   project, pass `--cwd` and say so.
 - The user manages how many tasks run at once. If many are already working
-  (see `node {{CSQUAD_DIR}}/tasks.js status --all`), mention it rather than
-  holding tasks back yourself.
+  (see `node {{CSQUAD_DIR}}/tasks.js status --all`; use it only to count, never
+  to report other sessions' tasks), mention it rather than holding tasks back
+  yourself.
 
-After launching, do not poll or wait for the tasks. Workers never report back;
-the user checks progress in agent view, the status line, or by asking.
+After launching, do not poll or wait for the tasks. Start the watcher with the
+Bash tool's `run_in_background` option (harmless if one already runs):
+
+```bash
+node {{CSQUAD_DIR}}/tasks.js watch
+```
+
+It exits, printing one line per event (`T12 · title · needs input`, `done`,
+`failed` or `stopped`), as soon as one of this session's tasks changes into
+such a state, or with `no open tasks`. When that background command completes,
+read its output (an `exited while detached` note after the event line is
+harmless) and act as follows, nothing more:
+
+- **needs input**: peek the task (`tasks.js peek T12`) and tell the user its
+  exact question. They can answer in agent view, or ask you to send the answer
+  (message-task).
+- **done**: peek it, give a 1–3 line summary of its result, and ask whether to
+  merge and finish it. Never finish a task on your own.
+- **failed / stopped**: report the reason.
+
+Then, if this session still has working tasks (`tasks.js status`), start the
+watcher again. Do nothing else unprompted.
 
 If the launch fails because the workspace is not trusted, ask the user to open
 `claude` in that directory once and accept the trust prompt.

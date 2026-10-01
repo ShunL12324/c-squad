@@ -246,7 +246,7 @@ test('status: finds tasks whose title contains quotes', () => {
   assert.doesNotMatch(out, /T2/);
 });
 
-// ---- peek scoping and watch ------------------------------------------------
+// ---- peek scoping ------------------------------------------------
 
 // ownSession writes a transcript for a fresh session id that launched `list`.
 function ownSession(list) {
@@ -257,8 +257,6 @@ function ownSession(list) {
   fs.writeFileSync(path.join(proj, sid + '.jsonl'), lines.join('\n') + '\n');
   return sid;
 }
-const addLaunch = (sid, t) =>
-  fs.appendFileSync(path.join(dir, 'projects', 'p', sid + '.jsonl'), JSON.stringify({ type: 'user', message: { content: `launched ${t.name} · session ${t.id} · /x\n` } }) + '\n');
 const launched = (num, title) => ({ ...session(num), name: `T${num} · ${title}` });
 
 test('peek: refuses tasks another session launched', () => {
@@ -272,104 +270,4 @@ test('peek: refuses tasks another session launched', () => {
   assert.match(r.stderr, /T2 was launched by another session; pass --all to peek it anyway/);
   assert.equal(peek('T2', ['--all']).status, 0);
   assert.equal(peek('T2', [], {}).status, 0); // variable unset: any task
-});
-
-const watchEnv = (sid, extra = {}) => ({ ...env, CLAUDE_CODE_SESSION_ID: sid, CSQUAD_WATCH_INTERVAL_MS: '50', ...extra });
-
-// startWatch runs `tasks.js watch`; done resolves with its exit code and output.
-function startWatch(sid, extra) {
-  const p = spawn(process.execPath, [tasksJs, 'watch'], { env: watchEnv(sid, extra) });
-  let out = '';
-  p.stdout.on('data', (d) => (out += d));
-  p.stderr.on('data', (d) => (out += d));
-  const done = new Promise((resolve) => p.on('close', (code) => resolve({ code, out: out.trim() })));
-  return { p, done };
-}
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const lockFile = (sid) => path.join(dir, 'csquad', `watch-${sid}.pid`);
-
-test('watch: reports a task that needs input, finishes or fails', async () => {
-  const sid = ownSession([launched(1, 'mine'), launched(2, 'other'), launched(3, 'third')]);
-  setSessions([session(1, 'mine'), session(2, 'other'), session(3, 'third')]);
-  const w = startWatch(sid);
-  await wait(300);
-  setSessions([session(1, 'mine', 'blocked'), session(2, 'other', 'done'), session(3, 'third', 'failed')]);
-  const r = await w.done;
-  assert.equal(r.code, 0);
-  assert.deepEqual(r.out.split('\n').sort(), ['T1 · mine · needs input', 'T2 · other · done', 'T3 · third · failed']);
-});
-
-test('watch: ignores tasks already finished at start and other sessions', async () => {
-  const sid = ownSession([launched(1, 'mine'), launched(2, 'old')]);
-  setSessions([session(1, 'mine'), session(2, 'old', 'done'), session(3, 'theirs')]);
-  const w = startWatch(sid);
-  await wait(300);
-  setSessions([session(1, 'mine'), session(2, 'old', 'done'), session(3, 'theirs', 'done')]);
-  await wait(300);
-  setSessions([session(1, 'mine', 'done'), session(2, 'old', 'done'), session(3, 'theirs', 'done')]);
-  const r = await w.done;
-  assert.equal(r.out, 'T1 · mine · done');
-});
-
-test('watch: includes a task launched after it started; a removed task is no event', async () => {
-  const sid = ownSession([launched(1, 'mine')]);
-  setSessions([session(1, 'mine')]);
-  const w = startWatch(sid);
-  await wait(300);
-  addLaunch(sid, launched(2, 'later'));
-  setSessions([session(2, 'later')]); // T1 was removed
-  await wait(300);
-  setSessions([session(2, 'later', 'done')]);
-  const r = await w.done;
-  assert.equal(r.out, 'T2 · later · done');
-});
-
-test('watch: exits when nothing is working', async () => {
-  const sid = ownSession([launched(1, 'mine')]);
-  setSessions([session(1, 'mine', 'done')]);
-  const r = await startWatch(sid).done;
-  assert.deepEqual([r.code, r.out], [0, 'no open tasks']);
-  assert.ok(!fs.existsSync(lockFile(sid)));
-});
-
-test('watch: without a session id it exits quietly', () => {
-  const r = spawnSync(process.execPath, [tasksJs, 'watch'], { env, encoding: 'utf8' });
-  assert.equal(r.status, 0);
-  assert.match(r.stdout, /CLAUDE_CODE_SESSION_ID/);
-});
-
-test('watch: one watcher per session, stale locks are taken over, lock is removed', async () => {
-  const sid = ownSession([launched(1, 'mine')]);
-  setSessions([session(1, 'mine')]);
-  const first = startWatch(sid);
-  await wait(300);
-  assert.equal(fs.readFileSync(lockFile(sid), 'utf8'), String(first.p.pid));
-  const second = await startWatch(sid).done;
-  assert.deepEqual([second.code, second.out], [0, 'already watching']);
-  assert.ok(fs.existsSync(lockFile(sid)), 'the second watcher must not remove the first one\'s lock');
-  first.p.kill('SIGTERM');
-  await first.done;
-  assert.ok(!fs.existsSync(lockFile(sid)));
-
-  fs.writeFileSync(lockFile(sid), '2147483646'); // no such process
-  setSessions([session(1, 'mine', 'done')]);
-  const r = await startWatch(sid).done;
-  assert.equal(r.out, 'no open tasks');
-  assert.ok(!fs.existsSync(lockFile(sid)));
-});
-
-test('watch: retries a failing claude and gives up after a while', async () => {
-  const sid = ownSession([launched(1, 'mine')]);
-  fs.writeFileSync(state, 'not json');
-  const w = startWatch(sid, { CSQUAD_WATCH_GIVEUP_MS: '600' });
-  await wait(300);
-  setSessions([session(1, 'mine')]); // recovers: still watching
-  await wait(300);
-  setSessions([session(1, 'mine', 'done')]);
-  assert.equal((await w.done).out, 'T1 · mine · done');
-
-  fs.writeFileSync(state, 'not json');
-  const r = await startWatch(sid, { CSQUAD_WATCH_GIVEUP_MS: '300' }).done;
-  assert.equal(r.code, 1);
-  assert.match(r.out, /giving up/);
 });

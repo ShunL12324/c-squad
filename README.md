@@ -1,108 +1,116 @@
-# C Squad
+<p align="center">
+  <img src="docs/assets/banner.png" alt="csquad: a squad of background tasks for Claude Code" width="100%">
+</p>
 
-Dispatch work to background [Claude Code](https://claude.com/claude-code) sessions
-and keep an eye on them. Each task is a normal `claude --bg` session named
-`T1 · title`, `T2 · title`, ... that you watch and answer in agent view
-(`claude agents`) and see as a grid of chips in your status line.
+<p align="center">
+  <a href="https://www.npmjs.com/package/csquad"><img src="https://img.shields.io/npm/v/csquad?color=78e8af&label=npm" alt="npm version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/npm/l/csquad?color=78e8af" alt="MIT license"></a>
+  <img src="https://img.shields.io/node/v/csquad?color=78e8af" alt="Node >= 18">
+</p>
 
-C Squad is a handful of plain files, installed by one command:
+**Hand work to a squad of background [Claude Code](https://claude.com/claude-code) sessions, and watch them from your status line.**
 
-- four **skills** that let Claude create, report on, message and finish tasks;
-- `tasks.js`, the small script behind them (and the status line);
-- `worker.md`, rules appended to every task's system prompt: work autonomously,
-  prefer an isolated worktree, commit the result, report briefly at the end.
+You keep talking to one normal `claude` session. Ask for a few tasks and each
+becomes its own background session, `T1 · title`, `T2 · title`, ..., working in
+its own git worktree while you carry on. Zero dependencies, no daemon, no database.
 
-No daemon, no database, no runtime dependencies. Node 18+ on Linux or macOS.
-
-## Install
+## Quick start
 
 ```sh
-npx csquad@latest install     # also: --install
-npx csquad@latest update      # --update, after a new release
-npx csquad@latest uninstall   # --uninstall
-npx csquad@latest status      # what is installed, version, whether the status line is wrapped
+npx csquad@latest install
 ```
 
-Files go to `$CLAUDE_CONFIG_DIR` (default `~/.claude`):
+Then, in any `claude` session:
 
+> Dispatch 3 tasks: fix the login redirect, add tests for the parser, update the docs.
+
+That's it.
+
+## How it works
+
+```text
+you     Dispatch 3 tasks: fix the login redirect, add tests for the parser, update the docs.
+claude  launched T1 · fix login redirect, T2 · add parser tests, T3 · update the docs.
+        They run in the background; check agent view or the status line.
 ```
+
+Your status line now has a chip per task, most urgent first:
+
+```text
+T2  add parser tests       ◆ needs input    T1  fix login redirect     ✓ done
+T3  update the docs        ● working
+```
+
+```text
+you     How are my tasks going?
+claude  T2 needs input: "Should the parser reject empty files or return []?" Answer it in
+        agent view, or tell me and I'll pass it on. T1 is done: fixed the redirect loop on
+        /login, tests pass, branch worktree-t1-fix-login-redirect. T3 is still working.
+you     Tell T2 to return an empty list. Then merge T1.
+claude  Sent to T2. T1 merged into main; its session, worktree and branch are removed.
+```
+
+Each task is a plain `claude --bg` session with a small set of worker rules
+appended to its system prompt: work autonomously, use an isolated worktree and
+branch, clean up after itself, commit, and end with a short result. Workers never
+report back on their own, and nothing merges until you ask.
+
+## The skills
+
+Just ask; Claude picks the skill from what you say.
+
+| Skill | What it does | Say something like |
+| --- | --- | --- |
+| `create-task` | Starts one background session per task, numbered `T1`, `T2`, ... | "Create a task to retry on SQLite busy errors." "Queue three tasks: ..." |
+| `task-status` | Reports state and latest message of each task: needs input, failed, done, working | "How are my tasks going?" "Which tasks need input?" |
+| `message-task` | Sends follow-up instructions to a task (Claude Code's native `SendMessage`) | "Tell T3 to also handle the empty-input case." |
+| `finish-task` | Merges a done task, then removes its session, worktree and branch, only after checking the work is merged | "Merge and clean up T2 and T4." "Finish everything that is done." |
+
+## The status line
+
+Your own status line stays exactly as it is; csquad prints it first, then a grid of
+task chips below it:
+
+| Badge | Meaning |
+| --- | --- |
+| `◆ needs input` | the task is waiting on an answer; reply in agent view |
+| `✓ done` | finished; ask Claude to merge it |
+| `✗ failed` | the session failed |
+| `● working` | still running |
+| `■ stopped` | stopped before finishing |
+
+The chips show only the tasks launched by the **current session**. `/clear`
+starts a new session, so earlier tasks drop off the line but keep running; the
+full list is always in agent view (`claude agents`), or ask Claude to
+"show all tasks".
+
+`install` wraps your existing `statusLine` instead of replacing it: the original
+command is saved to `csquad/statusline.json` and run at render time with the same
+input. Other `settings.json` keys, ordering and indentation are untouched.
+`uninstall` restores the original `statusLine` byte for byte (or removes the key
+if you had none). A project-level `.claude/settings.json` that sets `statusLine`
+overrides the wrapper in that project; `install` and `status` warn about it.
+
+## Install, update, uninstall
+
+```sh
+npx csquad@latest install     # copy the skills and tasks.js, wrap the status line
+npx csquad@latest update      # after a new release
+npx csquad@latest uninstall   # restore the status line, remove everything csquad installed
+npx csquad@latest status      # what is installed and whether the status line is wrapped
+```
+
+Files go to `$CLAUDE_CONFIG_DIR` (default `~/.claude`), so set the variable the
+same way for every command:
+
+```text
 csquad/tasks.js  csquad/worker.md  csquad/manifest.json  csquad/statusline.json
 skills/{create-task,task-status,message-task,finish-task}/SKILL.md
 ```
 
-The skills call `tasks.js` by absolute path, templated at install time from
-`$CLAUDE_CONFIG_DIR`. Set the variable the same way when you update or uninstall.
-
-Install and update are idempotent. `manifest.json` records the package version
-and a hash of every installed file; if you edited one, the next install/update
-saves your version as `<file>.bak`, says so, and then overwrites it.
-`csquad/config.json` is yours and is never touched.
-
-## The skills
-
-Talk to Claude Code normally; the skills are picked up from what you ask.
-
-| Skill | Say something like |
-| --- | --- |
-| `create-task` | "Create a task to retry on SQLite busy errors." "Queue three tasks: fix the login redirect, add tests for the parser, update the docs." |
-| `task-status` | "How are my tasks going?" "Which tasks need input?" |
-| `message-task` | "Tell T3 to also handle the empty-input case." "Ask T5 why it changed the schema." |
-| `finish-task` | "Merge and clean up T2 and T4." "Finish everything that is done." |
-
-`create-task` runs `tasks.js launch`, which numbers the task (one above the
-highest T number Claude Code lists, under a lock so parallel launches never
-collide), starts `claude --bg --name "T7 · title"` in the project directory,
-appends the worker rules and prints `launched T7 · ...`. `finish-task` merges the task's branch and removes the
-session and its worktree, only after checking the work is merged.
-
-### Which tasks you see
-
-The status line and `status` show only the tasks launched by the **current
-session**: that `launched T7 · ...` line is recorded in the session transcript
-and matched against the running tasks. `npx csquad@latest status` is about the
-install; for tasks run `node <dir>/csquad/tasks.js status --all` (or ask
-Claude "show all tasks") to list every task regardless of session.
-`/clear` starts a new session, so tasks launched before it drop off the status
-line; they still exist, and `status --all` shows them. `peek` likewise refuses
-a task another session launched unless you pass `--all`, and the skills only
-report, message and finish this session's tasks unless you name others.
-
-### Notifications
-
-After launching, `create-task` starts `tasks.js watch` in the background. It
-polls `claude agents` every 10 s and exits, printing one line per event, as soon
-as one of this session's tasks needs input, finishes, fails or stops (tasks that
-were already in such a state when it started are not reported). Its exit wakes
-the session, which tells you what happened; it asks before merging a finished
-task and never finishes one on its own. One watcher runs per session
-(`csquad/watch-<session>.pid`).
-
-## The status line
-
-Claude Code has one `statusLine` command. To add task chips without losing
-yours, `install` wraps it:
-
-1. If `settings.json` has a `statusLine` that is not ours, it is saved verbatim to
-   `csquad/statusline.json` (or recorded as "none"). A one-time copy of the whole
-   file goes to `csquad/settings.json.bak`.
-2. Only the `statusLine` key changes, to
-   `node <dir>/csquad/tasks.js statusline` with your `refreshInterval` (5 if you
-   had none). Other keys, key order and indentation are preserved; the write is
-   atomic.
-3. At render time `tasks.js statusline` runs your saved command with the same
-   stdin, prints its output first, then one chip per task (most urgent first:
-   needs input, done, failed, working, stopped), laid out in columns by
-   `$COLUMNS`.
-
-Installing again never wraps twice. A project-level `.claude/settings.json` that
-sets `statusLine` overrides the wrapper in that project; install and status warn
-about it.
-
-**To undo:** `npx csquad@latest uninstall` puts your original `statusLine` back
-(or removes the key if you had none) and removes the files it installed. If you
-changed `statusLine` since installing, it is left alone and uninstall says so.
-Running task sessions are not touched. By hand: copy `statusLine` from
-`csquad/statusline.json` (or `csquad/settings.json.bak`) back into `settings.json`.
+Install and update are idempotent. If you edited an installed file, the next
+run saves your version as `<file>.bak` and says so before overwriting it. Your
+`config.json` is never touched, and running task sessions are not affected.
 
 ## Configuration
 
@@ -112,23 +120,23 @@ Running task sessions are not touched. By hand: copy `statusLine` from
 { "permissionMode": "bypassPermissions", "model": "" }
 ```
 
-- `permissionMode`: passed as `--permission-mode` to every task. The default
-  `bypassPermissions` lets workers act without prompting; set `"acceptEdits"`,
+- `permissionMode`: passed as `--permission-mode` to every task. The default,
+  `bypassPermissions`, lets workers act without prompting; use `"acceptEdits"`,
   `"plan"` or `""` (Claude Code's default) for something stricter.
-- `model`: passed as `--model`; empty uses Claude Code's default. A task can
-  override it with `--model`.
+- `model`: passed as `--model`; empty uses Claude Code's default.
 
 If a launch fails because the workspace is not trusted, open `claude` in that
 directory once and accept the trust prompt.
 
 ## Requirements
 
-Node 18+ and Claude Code with background sessions (`claude --bg`,
-`claude agents`), on Linux or macOS.
+- Node.js 18 or newer
+- Claude Code with background sessions (`claude --bg`, `claude agents`)
+- Linux, macOS or WSL
 
 ## Upgrading from the Go CLI (0.x)
 
-1.0 replaces the Go binary with this npm package. Homebrew and APT are
+1.0 replaces the Go binary with this npm package; Homebrew and APT are
 discontinued. Remove the old install first:
 
 ```sh
@@ -143,7 +151,7 @@ Then run `npx csquad@latest install`. Old `T<n>` sessions keep working.
 ## Development
 
 ```sh
-npm test    # node:test, runs against temporary CLAUDE_CONFIG_DIRs and a fake `claude`
+npm test    # node:test, against temporary CLAUDE_CONFIG_DIRs and a fake `claude`
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). MIT licensed.

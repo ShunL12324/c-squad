@@ -16,7 +16,7 @@ PROMPT
 
 It assigns the next task number, starts the session in `--cwd` (default: the
 current directory) with the worker rules appended to its system prompt, and
-prints `T12 · title · session ID · dir`. Tell the user the task IDs.
+prints `launched T12 · title · session ID · dir`. Tell the user the task IDs.
 
 Writing a task:
 
@@ -31,7 +31,7 @@ Writing a task:
 - Run tasks in the project they belong to. If the user asks for work in another
   project, pass `--cwd` and say so.
 - The user manages how many tasks run at once. If many are already working
-  (see `node {{CSQUAD_DIR}}/tasks.js status`), mention it rather than
+  (see `node {{CSQUAD_DIR}}/tasks.js status --all`), mention it rather than
   holding tasks back yourself.
 
 After launching, do not poll or wait for the tasks. Workers never report back;

@@ -7,7 +7,7 @@ description: Send further instructions to a running or finished background task 
 
 Use Claude Code's built-in `SendMessage` tool; there is no command for this.
 Address the session by its full name, `T12 · title`. `ListAgents` shows the
-exact names, as does `node {{CSQUAD_DIR}}/tasks.js status`.
+exact names, as does `node {{CSQUAD_DIR}}/tasks.js status --all`.
 
 - Write the message so it stands on its own: what to change or add, and why if
   it matters. The worker treats it as the user's instruction.

@@ -8,11 +8,12 @@ description: Report the progress of background tasks (T1, T2, ...). Use when the
 Gather the facts:
 
 ```bash
-node {{CSQUAD_DIR}}/tasks.js status          # every task
+node {{CSQUAD_DIR}}/tasks.js status          # tasks launched by this session
+node {{CSQUAD_DIR}}/tasks.js status --all    # every task
 node {{CSQUAD_DIR}}/tasks.js peek T12 -n 8   # recent conversation of one task
 ```
 
-`status` lists each task's state (needs input, failed, done, working, stopped),
+`status` lists each task launched by this session (`--all`: every task)'s state (needs input, failed, done, working, stopped),
 age, session, directory and its latest message. `peek` shows the last messages
 without tool calls.
 

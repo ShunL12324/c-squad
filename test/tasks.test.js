@@ -44,6 +44,7 @@ before(() => {
   fs.mkdirSync(bin);
   fs.writeFileSync(path.join(bin, 'claude'), FAKE, { mode: 0o755 });
   env = { ...process.env, CLAUDE_CONFIG_DIR: dir, HOME: root, FAKE_STATE: state, PATH: bin + path.delimiter + process.env.PATH };
+  delete env.CLAUDE_CODE_SESSION_ID;
   const r = spawnSync(process.execPath, [CLI, 'install'], { env, cwd: root, encoding: 'utf8' });
   assert.equal(r.status, 0, r.stdout + r.stderr);
 });
@@ -58,7 +59,17 @@ const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
 // Display width with CJK and fullwidth characters counted as two columns.
 const dw = (s) => [...s].reduce((w, ch) => w + (/[ᄀ-ᅟ⺀-꓏가-힣＀-｠]/.test(ch) ? 2 : 1), 0);
 
-function statusline(columns, input = '{}') {
+// transcript writes a JSONL transcript in which the session launched `list`.
+function transcript(list, extra = []) {
+  const file = path.join(root, 'transcript.jsonl');
+  const lines = list.map((t) => JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: `launched ${t.name} · session ${t.id} · ${root}\n` }] } }));
+  fs.writeFileSync(file, [...lines, ...extra].join('\n') + '\n');
+  return file;
+}
+
+function statusline(columns, input) {
+  // By default the transcript launched every task in the state file.
+  if (input === undefined) input = JSON.stringify({ transcript_path: transcript(JSON.parse(fs.readFileSync(state, 'utf8'))) });
   const r = spawnSync(process.execPath, [tasksJs, 'statusline'], { env: { ...env, COLUMNS: String(columns) }, input, encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
   return strip(r.stdout).split('\n').filter(Boolean);
@@ -92,10 +103,11 @@ test('statusline: CJK titles keep the grid aligned', () => {
 
 test('statusline: prints the saved original status line first', () => {
   setSessions([session(1, 'job')]);
-  fs.writeFileSync(path.join(dir, 'csquad', 'statusline.json'), JSON.stringify({ present: true, statusLine: { type: 'command', command: 'cat | tr a-z A-Z' } }));
-  const rows = statusline(80, 'hello');
-  assert.equal(rows[0], 'HELLO');
+  fs.writeFileSync(path.join(dir, 'csquad', 'statusline.json'), JSON.stringify({ present: true, statusLine: { type: 'command', command: 'grep -o transcript_path | tr a-z A-Z' } }));
+  const rows = statusline(80, JSON.stringify({ transcript_path: transcript([session(1, 'job')]) }));
+  assert.equal(rows[0], 'TRANSCRIPT_PATH');
   assert.match(rows[1], /T1 job/);
+  fs.rmSync(path.join(dir, 'csquad', 'statusline.json'));
 });
 
 test('launch: concurrent calls get distinct numbers', async () => {
@@ -109,8 +121,43 @@ test('launch: concurrent calls get distinct numbers', async () => {
     p.stdin.end('do the thing\n');
   });
   const outs = await Promise.all(['one', 'two', 'three', 'four', 'five'].map(run));
-  const nums = outs.map((o) => Number(o.match(/^T(\d+) · /)[1])).sort((a, b) => a - b);
+  const nums = outs.map((o) => Number(o.match(/^launched T(\d+) · /)[1])).sort((a, b) => a - b);
   assert.deepEqual(nums, [8, 9, 10, 11, 12]);
   const names = JSON.parse(fs.readFileSync(state, 'utf8')).map((s) => s.name);
   assert.equal(new Set(names).size, names.length);
+});
+
+test('statusline: shows only tasks launched by this session', () => {
+  setSessions([session(1, 'mine'), session(2, 'theirs'), session(3, 'old output'), session(4, 'peeked')]);
+  const t = transcript([session(1, 'mine')], [
+    // Old output without the marker, a peek header and prose must not match.
+    JSON.stringify({ text: `T3 · old output · session ${session(3).id} · ${root}` }),
+    JSON.stringify({ text: `T4 · peeked · working · session ${session(4).id} · ${root}` }),
+    JSON.stringify({ text: `we launched T2 later` }),
+  ]);
+  const rows = statusline(100, JSON.stringify({ transcript_path: t }));
+  assert.equal(rows.length, 1);
+  assert.match(rows[0], /T1\s+mine/);
+  assert.doesNotMatch(rows[0], /theirs|old output|peeked/);
+});
+
+test('statusline: no task line without a readable transcript', () => {
+  setSessions([session(1, 'job')]);
+  assert.deepEqual(statusline(100, '{}'), []);
+  assert.deepEqual(statusline(100, JSON.stringify({ transcript_path: path.join(root, 'missing.jsonl') })), []);
+  assert.deepEqual(statusline(100, 'not json'), []);
+});
+
+test('status: this session by default, everything with --all', () => {
+  setSessions([session(1, 'mine'), session(2, 'theirs')]);
+  const sid = 'abcd1234-0000-0000-0000-000000000000';
+  const proj = path.join(dir, 'projects', 'p');
+  fs.mkdirSync(proj, { recursive: true });
+  fs.writeFileSync(path.join(proj, sid + '.jsonl'), JSON.stringify({ type: 'user', message: { content: `launched T1 · mine · session ${session(1).id} · /x\n` } }) + '\n');
+  const run = (extra, e = {}) => spawnSync(process.execPath, [tasksJs, 'status', ...extra], { env: { ...env, ...e }, encoding: 'utf8' }).stdout;
+  const own = run([], { CLAUDE_CODE_SESSION_ID: sid });
+  assert.match(own, /## T1 · mine/);
+  assert.doesNotMatch(own, /T2/);
+  assert.match(run(['--all'], { CLAUDE_CODE_SESSION_ID: sid }), /## T2 · theirs/);
+  assert.match(run([]), /## T2 · theirs/); // variable unset: every task
 });

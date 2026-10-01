@@ -49,7 +49,7 @@ Talk to Claude Code normally; the skills are picked up from what you ask.
 | `message-task` | "Tell T3 to also handle the empty-input case." "Ask T5 why it changed the schema." |
 | `finish-task` | "Merge and clean up T2 and T4." "Finish everything that is done." |
 
-`create-task` runs `tasks.js launch`, which numbers the task (one above the
+`create-task` runs `tasks.js launch`, which prints `launched T7 · ...` (the status line and `status` use that record in the session transcript to show only that session's tasks; `status --all` shows every task), and which numbers the task (one above the
 highest T number Claude Code lists, under a lock so parallel launches never
 collide), starts `claude --bg --name "T7 · title"` in the project directory and
 appends the worker rules. `finish-task` merges the task's branch and removes the

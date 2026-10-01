@@ -4,7 +4,7 @@
 // finish-task skills and by the status line.
 //
 //   tasks.js launch --title TITLE [--cwd DIR] [--model M] < PROMPT
-//   tasks.js status
+//   tasks.js status [--all]        (this session's tasks; --all lists every task)
 //   tasks.js peek T12 [-n N]
 //   tasks.js statusline            (status line command; reads Claude's JSON)
 'use strict';
@@ -110,7 +110,9 @@ function start(args, cwd, prompt) {
   const output = ((r.stdout || '') + (r.stderr || '')).replace(ANSI, '').trim();
   const m = output.match(/backgrounded\s+·\s+([0-9a-f]{6,})/);
   if (r.status !== 0 || !m) fail(`launching ${name} failed:\n${output || r.error}`);
-  console.log(`${name} · session ${m[1]} · ${cwd}`);
+  // The "launched" marker lets the status line and status find, in the
+  // launching session's transcript, which tasks that session started.
+  console.log(`launched ${name} · session ${m[1]} · ${cwd}`);
 }
 
 // ---- transcripts ----------------------------------------------------------
@@ -166,6 +168,31 @@ function lastAssistant(msgs) {
   return '';
 }
 
+// launchedIds returns the ids of the tasks a transcript records as launched.
+// It scans the raw bytes for the marker and parses only around each hit.
+function launchedIds(buf) {
+  const ids = new Set();
+  const marker = Buffer.from('launched T');
+  for (let i = buf.indexOf(marker); i !== -1; i = buf.indexOf(marker, i + 1)) {
+    let line = buf.toString('utf8', i, Math.min(buf.length, i + 1000));
+    // The record ends at a newline, an escaped \n (JSONL) or a closing quote.
+    line = line.split(/\n|\\n|"/, 1)[0];
+    const m = line.match(/^launched T(\d+) · .*? · session ([0-9a-f]{6,})/);
+    if (m) ids.add(m[2]);
+  }
+  return ids;
+}
+
+function ownTasks(list, transcript) {
+  let ids;
+  try {
+    ids = launchedIds(fs.readFileSync(transcript));
+  } catch {
+    return [];
+  }
+  return list.filter((t) => ids.has(t.id));
+}
+
 // ---- status and peek ------------------------------------------------------
 
 const STATE = { blocked: 'needs input', working: 'working', done: 'done', failed: 'failed', stopped: 'stopped' };
@@ -187,10 +214,15 @@ function shortDir(dir) {
   return within(dir, home) ? '~' + dir.slice(home.length) : dir;
 }
 
-function status() {
-  const list = tasks();
+function status(args) {
+  let list = tasks();
+  const sid = process.env.CLAUDE_CODE_SESSION_ID;
+  if (!args.all && sid) {
+    const file = transcriptPath(sid);
+    list = file ? ownTasks(list, file) : [];
+  }
   if (!list.length) {
-    console.log('No tasks.');
+    console.log(args.all || !sid ? 'No tasks.' : 'No tasks launched by this session (status --all lists every task).');
     return;
   }
   const order = ['needs input', 'failed', 'done', 'working', 'stopped'];
@@ -315,6 +347,10 @@ function grid(list, columns) {
 // statusline.json as {"present": bool, "statusLine": {...}}, then every task.
 function statusline() {
   const input = fs.readFileSync(0);
+  let transcript;
+  try {
+    transcript = JSON.parse(input.toString('utf8')).transcript_path;
+  } catch {}
   const saved = readJSON(path.join(HERE, 'statusline.json'), {});
   const command = saved.statusLine && saved.statusLine.command;
   if (typeof command === 'string' && command) {
@@ -324,7 +360,7 @@ function statusline() {
   }
   let list;
   try {
-    list = tasks();
+    list = typeof transcript === 'string' ? ownTasks(tasks(), transcript) : [];
   } catch {
     return;
   }

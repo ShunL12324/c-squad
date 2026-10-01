@@ -195,3 +195,44 @@ test('--flag spellings, --version and --help', () => {
   ok('--uninstall');
   assert.equal(csquad('bogus').code, 2);
 });
+
+test('CRLF and compact settings.json keep their format through install and uninstall', () => {
+  fs.mkdirSync(dir, { recursive: true });
+  const crlf = '{\r\n  "theme": "dark",\r\n  "statusLine": {\r\n    "type": "command",\r\n    "command": "echo mine"\r\n  }\r\n}\r\n';
+  fs.writeFileSync(settings, crlf);
+  ok('install');
+  const wrapped = read('settings.json');
+  assert.ok(wrapped.includes(command()));
+  assert.equal(wrapped.replace(/\r\n/g, '').includes('\n'), false, 'only CRLF line breaks');
+  ok('uninstall');
+  assert.equal(read('settings.json'), crlf);
+
+  const compact = '{"theme":"dark","statusLine":{"type":"command","command":"echo mine"}}';
+  fs.writeFileSync(settings, compact);
+  ok('install');
+  assert.equal(read('settings.json').includes('\n'), false);
+  ok('uninstall');
+  assert.equal(read('settings.json'), compact);
+});
+
+test('a symlinked settings.json stays a symlink; its target is edited and restored', () => {
+  const target = path.join(root, 'dotfiles-settings.json');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(target, JSON.stringify({ theme: 'dark' }, null, 2) + '\n');
+  fs.symlinkSync(target, settings);
+  const before = fs.readFileSync(target, 'utf8');
+  ok('install');
+  assert.ok(fs.lstatSync(settings).isSymbolicLink());
+  assert.ok(JSON.parse(fs.readFileSync(target, 'utf8')).statusLine.command.includes('tasks.js'));
+  ok('uninstall');
+  assert.ok(fs.lstatSync(settings).isSymbolicLink());
+  assert.equal(fs.readFileSync(target, 'utf8'), before);
+});
+
+test('status survives an invalid settings.json and a manifest without files', () => {
+  ok('install');
+  fs.writeFileSync(settings, '{ nope');
+  assert.match(ok('status'), /Status line: unknown/);
+  fs.writeFileSync(path.join(dir, 'csquad', 'manifest.json'), '{"version":"0"}');
+  assert.match(ok('status'), /Installed:\s+csquad 0/);
+});

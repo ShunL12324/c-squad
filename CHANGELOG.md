@@ -8,7 +8,6 @@
   `${VAR:?}`) with `rm -rf`. Claude Code otherwise stops even bypass-mode
   sessions for a human to approve the command, and denies it when nobody
   answers.
-
 - `finish-task` with no task named finishes every done task of the session,
   skipping those still working or needing input.
 

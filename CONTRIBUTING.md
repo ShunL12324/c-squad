@@ -1,43 +1,26 @@
 # Contributing
 
-C Squad queues work for real Claude Code sessions. Changes should keep that
-behavior predictable and observable, and leave everything Claude Code already
-does to Claude Code.
-
-## Development
-
-Use Go 1.26+ and Git on Linux, macOS, or WSL 2.
+C Squad is a small, zero-dependency Node package: an installer (`bin/`, `lib/`)
+and the files it installs (`payload/`). Keep it small and readable.
 
 ```sh
 git clone https://github.com/ShunL12324/c-squad.git
 cd c-squad
-make fmt
-make check
-make build
+npm test
 ```
 
-Run `bin/csquad` to try your build. Use `make install` to install it under
-`~/.local/bin`; add that directory to your PATH.
+- Tests use `node:test`. They must only touch temporary directories: set
+  `CLAUDE_CONFIG_DIR` and `HOME` to one, and put a fake `claude` on `PATH`.
+  Never point them at a real `~/.claude`.
+- `payload/` is what users get. Skills reference `{{CSQUAD_DIR}}`, which the
+  installer replaces with the real path.
+- Check `npm pack --dry-run` lists only intended files.
 
-Tests use Go's standard `testing` package. Keep unit tests beside the code they
-exercise. Use temporary directories and cleanup handlers; never point tests at a
-real user's configuration, queue database or Claude Code state; set
-`XDG_DATA_HOME`, `XDG_CONFIG_HOME` and `CLAUDE_CONFIG_DIR` to temporary
-directories. Tests replace `claude` with a fake (`CSQUAD_CLAUDE`), so the suite
-does not require a paid model account.
+## Releasing
 
-## Changes
-
-Open an issue for substantial behavior changes before implementing them. For a
-bug report, include the OS, Claude Code version, command, expected result, and
-observed result. Remove credentials and private conversation content.
-
-Keep pull requests focused. Explain the user-visible change, how it was tested,
-and any compatibility limitations. Prefer tests of observable behavior over tests
-that mirror implementation details. Preserve the queue database schema unless the
-change includes a migration.
-
-See [the design](docs/redesign.md) for the model and its boundaries,
-and [releasing](docs/releasing.md) for distribution maintenance.
+1. Bump `version` in `package.json` and add a `CHANGELOG.md` entry; commit.
+2. Tag `vX.Y.Z` (matching `package.json`) and push the tag.
+3. `.github/workflows/release.yml` runs the tests and publishes with npm trusted
+   publishing (OIDC, provenance). No npm token is stored.
 
 Contributions are provided under the project's [MIT license](LICENSE).

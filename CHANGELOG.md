@@ -1,8 +1,26 @@
 # Changelog
 
-Release dates use UTC. This file starts with the verified v0.7.0 and v0.7.1
-release history; earlier releases remain available on
-[GitHub Releases](https://github.com/ShunL12324/c-squad/releases).
+## 1.0.0 - 2026-10-01
+
+### Changed
+
+- **Breaking:** the Go CLI (`csquad add`, `ls`, `peek`, the dispatcher, the
+  SQLite queue and the console) is replaced by a small zero-dependency Node
+  package. `npx csquad@latest install` copies four Claude Code skills
+  (`create-task`, `task-status`, `message-task`, `finish-task`), `tasks.js` and
+  the worker rules into `$CLAUDE_CONFIG_DIR` (default `~/.claude`) and wraps your
+  status line to show task chips without losing it. `update`, `uninstall` and
+  `status` manage the installation. See the README.
+- Tasks are plain `claude --bg` sessions named `T1 · title`; there is no queue,
+  slot limit or database any more. The old database at
+  `~/.local/share/csquad/csquad.db` is no longer used and can be deleted.
+
+### Removed
+
+- Homebrew and APT distribution are discontinued; npm is the only channel.
+  Uninstall old copies with `brew uninstall csquad` or `apt remove csquad`.
+
+## Earlier releases (Go CLI)
 
 ## v0.13.1 — 2026-09-30
 

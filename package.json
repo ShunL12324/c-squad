@@ -1,0 +1,43 @@
+{
+  "name": "csquad",
+  "version": "1.0.0",
+  "description": "Claude Code skills and a status line for dispatching background tasks (T1, T2, ...)",
+  "license": "MIT",
+  "author": "ShunL12324",
+  "homepage": "https://github.com/ShunL12324/c-squad#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ShunL12324/c-squad.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ShunL12324/c-squad/issues"
+  },
+  "keywords": [
+    "claude-code",
+    "agents",
+    "skills",
+    "statusline"
+  ],
+  "bin": {
+    "csquad": "bin/csquad.js"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "payload/"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

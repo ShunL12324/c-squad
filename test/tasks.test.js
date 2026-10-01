@@ -21,9 +21,15 @@ const state = process.env.FAKE_STATE;
 const read = () => JSON.parse(fs.readFileSync(state, 'utf8'));
 const args = process.argv.slice(2);
 if (args[0] === 'agents') {
-  console.log(JSON.stringify(read()));
+  const out = JSON.stringify(read());
+  fs.appendFileSync(state + '.calls', 'x');
+  console.log(out);
 } else if (args.includes('--bg')) {
   const name = args[args.indexOf('--name') + 1];
+  if (name.includes('FAILME')) {
+    console.error('workspace not trusted');
+    process.exit(1);
+  }
   const id = Math.random().toString(16).slice(2, 10).padEnd(8, '0');
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 30);
   const sessions = read();
@@ -270,4 +276,67 @@ test('peek: refuses tasks another session launched', () => {
   assert.match(r.stderr, /T2 was launched by another session; pass --all to peek it anyway/);
   assert.equal(peek('T2', ['--all']).status, 0);
   assert.equal(peek('T2', [], {}).status, 0); // variable unset: any task
+});
+
+// ---- hot path, robustness and locks ----------------------------------------
+
+const calls = () => (fs.existsSync(state + '.calls') ? fs.statSync(state + '.calls').size : 0);
+
+test('statusline: does not run claude when the session launched nothing', () => {
+  setSessions([session(1, 'job')]);
+  const before = calls();
+  assert.deepEqual(statusline(100, JSON.stringify({ transcript_path: transcript([]) })), []);
+  assert.equal(calls(), before);
+  statusline(100, JSON.stringify({ transcript_path: transcript([session(1, 'job')]) }));
+  assert.equal(calls(), before + 1);
+});
+
+test('statusline: copes with an agents list larger than 1 MB', () => {
+  const big = [session(1, 'job'), ...Array.from({ length: 3000 }, (_, i) => ({ ...session(i + 100, 'x'), name: 'other', pad: 'p'.repeat(500) }))];
+  setSessions(big);
+  assert.ok(fs.statSync(state).size > 1 << 20);
+  const rows = statusline(100, JSON.stringify({ transcript_path: transcript([session(1, 'job')]) }));
+  assert.equal(rows.length, 1);
+  assert.match(rows[0], /T1\s+job/);
+});
+
+test('statusline: control characters in a title are not passed on', () => {
+  setSessions([session(1, 'a\x1b[31mred\x07b')]);
+  const r = spawnSync(process.execPath, [tasksJs, 'statusline'], {
+    env: { ...env, COLUMNS: '100' }, input: JSON.stringify({ transcript_path: transcript([session(1, 'x')]) }), encoding: 'utf8',
+  });
+  const plain = r.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+  assert.doesNotMatch(plain, /[\x00-\x08\x0b-\x1f]/);
+  assert.match(plain, /a \[31mred b/);
+});
+
+test('status and peek work before Claude has created projects/', () => {
+  const bare = path.join(root, 'bare');
+  fs.mkdirSync(path.join(bare, 'csquad'), { recursive: true });
+  fs.copyFileSync(tasksJs, path.join(bare, 'csquad', 'tasks.js'));
+  setSessions([session(1, 'job')]);
+  for (const args of [['status'], ['status', '--all'], ['peek', 'T1']]) {
+    const r = spawnSync(process.execPath, [path.join(bare, 'csquad', 'tasks.js'), ...args], { env: { ...env, ...(args[0] === 'status' ? { CLAUDE_CODE_SESSION_ID: 'abc' } : {}) }, encoding: 'utf8' });
+    assert.equal(r.status, 0, args + ' ' + r.stderr);
+  }
+});
+
+const launchProc = (title, e = env) => spawnSync(process.execPath, [tasksJs, 'launch', '--title', title, '--cwd', root], { env: e, input: 'do it\n', encoding: 'utf8', timeout: 20000 });
+const launchLock = () => path.join(dir, 'csquad', 'launch.lock');
+
+test('launch: takes over a lock whose process is gone', () => {
+  setSessions([]);
+  fs.writeFileSync(launchLock(), '2147483646'); // no such process
+  const r = launchProc('after crash');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^launched T1 · after crash · session [0-9a-f]+ · /);
+  assert.ok(!fs.existsSync(launchLock()));
+});
+
+test('launch: a failing claude is reported and releases the lock', () => {
+  setSessions([]);
+  const r = launchProc('FAILME');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /launching T1 · FAILME failed:\nworkspace not trusted/);
+  assert.ok(!fs.existsSync(launchLock()));
 });

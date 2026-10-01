@@ -31,12 +31,13 @@ function readJSON(file, fallback) {
 const config = { permissionMode: 'bypassPermissions', model: '', ...readJSON(path.join(HERE, 'config.json'), {}) };
 
 function claude(args, opts = {}) {
-  return execFileSync('claude', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000, ...opts });
+  // maxBuffer: the default 1 MB is too small for a long `agents --all` list.
+  return execFileSync('claude', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000, maxBuffer: 256 << 20, ...opts });
 }
 
 // tasks returns background sessions named like tasks, newest first.
-function tasks() {
-  const sessions = JSON.parse(claude(['agents', '--json', '--all']));
+function tasks(timeout) {
+  const sessions = JSON.parse(claude(['agents', '--json', '--all'], timeout ? { timeout } : {}));
   const out = [];
   for (const s of sessions) {
     const m = s.kind === 'background' && s.name && s.name.match(NAME);
@@ -60,27 +61,45 @@ function canonical(dir) {
 // ---- launch ---------------------------------------------------------------
 
 // withLock runs fn while holding an exclusive lock, so concurrent launches
-// see each other's sessions and never pick the same number.
+// see each other's sessions and never pick the same number. The lock file
+// holds its owner's pid and is stale once that process is gone. A launch takes
+// at most ~3 minutes (listing, then claude --bg), so a live-pid lock that old
+// is a reused pid or a hung process.
 function withLock(fn) {
   const lock = path.join(HERE, 'launch.lock');
-  for (let i = 0; ; i++) {
+  const deadline = Date.now() + 240000;
+  for (;;) {
     try {
-      fs.closeSync(fs.openSync(lock, 'wx'));
+      fs.writeFileSync(lock, String(process.pid), { flag: 'wx' });
       break;
     } catch (e) {
       if (e.code !== 'EEXIST') throw e;
-      // A lock older than a launch can take belongs to a crashed one.
-      try {
-        if (Date.now() - fs.statSync(lock).mtimeMs > 150000) fs.rmSync(lock, { force: true });
-      } catch {}
-      if (i > 3000) throw new Error('timed out waiting for ' + lock);
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+      if (staleLock(lock, 200000)) fs.rmSync(lock, { force: true });
+      else if (Date.now() > deadline) throw new Error('timed out waiting for ' + lock);
+      else Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
     }
   }
   try {
     return fn();
   } finally {
     fs.rmSync(lock, { force: true });
+  }
+}
+
+function staleLock(file, maxAge) {
+  try {
+    const age = Date.now() - fs.statSync(file).mtimeMs;
+    const pid = Number(fs.readFileSync(file, 'utf8')) || 0;
+    if (pid > 0) {
+      try {
+        process.kill(pid, 0);
+      } catch (e) {
+        if (e.code !== 'EPERM') return true;
+      }
+    }
+    return age > maxAge;
+  } catch {
+    return false; // gone already, or unreadable: the caller retries
   }
 }
 
@@ -109,7 +128,8 @@ function start(args, cwd, prompt) {
   const r = spawnSync('claude', argv, { cwd, encoding: 'utf8', timeout: 120000 });
   const output = ((r.stdout || '') + (r.stderr || '')).replace(ANSI, '').trim();
   const m = output.match(/backgrounded\s+·\s+([0-9a-f]{6,})/);
-  if (r.status !== 0 || !m) fail(`launching ${name} failed:\n${output || r.error}`);
+  // Throw rather than fail(): process.exit would skip withLock's cleanup.
+  if (r.status !== 0 || !m) throw new Error(`launching ${name} failed:\n${output || r.error}`);
   // The "launched" marker lets the status line and status find, in the
   // launching session's transcript, which tasks that session started.
   console.log(`launched ${name} · session ${m[1]} · ${cwd}`);
@@ -120,7 +140,11 @@ function start(args, cwd, prompt) {
 function transcriptPath(sessionId) {
   const root = path.join(CLAUDE_HOME, 'projects');
   let best = null;
-  for (const dir of fs.readdirSync(root, { withFileTypes: true })) {
+  let dirs = [];
+  try {
+    dirs = fs.readdirSync(root, { withFileTypes: true });
+  } catch {}
+  for (const dir of dirs) {
     if (!dir.isDirectory()) continue;
     const file = path.join(root, dir.name, sessionId + '.jsonl');
     const st = fs.statSync(file, { throwIfNoEntry: false });
@@ -246,13 +270,18 @@ function historyOfSession(sid) {
   return [];
 }
 
-function ownTasks(list, transcripts) {
+// launchedBy returns the session ids recorded as launched in the transcripts.
+function launchedBy(transcripts) {
   const ids = new Set();
   for (const file of transcripts) {
     try {
       for (const id of launchedIds(fs.readFileSync(file))) ids.add(id);
     } catch {}
   }
+  return ids;
+}
+
+function ownTasks(list, ids) {
   return list.filter((t) => [...ids].some((id) => t.id === id || t.id.startsWith(id)));
 }
 
@@ -281,7 +310,7 @@ function status(args) {
   let list = tasks();
   const sid = process.env.CLAUDE_CODE_SESSION_ID;
   if (!args.all && sid) {
-    list = ownTasks(list, historyOfSession(sid));
+    list = ownTasks(list, launchedBy(historyOfSession(sid)));
   }
   if (!list.length) {
     console.log(args.all || !sid ? 'No tasks.' : 'No tasks launched by this session (status --all lists every task).');
@@ -308,7 +337,7 @@ function find(label) {
 function peek(args) {
   const t = find(args._[0]);
   const sid = process.env.CLAUDE_CODE_SESSION_ID;
-  if (!args.all && sid && !ownTasks([t], historyOfSession(sid)).length) {
+  if (!args.all && sid && !ownTasks([t], launchedBy(historyOfSession(sid))).length) {
     fail(`${t.label} was launched by another session; pass --all to peek it anyway`);
   }
   const n = Number(args.n) || 6;
@@ -388,7 +417,8 @@ function grid(list, columns) {
   const chips = list.map((t) => {
     const state = stateOf(t);
     const [rank, style, text] = BADGES[state] || [5, C.badgeBg + C.mutedFg, ` ${state} `];
-    return { rank, num: t.num, label: ` ${t.label} `, title: t.title, style, text };
+    // Titles come from the model: no control characters (escape sequences) in the line.
+    return { rank, num: t.num, label: ` ${t.label} `, title: t.title.replace(/[\x00-\x1f\x7f-\x9f]/g, ' '), style, text };
   });
   if (!chips.length) return '';
   chips.sort((a, b) => a.rank - b.rank || a.num - b.num);
@@ -427,7 +457,9 @@ function statusline() {
   let list;
   try {
     const id = typeof sid === 'string' && sid ? sid : typeof transcript === 'string' ? path.basename(transcript, '.jsonl') : '';
-    list = typeof transcript === 'string' ? ownTasks(tasks(), historyOf(transcript, id)) : [];
+    // Most sessions never launch a task: only ask claude when one did.
+    const ids = typeof transcript === 'string' ? launchedBy(historyOf(transcript, id)) : new Set();
+    list = ids.size ? ownTasks(tasks(4000), ids) : [];
   } catch {
     return;
   }

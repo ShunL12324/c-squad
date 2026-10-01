@@ -16,6 +16,8 @@
   `${VAR:?}`) with `rm -rf`. Claude Code otherwise stops even bypass-mode
   sessions for a human to approve the command, and denies it when nobody
   answers.
+- `watch-task` finishes a watched task on its own when it is done, but only if
+  the user explicitly said to accept or merge it themselves; otherwise it asks.
 - `finish-task` with no task named finishes every done task of the session,
   skipping those still working or needing input.
 

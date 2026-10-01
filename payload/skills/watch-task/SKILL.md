@@ -1,6 +1,6 @@
 ---
 name: watch-task
-description: Start monitoring background tasks when the user explicitly asks ("watch T12", "tell me when T12 is done", "monitor these tasks"); stop when asked ("stop watching"). Never monitor on your own.
+description: Start monitoring background tasks when the user explicitly asks ("watch T12", "tell me when T12 is done", "monitor these tasks"), optionally finishing them when done if the user says so ("accept it yourself", "merge it when done"); stop when asked ("stop watching"). Never monitor on your own.
 ---
 
 # Watch tasks
@@ -32,13 +32,23 @@ as few tokens as possible:
   task's exact question. The user can answer in agent view, or ask you to send
   it with message-task.
 - **done** (or `already done`): one or two sentences on the result, from the
-  task's last message (`peek T12 -n 1`). Then ask whether to finish it. Never
-  finish or merge on your own.
+  task's last message (`peek T12 -n 1`). Then ask whether to finish it, unless
+  the user authorized finishing (below). Never finish or merge otherwise.
 - **failed**, **stopped**, **removed**: one sentence on why.
 - **still working after …**: say so and ask whether to keep watching.
 
 Then, if other tasks the user asked to watch are still working, run `wait`
 again for exactly those. Do nothing else unprompted.
+
+## Finishing on its own, only when authorized
+
+If the user explicitly told you to accept or finish these tasks yourself
+("accept it yourself", "finish it when done", "merge it when it's done",
+"自行验收"), then on **done** follow the finish-task skill for that task right
+away instead of asking. Its rules still apply: on a conflict, failing tests,
+unmerged or uncommitted work, or any doubt, stop and ask the user. Afterwards
+report in a few lines what was merged and removed. The authorization covers
+only the tasks it was given for.
 
 ## Stop
 

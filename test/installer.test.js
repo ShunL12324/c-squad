@@ -61,7 +61,7 @@ const seed = (obj, indent = 2) => {
 const wrapperCommand = (p) => {
   if (process.platform !== 'win32') return `node ${p} statusline`;
   const f = p.replace(/\\/g, '/');
-  return `node ${/[^\w@+=:,./-]/.test(f) ? `"${f}"` : f} statusline`;
+  return `node ${/[^\w@+=:,./~-]/.test(f) ? `"${f}"` : f} statusline`;
 };
 const command = () => wrapperCommand(path.join(dir, 'csquad', 'tasks.js'));
 

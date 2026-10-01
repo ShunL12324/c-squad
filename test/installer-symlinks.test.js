@@ -56,7 +56,7 @@ const command = () => {
   const p = path.join(dir, 'csquad', 'tasks.js');
   if (process.platform !== 'win32') return `node ${p} statusline`;
   const f = p.replace(/\\/g, '/');
-  return `node ${/[^\w@+=:,./-]/.test(f) ? `"${f}"` : f} statusline`;
+  return `node ${/[^\w@+=:,./~-]/.test(f) ? `"${f}"` : f} statusline`;
 };
 const readJSON = (...p) => JSON.parse(fs.readFileSync(path.join(...p), 'utf8'));
 

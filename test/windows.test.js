@@ -29,7 +29,7 @@ const SPACED = 'C:\\Users\\First Last\\.claude';
 test('statusline command: forward slashes, quoted only when needed', () => {
   assert.equal(installer.statuslineCommand(SPACED, true), 'node "C:/Users/First Last/.claude/csquad/tasks.js" statusline');
   assert.equal(installer.statuslineCommand('C:\\Users\\shun\\.claude', true), 'node C:/Users/shun/.claude/csquad/tasks.js statusline');
-  assert.equal(installer.statuslineCommand('/home/a b/.claude', false), "node '/home/a b/.claude/csquad/tasks.js' statusline");
+  if (!WIN) assert.equal(installer.statuslineCommand('/home/a b/.claude', false), "node '/home/a b/.claude/csquad/tasks.js' statusline");
 });
 
 test('skills: the path of a file is quoted as a whole', () => {
@@ -39,7 +39,7 @@ test('skills: the path of a file is quoted as a whole', () => {
     'node "C:/Users/First Last/.claude/csquad/tasks.js" status; write "C:/Users/First Last/.claude/csquad/prompts/draft-x.md"',
   );
   assert.equal(installer.render(text, 'C:\\Users\\shun\\.claude', true), 'node C:/Users/shun/.claude/csquad/tasks.js status; write C:/Users/shun/.claude/csquad/prompts/draft-x.md');
-  assert.equal(installer.render('{{CSQUAD_DIR}}/tasks.js', '/a b', false), "'/a b/csquad'/tasks.js");
+  if (!WIN) assert.equal(installer.render('{{CSQUAD_DIR}}/tasks.js', '/a b', false), "'/a b/csquad'/tasks.js");
 });
 
 test('install recognizes a Windows-style wrapper as its own and never wraps it twice', () => {

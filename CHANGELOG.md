@@ -42,6 +42,10 @@
   working in the status line, `status` and `wait`, and now shows as idle.
   Status `shell` counts as working, `waiting` as needs input, and `crashed` as
   failed.
+- The status line no longer blanks out now and then when many tasks run.
+  Claude Code clears it whenever the command fails, times out or prints
+  nothing; the user's own line and `claude agents` now run in parallel, and a
+  part that fails shows its last good output (up to 2 minutes old) instead.
 
 ## 1.0.2 - 2026-10-01
 

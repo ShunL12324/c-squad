@@ -15,7 +15,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execFileSync, spawnSync } = require('child_process');
+const { execFileSync, spawn, spawnSync } = require('child_process');
 
 const IS_WIN = process.platform === 'win32';
 const HERE = __dirname;
@@ -114,13 +114,41 @@ function gitBash(env = process.env) {
   return candidates.find((c) => c && fs.statSync(c, { throwIfNoEntry: false })?.isFile()) || null;
 }
 
-// runShell runs a status line command the way Claude Code does: through sh,
-// or on Windows through Git Bash (cmd.exe when Git is not installed).
-function runShell(command, input) {
-  const opts = { input, encoding: 'utf8', timeout: 3000, windowsHide: true };
-  if (!IS_WIN) return spawnSync('sh', ['-c', command], opts);
+// shellCommand returns how to run a status line command the way Claude Code
+// does: sh on Linux and macOS, Git Bash on Windows (cmd.exe without Git).
+function shellCommand(command) {
+  if (!IS_WIN) return { file: 'sh', args: ['-c', command], opts: {} };
   const bash = gitBash();
-  return bash ? spawnSync(bash, ['-c', command], opts) : spawnSync(command, { ...opts, shell: true });
+  return bash ? { file: bash, args: ['-c', command], opts: {} } : { file: command, args: [], opts: { shell: true } };
+}
+
+// runAsync runs a command, feeding it `input`, and resolves to its stdout, or
+// to null when it fails, exits non-zero or runs past `timeout` ms.
+function runAsync({ file, args, opts }, input, timeout) {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(file, args, { windowsHide: true, ...opts, stdio: ['pipe', 'pipe', 'ignore'] });
+    } catch {
+      return resolve(null);
+    }
+    const out = [];
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve(null);
+    }, timeout);
+    child.stdout.on('data', (d) => out.push(d));
+    child.on('error', () => {
+      clearTimeout(timer);
+      resolve(null);
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve(code === 0 ? Buffer.concat(out).toString('utf8') : null);
+    });
+    child.stdin.on('error', () => {});
+    child.stdin.end(input);
+  });
 }
 
 // readStdin returns all of stdin; an absent or closed stdin reads as empty.
@@ -135,7 +163,10 @@ function readStdin() {
 
 // tasks returns background sessions named like tasks, newest first.
 function tasks(timeout) {
-  const sessions = JSON.parse(claude(['agents', '--json', '--all'], timeout ? { timeout } : {}));
+  return taskList(JSON.parse(claude(['agents', '--json', '--all'], timeout ? { timeout } : {})));
+}
+
+function taskList(sessions) {
   const out = [];
   for (const s of sessions) {
     const m = s.kind === 'background' && s.name && s.name.match(NAME);
@@ -898,31 +929,68 @@ function grid(list, columns) {
 }
 
 // statusline prints the user's own status line, saved at install time in
-// statusline.json as {"present": bool, "statusLine": {...}}, then every task.
-function statusline() {
+// statusline.json as {"present": bool, "statusLine": {...}}, then the tasks this
+// session launched.
+//
+// Claude Code blanks the whole status line when the command fails, times out
+// or prints nothing, so the user's command and `claude agents` run in
+// parallel with short timeouts, and a part that fails falls back to its last
+// good output (kept for STALE_MS) instead of disappearing.
+const STALE_MS = 120000;
+
+async function statusline() {
   const input = readStdin();
   let transcript, sid;
   try {
     ({ transcript_path: transcript, session_id: sid } = JSON.parse(input.toString('utf8')));
   } catch {}
+  const key = typeof sid === 'string' && sid ? sid : typeof transcript === 'string' ? path.basename(transcript, '.jsonl') : '';
   const saved = readJSON(path.join(HERE, 'statusline.json'), {});
   const command = saved.statusLine && saved.statusLine.command;
-  if (typeof command === 'string' && command) {
-    const r = runShell(command, input);
-    const own = (r.stdout || '').replace(/\n+$/, '');
-    if (own) process.stdout.write(own + '\n');
-  }
-  let list;
+  let ids = new Set();
   try {
-    const id = typeof sid === 'string' && sid ? sid : typeof transcript === 'string' ? path.basename(transcript, '.jsonl') : '';
     // Most sessions never launch a task: only ask claude when one did.
-    const ids = typeof transcript === 'string' ? launchedBy(historyOf(transcript, id)) : new Set();
-    list = ids.size ? ownTasks(tasks(4000), ids) : [];
-  } catch {
-    return;
-  }
-  const out = grid(list, Number(process.env.COLUMNS) || 120);
+    if (typeof transcript === 'string') ids = launchedBy(historyOf(transcript, key));
+  } catch {}
+  const [ownOut, agentsOut] = await Promise.all([
+    typeof command === 'string' && command ? runAsync(shellCommand(command), input, 3000) : Promise.resolve(''),
+    ids.size ? runAsync(claudeCommand(['agents', '--json', '--all']), '', 3500) : Promise.resolve('[]'),
+  ]);
+  const cache = lastGood(key);
+  const now = Date.now();
+  let own = ownOut === null ? null : ownOut.replace(/\n+$/, '');
+  if (own === null || (own === '' && command)) own = cache.own && now - cache.ownAt < STALE_MS ? cache.own : own || '';
+  else if (own) cache.own = own, cache.ownAt = now;
+  let list = null;
+  try {
+    if (agentsOut !== null) list = ownTasks(taskList(JSON.parse(agentsOut)), ids);
+  } catch {}
+  if (list) cache.tasks = list, cache.tasksAt = now;
+  else list = cache.tasks && now - cache.tasksAt < STALE_MS ? cache.tasks : [];
+  saveLastGood(key, cache);
+  const out = [own, grid(list, Number(process.env.COLUMNS) || 120)].filter(Boolean).join('\n');
   if (out) process.stdout.write(out + '\n');
+}
+
+function lastGoodFile(key) {
+  return cacheFile('statusline:' + key);
+}
+
+function lastGood(key) {
+  if (!key) return {};
+  const c = readJSON(lastGoodFile(key), {});
+  return c && typeof c === 'object' ? c : {};
+}
+
+function saveLastGood(key, cache) {
+  if (!key) return;
+  try {
+    const f = lastGoodFile(key);
+    fs.mkdirSync(path.dirname(f), { recursive: true, mode: 0o700 });
+    const tmp = `${f}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(cache));
+    fs.renameSync(tmp, f);
+  } catch {}
 }
 
 // ---- main -----------------------------------------------------------------

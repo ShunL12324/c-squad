@@ -21,6 +21,8 @@ const state = process.env.FAKE_STATE;
 const read = () => JSON.parse(fs.readFileSync(state, 'utf8'));
 const args = process.argv.slice(2);
 if (args[0] === 'agents') {
+  if (process.env.FAKE_AGENTS_SLEEP) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.FAKE_AGENTS_SLEEP));
+  if (process.env.FAKE_AGENTS_FAIL) process.exit(1);
   const out = JSON.stringify(read());
   fs.appendFileSync(state + '.calls', 'x');
   console.log(out);
@@ -157,6 +159,48 @@ test('statusline: prints the saved original status line first', () => {
   assert.equal(rows[0], 'TRANSCRIPT_PATH');
   assert.match(rows[1], /T1 job/);
   fs.rmSync(path.join(dir, 'csquad', 'statusline.json'));
+});
+
+test('statusline: a failing part falls back to its last good output', () => {
+  const saved = path.join(dir, 'csquad', 'statusline.json');
+  const flag = path.join(root, 'own-fails');
+  const own = `test -e '${flag.replace(/\\/g, '/')}' && exit 1; echo mine`;
+  fs.writeFileSync(saved, JSON.stringify({ present: true, statusLine: { type: 'command', command: own } }));
+  setSessions([session(1, 'job')]);
+  const input = JSON.stringify({ session_id: 'sess-fallback', transcript_path: transcript([session(1, 'job')]) });
+  const run = (e = {}) => {
+    const r = spawnSync(process.execPath, [tasksJs, 'statusline'], { env: { ...env, COLUMNS: '80', ...e }, input, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    return strip(r.stdout).split('\n').filter(Boolean);
+  };
+  assert.deepEqual(run().map((l) => l.trim()).slice(0, 1), ['mine']);
+  // Both the user's command and claude agents fail: the last good line stays.
+  fs.writeFileSync(flag, '');
+  const rows = run({ FAKE_AGENTS_FAIL: '1' });
+  assert.equal(rows[0], 'mine');
+  assert.match(rows[1], /T1 job/);
+  fs.rmSync(flag);
+  fs.rmSync(saved);
+});
+
+test('statusline: the user line and claude agents run in parallel', () => {
+  const saved = path.join(dir, 'csquad', 'statusline.json');
+  fs.writeFileSync(saved, JSON.stringify({ present: true, statusLine: { type: 'command', command: 'sleep 1; echo mine' } }));
+  setSessions([session(1, 'job')]);
+  const t0 = Date.now();
+  const rows = statusline(80, JSON.stringify({ session_id: 'sess-par', transcript_path: transcript([session(1, 'job')]) }));
+  const took = Date.now() - t0;
+  assert.equal(rows[0], 'mine');
+  assert.match(rows[1], /T1 job/);
+  env.FAKE_AGENTS_SLEEP = '1000';
+  try {
+    const t1 = Date.now();
+    statusline(80, JSON.stringify({ session_id: 'sess-par2', transcript_path: transcript([session(1, 'job')]) }));
+    assert.ok(Date.now() - t1 < took + 800, `agents and the user line overlapped (${Date.now() - t1} ms vs ${took} ms)`);
+  } finally {
+    delete env.FAKE_AGENTS_SLEEP;
+    fs.rmSync(saved);
+  }
 });
 
 test('launch: concurrent calls get distinct numbers', async () => {

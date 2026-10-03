@@ -681,6 +681,38 @@ test('wait: events within the grace period share one exit', async () => {
   assert.equal(r.stdout, 'T1 · a · done\nT2 · b · needs input\n');
 });
 
+// Claude Code keeps state "working" with status "idle" once a session has
+// finished its turn (agent view shows it as Idle).
+const idle = (n, title) => ({ ...T(n, title), status: 'idle' });
+
+test('working with status idle counts as idle', async () => {
+  setSessions([T(12, 'fix login')]);
+  let r = await runWait(['T12'], { script: [[150, [idle(12, 'fix login')]]] });
+  assert.equal(r.stdout, 'T12 · fix login · idle\n');
+  setSessions([idle(3, 'resting'), { ...T(4, 'busy'), status: 'busy' }]);
+  assert.match(strip(statusline(200).join('\n')), /T3 resting\s+✓ idle .*T4 busy\s+● working/);
+  r = spawnSync(process.execPath, [tasksJs, 'status', '--all'], { env, encoding: 'utf8' });
+  assert.match(r.stdout, /## T3 · resting\nstate: idle/);
+});
+
+test('task states follow agent view', () => {
+  const row = (extra) => ({ ...T(1, 'x'), ...extra });
+  const cases = [
+    [{ state: 'done', status: 'idle' }, 'done'],
+    [{ state: 'crashed' }, 'failed'],
+    [{ state: 'working', status: 'shell' }, 'working'],
+    [{ state: 'working', status: 'waiting' }, 'needs input'],
+    [{ state: 'working', status: 'idle', tempo: 'blocked' }, 'needs input'],
+    [{ state: 'blocked' }, 'needs input'],
+    [{ state: 'working' }, 'working'],
+  ];
+  for (const [extra, want] of cases) {
+    setSessions([row(extra)]);
+    const out = spawnSync(process.execPath, [tasksJs, 'status', '--all'], { env, encoding: 'utf8' }).stdout;
+    assert.match(out, new RegExp(`state: ${want} `), JSON.stringify(extra));
+  }
+});
+
 test('wait: a task already finished is reported at once', async () => {
   setSessions([T(5, 'old job', 'done'), T(6, 'busy')]);
   const t0 = Date.now();

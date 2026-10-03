@@ -618,10 +618,23 @@ function ownTasks(list, ids) {
 
 // ---- status and peek ------------------------------------------------------
 
-const STATE = { blocked: 'needs input', working: 'working', done: 'done', failed: 'failed', stopped: 'stopped' };
+const STATE = { blocked: 'needs input', working: 'working', idle: 'idle', done: 'done', failed: 'failed', stopped: 'stopped' };
+
+// rawState mirrors how agent view labels a session (from Claude Code's own
+// code): a finished state wins (crashed counts as failed); otherwise status
+// decides: busy or shell is working, waiting (or tempo blocked) needs input,
+// anything else is idle. `state` alone stays "working" after a turn ends.
+function rawState(t) {
+  if (t.state === 'done' || t.state === 'failed' || t.state === 'stopped') return t.state;
+  if (t.state === 'crashed') return 'failed';
+  if (t.status === 'busy' || t.status === 'shell') return 'working';
+  if (t.status === 'waiting' || t.tempo === 'blocked' || t.state === 'blocked') return 'blocked';
+  if (t.status === 'idle') return 'idle';
+  return t.state || t.status || 'unknown';
+}
 
 function stateOf(t) {
-  return STATE[t.state] || t.state || t.status || 'unknown';
+  return STATE[rawState(t)] || rawState(t);
 }
 
 function age(ms) {
@@ -647,7 +660,7 @@ function status(args) {
     console.log(args.all || !sid ? 'No tasks.' : 'No tasks launched by this session (status --all lists every task).');
     return;
   }
-  const order = ['needs input', 'failed', 'done', 'working', 'stopped'];
+  const order = ['needs input', 'failed', 'done', 'idle', 'working', 'stopped'];
   list.sort((a, b) => order.indexOf(stateOf(a)) - order.indexOf(stateOf(b)) || a.num - b.num);
   for (const t of list) {
     const last = lastAssistant(messages(t.sessionId)) || '(no reply yet)';
@@ -695,7 +708,7 @@ function clip(text, max) {
 // seen on two consecutive polls. Several waits may run at once; each is
 // independent and leaves nothing behind.
 
-const REPORT = new Set(['blocked', 'done', 'failed', 'stopped', 'removed']);
+const REPORT = new Set(['blocked', 'idle', 'done', 'failed', 'stopped', 'removed']);
 const REPORT_TEXT = { ...STATE, removed: 'removed' };
 
 const envMs = (name, fallback) => (process.env[name] && Number(process.env[name]) >= 0 ? Number(process.env[name]) : fallback);
@@ -751,7 +764,7 @@ async function wait(args) {
         watched = new Map();
         for (const n of new Set(nums)) {
           const t = byNum.get(n);
-          const state = t.state || 'unknown';
+          const state = rawState(t);
           const w = { label: t.label, title: t.title, state, seen: state, count: 0, done: false };
           watched.set(n, w);
           if (REPORT.has(state)) {
@@ -763,7 +776,7 @@ async function wait(args) {
         for (const [n, w] of watched) {
           if (w.done) continue;
           const t = byNum.get(n);
-          const state = t ? t.state || 'unknown' : 'removed';
+          const state = t ? rawState(t) : 'removed';
           if (t) w.title = t.title;
           if (state === w.state) {
             w.seen = state;
@@ -817,6 +830,7 @@ const C = {
 const BADGES = {
   'needs input': [0, '\x1b[48;2;249;226;175m' + C.darkFg + C.bold, ' ◆ needs input '],
   done: [1, '\x1b[48;2;166;227;161m' + C.darkFg + C.bold, ' ✓ done '],
+  idle: [1, '\x1b[48;2;166;227;161m' + C.darkFg + C.bold, ' ✓ idle '],
   failed: [2, '\x1b[48;2;243;139;168m' + C.darkFg + C.bold, ' ✗ failed '],
   working: [3, C.badgeBg + C.blueFg, ' ● working '],
   stopped: [4, C.badgeBg + C.mutedFg, ' ■ stopped '],

@@ -35,6 +35,14 @@
 - `finish-task` with no task named finishes every done task of the session,
   skipping those still working or needing input.
 
+### Fixed
+
+- Task states now follow agent view. A session that finished its turn is
+  reported by Claude Code as state "working" with status "idle"; it showed as
+  working in the status line, `status` and `wait`, and now shows as idle.
+  Status `shell` counts as working, `waiting` as needs input, and `crashed` as
+  failed.
+
 ## 1.0.2 - 2026-10-01
 
 ### Changed

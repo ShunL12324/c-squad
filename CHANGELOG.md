@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `tasks.js launch … -- CLAUDE_ARGS` passes the arguments after `--` to
+  `claude --bg` unchanged (for example `--model`, `--effort`, `--settings`),
+  overriding the configured model and permission mode. Arguments csquad sets
+  itself (`--name`, `--bg`, `--append-system-prompt`, `--print`, `--resume`)
+  are refused. `create-task` documents it.
+
 ## 1.1.0 - 2026-10-04
 
 ### Added

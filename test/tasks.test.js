@@ -562,6 +562,30 @@ test('launch: a prompt too large for argv goes through a file', () => {
 
 const lastArgv = () => JSON.parse(fs.readFileSync(state + '.argv', 'utf8').trim().split('\n').pop());
 
+test('launch: arguments after -- go to claude and override the defaults', () => {
+  const launchWith = (...extra) => {
+    setSessions([]);
+    fs.rmSync(state + '.argv', { force: true });
+    return spawnSync(process.execPath, [tasksJs, 'launch', '--title', 'pass', '--cwd', root, '--', ...extra], { env, input: 'go', encoding: 'utf8', timeout: 20000 });
+  };
+  let r = launchWith('--model', 'opus', '--settings', '{"model":"x y"}', '--effort', 'high');
+  assert.equal(r.status, 0, r.stderr);
+  let argv = lastArgv();
+  const tail = argv.slice(argv.indexOf('--append-system-prompt'));
+  assert.deepEqual(argv.slice(argv.indexOf('--model'), argv.indexOf('--append-system-prompt')), ['--model', 'opus', '--settings', '{"model":"x y"}', '--effort', 'high']);
+  assert.equal(argv.filter((a) => a === '--model').length, 1); // no configured default added
+  assert.deepEqual(tail.slice(-2), ['--', 'go']);
+  assert.ok(argv.includes('--permission-mode')); // still the configured default
+  r = launchWith('--dangerously-skip-permissions');
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(!lastArgv().includes('--permission-mode'));
+  for (const bad of ['--name', '--bg', '--append-system-prompt=x', '-p']) {
+    r = launchWith(bad, 'v');
+    assert.equal(r.status, 1, bad);
+    assert.match(r.stderr, /is set by tasks\.js launch and cannot be passed after --/);
+  }
+});
+
 test('launch: awkward characters in the title and prompt reach claude intact', () => {
   setSessions([]);
   fs.rmSync(state + '.argv', { force: true });

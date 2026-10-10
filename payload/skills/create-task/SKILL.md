@@ -15,8 +15,14 @@ prompt):
 2. Launch it; the prompt file is deleted once the task has started:
 
 ```bash
-node {{CSQUAD_DIR}}/tasks.js launch --title "retry sqlite busy on open" --prompt-file {{CSQUAD_DIR}}/prompts/draft-SLUG.md --rm-prompt [--cwd DIR] [--model MODEL]
+node {{CSQUAD_DIR}}/tasks.js launch --title "retry sqlite busy on open" --prompt-file {{CSQUAD_DIR}}/prompts/draft-SLUG.md --rm-prompt [--cwd DIR] [--model MODEL] [-- CLAUDE_ARGS...]
 ```
+
+Anything after `--` is passed to `claude --bg` unchanged, for options the user
+asks for, e.g. `-- --model opus --effort high` or
+`-- --settings '{"model":"sonnet"}'`. It overrides the configured model and
+permission mode. `--name`, `--bg`, `--append-system-prompt`, `--print` and
+`--resume` are set by csquad and are refused.
 
 It assigns the next task number, starts the session in `--cwd` (default: the
 current directory) with the worker rules appended to its system prompt, and

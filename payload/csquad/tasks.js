@@ -3,7 +3,7 @@
 // named "T12 · title". Used by the create-task, task-status, message-task and
 // finish-task skills and by the status line.
 //
-//   tasks.js launch --title TITLE [--cwd DIR] [--model M] [--prompt-file FILE [--rm-prompt]]
+//   tasks.js launch --title TITLE [--cwd DIR] [--model M] [--prompt-file FILE [--rm-prompt]] [-- CLAUDE_ARGS...]
 //                                  (the prompt comes from FILE, or from stdin)
 //   tasks.js status [--all]        (this session's tasks; --all lists every task)
 //   tasks.js peek T12 [-n N] [--all]   (refuses tasks other sessions launched)
@@ -293,9 +293,14 @@ function staleLock(file, maxAge) {
   }
 }
 
+// Arguments csquad sets itself; passing them after `--` would break the launch.
+const RESERVED = ['--bg', '--name', '-n', '--append-system-prompt', '--print', '-p', '--resume', '-r', '--continue', '-c'];
+
 function launch(args) {
   const title = args.title;
   if (!title) fail('--title is required');
+  const reserved = args.claude.find((a) => RESERVED.includes(a.split('=')[0]));
+  if (reserved) fail(`${reserved} is set by tasks.js launch and cannot be passed after --`);
   const cwd = canonical(args.cwd || process.cwd());
   if (!fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) fail(cwd + ' is not a directory');
   const source = args['prompt-file'];
@@ -349,10 +354,14 @@ function start(args, cwd, prompt) {
   const label = 'T' + num;
   const name = `${label} · ${args.title}`;
   const system = fs.readFileSync(path.join(HERE, 'worker.md'), 'utf8') + `\nYour task ID is ${label}.\n`;
+  const extra = args.claude || [];
+  const has = (...flags) => extra.some((a) => flags.includes(a.split('=')[0]));
   const argv = ['--bg', '--name', name];
-  if (config.permissionMode) argv.push('--permission-mode', config.permissionMode);
+  // Defaults apply only when the arguments after `--` do not set them.
+  if (config.permissionMode && !has('--permission-mode', '--dangerously-skip-permissions')) argv.push('--permission-mode', config.permissionMode);
   const model = args.model || config.model;
-  if (model) argv.push('--model', model);
+  if (model && !has('--model')) argv.push('--model', model);
+  argv.push(...extra);
   const file = promptFile(num, prompt);
   if (file) prompt = `Your full task prompt is too large to pass on the command line. Read all of ${file} first (in chunks with offset and limit if needed, until its end), then carry out the task it describes.`;
   argv.push('--append-system-prompt', system, '--', prompt);
@@ -1001,9 +1010,14 @@ function fail(message) {
 }
 
 function parse(argv) {
-  const args = { _: [] };
+  const args = { _: [], claude: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
+    // Everything after `--` goes to claude unchanged (launch).
+    if (a === '--') {
+      args.claude = argv.slice(i + 1);
+      break;
+    }
     if (a === '--all') args.all = true;
     else if (a === '--rm-prompt') args['rm-prompt'] = true;
     else if (/^--?[a-z][a-z-]*$/.test(a) && i + 1 < argv.length) args[a.replace(/^-+/, '')] = argv[++i];

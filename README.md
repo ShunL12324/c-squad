@@ -126,6 +126,11 @@ run saves your version as `<file>.bak` and says so before overwriting it. Your
   `"plan"` or `""` (Claude Code's default) for something stricter.
 - `model`: passed as `--model`; empty uses Claude Code's default.
 
+For one task, ask Claude for any `claude` option ("use opus with high effort
+for this one"): create-task passes everything after `--` in
+`tasks.js launch … -- --model opus --effort high` to `claude --bg` unchanged,
+overriding `model` and `permissionMode` above.
+
 If a launch fails because the workspace is not trusted, open `claude` in that
 directory once and accept the trust prompt.
 

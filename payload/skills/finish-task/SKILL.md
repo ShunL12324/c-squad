@@ -1,6 +1,6 @@
 ---
 name: finish-task
-description: Merge and clean up finished background tasks (T1, T2, ...): merge their branches, then remove the session, its worktree and merged branches. Use when the user asks to merge, close, finish or clean up tasks.
+description: Merge and clean up finished background tasks (T1, T2, ...) by merging their branches, then removing the session, its worktree and merged branches. Use when the user asks to merge, close, finish or clean up tasks.
 ---
 
 # Finish tasks
@@ -33,8 +33,8 @@ and carry on with the others.
    `--discard-unpushed TOKEN` it printed.
 5. Remove what is left. `claude rm` with the token already deletes the
    worktree and its branch; check `git worktree list` and `git branch`. Then
-   remove a worktree still present (`git worktree unlock PATH;
-   git worktree remove PATH`), run `git worktree prune`, and
+   remove a worktree still present (`git worktree unlock PATH`, then
+   `git worktree remove PATH`), run `git worktree prune`, and
    `git branch -d BRANCH` each merged branch that still exists.
 
 Hard rules: never delete unmerged branches or uncommitted work, never use
@@ -44,5 +44,6 @@ task did not create alone. Report what was merged and removed.
 
 When deleting, use literal absolute paths: `rm -rf` on a path built from a
 variable (`"$D"/*`) needs a human's approval even in bypass mode; if you must
-use a variable, write `"${D:?}"`. In PowerShell: `Remove-Item -LiteralPath
-'C:\full\path' -Recurse -Force`, again with a literal path.
+use a variable, write `"${D:?}"`. In PowerShell, use
+`Remove-Item -LiteralPath 'C:\full\path' -Recurse -Force`, again with a literal
+path.

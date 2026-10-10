@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.1 - 2026-10-10
+
+### Fixed
+
+- The `finish-task` skill's description had an unquoted `: ` in its YAML
+  frontmatter, so the frontmatter did not parse. Inline code that wrapped across
+  lines in `finish-task` and `worker.md` is fixed, and a test now checks every
+  skill's frontmatter and inline code.
+
 ## 1.2.0 - 2026-10-10
 
 ### Added

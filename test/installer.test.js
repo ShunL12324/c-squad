@@ -65,6 +65,33 @@ const wrapperCommand = (p) => {
 };
 const command = () => wrapperCommand(path.join(dir, 'csquad', 'tasks.js'));
 
+// Claude Code reads the frontmatter as YAML: an unquoted value must not contain
+// ": " or " #", or the skill's description does not load. Inline code must
+// not wrap across lines either.
+test('skills have valid frontmatter and unbroken inline code', () => {
+  const payload = path.join(__dirname, '..', 'payload');
+  const files = fs.readdirSync(path.join(payload, 'skills')).map((d) => path.join(payload, 'skills', d, 'SKILL.md'));
+  for (const file of [...files, path.join(payload, 'csquad', 'worker.md')]) {
+    const text = fs.readFileSync(file, 'utf8');
+    if (file.endsWith('SKILL.md')) {
+      const fm = text.match(/^---\n([\s\S]*?)\n---\n/);
+      assert.ok(fm, `${file}: no frontmatter`);
+      for (const line of fm[1].split('\n')) {
+        const m = line.match(/^([a-z-]+): (.*)$/);
+        assert.ok(m, `${file}: not a key: value line: ${line}`);
+        const v = m[2];
+        if (/^["']/.test(v)) continue;
+        assert.ok(!/: |\s#/.test(v), `${file}: unquoted ${m[1]} contains ": " or " #"`);
+      }
+    }
+    let fence = false;
+    text.split('\n').forEach((line, i) => {
+      if (line.startsWith('```')) fence = !fence;
+      else if (!fence) assert.equal((line.match(/`/g) || []).length % 2, 0, `${file}:${i + 1}: inline code wraps: ${line}`);
+    });
+  }
+});
+
 test('install into an empty dir', () => {
   ok('install');
   for (const f of ['tasks.js', 'worker.md', 'manifest.json']) assert.ok(fs.existsSync(path.join(dir, 'csquad', f)), f);

@@ -131,6 +131,11 @@ for this one"): create-task passes everything after `--` in
 `tasks.js launch … -- --model opus --effort high` to `claude --bg` unchanged,
 overriding `model` and `permissionMode` above.
 
+Tasks normally work in their own worktree. Ask for one that edits your checkout
+in place ("edit the main checkout so I can see it live") and create-task adds
+`--isolation none`: Claude Code lets that task edit its working directory, and
+it leaves its changes uncommitted for you.
+
 If a launch fails because the workspace is not trusted, open `claude` in that
 directory once and accept the trust prompt.
 

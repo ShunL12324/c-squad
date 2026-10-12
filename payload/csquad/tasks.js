@@ -3,7 +3,8 @@
 // named "T12 · title". Used by the create-task, task-status, message-task and
 // finish-task skills and by the status line.
 //
-//   tasks.js launch --title TITLE [--cwd DIR] [--model M] [--prompt-file FILE [--rm-prompt]] [-- CLAUDE_ARGS...]
+//   tasks.js launch --title TITLE [--cwd DIR] [--model M] [--prompt-file FILE [--rm-prompt]]
+//                   [--isolation none|worktree] [--no-worker-rules] [-- CLAUDE_ARGS...]
 //                                  (the prompt comes from FILE, or from stdin)
 //   tasks.js status [--all]        (this session's tasks; --all lists every task)
 //   tasks.js peek T12 [-n N] [--all]   (refuses tasks other sessions launched)
@@ -293,6 +294,50 @@ function staleLock(file, maxAge) {
   }
 }
 
+// workerRules keeps the worktree or the in-place blocks of worker.md, which are
+// marked by lines like `<!-- worktree -->` ... `<!-- /worktree -->`.
+function workerRules(text, inPlace) {
+  const drop = inPlace ? 'worktree' : 'in-place';
+  const out = [];
+  let skip = false;
+  for (const line of text.split('\n')) {
+    const m = line.trim().match(/^<!-- (\/?)(worktree|in-place) -->$/);
+    if (m) {
+      if (m[2] === drop) skip = !m[1];
+      continue;
+    }
+    if (!skip) out.push(line);
+  }
+  return out.join('\n');
+}
+
+// inPlaceSettings makes Claude Code skip its worktree isolation for this task
+// (`worktree.bgIsolation: "none"`; a background session otherwise rejects edits
+// to the shared checkout). CLAUDE_BG_ISOLATION in the environment does not
+// reach the session, so it goes through --settings, merged into any --settings
+// already passed after `--` (inline JSON or a file).
+function inPlaceSettings(extra) {
+  const out = [...extra];
+  let i = out.findIndex((a) => a === '--settings' || a.startsWith('--settings='));
+  let settings = {};
+  if (i !== -1) {
+    const inline = out[i].startsWith('--settings=');
+    const value = inline ? out[i].slice('--settings='.length) : out[i + 1];
+    if (value === undefined) fail('--settings needs a value');
+    try {
+      settings = JSON.parse(value.trim().startsWith('{') ? value : fs.readFileSync(value, 'utf8'));
+    } catch (e) {
+      fail(`cannot read --settings ${value}: ${e.message}`);
+    }
+    out.splice(i, inline ? 1 : 2);
+  } else {
+    i = out.length;
+  }
+  const worktree = settings.worktree && typeof settings.worktree === 'object' ? settings.worktree : {};
+  out.splice(i, 0, '--settings', JSON.stringify({ ...settings, worktree: { ...worktree, bgIsolation: 'none' } }));
+  return out;
+}
+
 // Arguments csquad sets itself; passing them after `--` would break the launch.
 const RESERVED = ['--bg', '--name', '-n', '--append-system-prompt', '--print', '-p', '--resume', '-r', '--continue', '-c'];
 
@@ -301,6 +346,8 @@ function launch(args) {
   if (!title) fail('--title is required');
   const reserved = args.claude.find((a) => RESERVED.includes(a.split('=')[0]));
   if (reserved) fail(`${reserved} is set by tasks.js launch and cannot be passed after --`);
+  if (args.isolation !== undefined && args.isolation !== 'none' && args.isolation !== 'worktree') fail('--isolation must be none or worktree');
+  if (args.isolation === 'none') args.claude = inPlaceSettings(args.claude);
   const cwd = canonical(args.cwd || process.cwd());
   if (!fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) fail(cwd + ' is not a directory');
   const source = args['prompt-file'];
@@ -353,7 +400,8 @@ function start(args, cwd, prompt) {
   prunePrompts(new Set(listed.map((t) => t.num)));
   const label = 'T' + num;
   const name = `${label} · ${args.title}`;
-  const system = fs.readFileSync(path.join(HERE, 'worker.md'), 'utf8') + `\nYour task ID is ${label}.\n`;
+  const rules = args['no-worker-rules'] ? '' : workerRules(fs.readFileSync(path.join(HERE, 'worker.md'), 'utf8'), args.isolation === 'none');
+  const system = rules + `\nYour task ID is ${label}.\n`;
   const extra = args.claude || [];
   const has = (...flags) => extra.some((a) => flags.includes(a.split('=')[0]));
   const argv = ['--bg', '--name', name];
@@ -1070,7 +1118,7 @@ function parse(argv) {
       break;
     }
     if (a === '--all') args.all = true;
-    else if (a === '--rm-prompt') args['rm-prompt'] = true;
+    else if (a === '--rm-prompt' || a === '--no-worker-rules') args[a.slice(2)] = true;
     else if (/^--?[a-z][a-z-]*$/.test(a) && i + 1 < argv.length) args[a.replace(/^-+/, '')] = argv[++i];
     else args._.push(a);
   }

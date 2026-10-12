@@ -611,6 +611,53 @@ test('launch: arguments after -- go to claude and override the defaults', () => 
   }
 });
 
+// Issue #38: a task that must edit the main checkout in place.
+test('launch: --isolation none works in place, --no-worker-rules drops the rules', () => {
+  const run = (...a) => {
+    setSessions([]);
+    fs.rmSync(state + '.argv', { force: true });
+    return spawnSync(process.execPath, [tasksJs, 'launch', '--title', 'iso', '--cwd', root, ...a], { env, input: 'go', encoding: 'utf8', timeout: 20000 });
+  };
+  const sys = (argv) => argv[argv.indexOf('--append-system-prompt') + 1];
+  const settings = (argv) => JSON.parse(argv[argv.indexOf('--settings') + 1]);
+
+  let r = run();
+  assert.equal(r.status, 0, r.stderr);
+  let argv = lastArgv();
+  assert.ok(!argv.includes('--settings'));
+  assert.match(sys(argv), /Prefer an isolated git\s+worktree/);
+  assert.doesNotMatch(sys(argv), /launched to work in place|<!--/);
+
+  r = run('--isolation', 'none');
+  assert.equal(r.status, 0, r.stderr);
+  argv = lastArgv();
+  assert.deepEqual(settings(argv), { worktree: { bgIsolation: 'none' } });
+  assert.match(sys(argv), /launched to work in place/);
+  assert.doesNotMatch(sys(argv), /Prefer an isolated git|Commit finished code|<!--/);
+  assert.match(sys(argv), /Your task ID is T1\./);
+
+  // Merged into the user's own --settings, inline JSON or a file.
+  r = run('--isolation', 'none', '--', '--settings', '{"model":"sonnet","worktree":{"x":1}}', '--effort', 'high');
+  assert.equal(r.status, 0, r.stderr);
+  argv = lastArgv();
+  assert.equal(argv.filter((a) => a === '--settings').length, 1);
+  assert.deepEqual(settings(argv), { model: 'sonnet', worktree: { x: 1, bgIsolation: 'none' } });
+  assert.ok(argv.includes('--effort'));
+  const file = path.join(root, 'my-settings.json');
+  fs.writeFileSync(file, '{"model":"opus"}');
+  r = run('--isolation', 'none', '--', `--settings=${file}`);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(settings(lastArgv()), { model: 'opus', worktree: { bgIsolation: 'none' } });
+
+  r = run('--isolation', 'sideways');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /--isolation must be none or worktree/);
+
+  r = run('--no-worker-rules');
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(sys(lastArgv()).trim(), 'Your task ID is T1.');
+});
+
 test('launch: awkward characters in the title and prompt reach claude intact', () => {
   setSessions([]);
   fs.rmSync(state + '.argv', { force: true });

@@ -8,6 +8,7 @@ without attaching. Nobody is waiting on reports from you.
   choices, decide yourself and mention the decision in your final message.
   Ask the user only when you are genuinely blocked or a choice is
   irreversible; the question shows up in agent view.
+<!-- worktree -->
 - Other agents may be editing the same repository. Prefer an isolated git
   worktree or a dedicated branch for your changes when one is available. This
   is a convention, not a hard rule: if you cannot use one, work carefully in
@@ -18,10 +19,22 @@ without attaching. Nobody is waiting on reports from you.
   `worktree-t12-retry-sqlite-busy`), a branch you create with git is
   `task/t12-retry-sqlite-busy`. Mention the task ID in nothing
   else (not in commit messages or code).
+<!-- /worktree -->
+<!-- in-place -->
+- You were launched to work in place: edit the checkout you were started in
+  directly, for example so the user sees your changes live through a running
+  dev server. Do not enter or create worktrees, and do not create or switch
+  branches. The user or other agents may be editing this checkout too: change
+  only what your task needs and leave unrelated changes alone.
+- Do not commit unless the task says to: leave your changes in the working
+  tree for the user to review, and list the files you changed in your result.
+<!-- /in-place -->
 - Verify your work proportionately (build, focused tests). Do not loop
   indefinitely on flaky or unrelated failures; note them and finish.
+<!-- worktree -->
 - Commit finished code changes with a clear message. Do not push, merge into
   the main branch or open pull requests unless the task says to.
+<!-- /worktree -->
 - Never pass a path built from a variable to `rm -rf` (e.g. `rm -rf "$D"/*`):
   Claude Code stops for a human to approve it, even in bypass mode, and
   denies it when nobody answers. Use the literal absolute path, or guard the
@@ -33,8 +46,10 @@ without attaching. Nobody is waiting on reports from you.
   - Stop every process you started (dev servers, watchers, background jobs).
   - Delete scratch files, logs and temporary directories you created, inside
     or outside the repository. Never commit them.
+<!-- worktree -->
   - Leave the worktree Claude Code created for this session, and your
     branch, in place for review; the user removes them once merged.
+<!-- /worktree -->
   - Remove any other worktree you created with git yourself, and delete
     branches you created that hold nothing worth keeping. Do not remove
     worktrees or branches you did not create.

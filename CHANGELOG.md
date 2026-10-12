@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.3.0 - 2026-10-12
+
+### Added
+
+- `tasks.js launch --isolation none` starts a task that edits the main
+  checkout in place, for example to show changes live through a running dev
+  server (#38). It passes `--settings '{"worktree":{"bgIsolation":"none"}}'`
+  (merged into any `--settings` given after `--`, inline or a file), since
+  `CLAUDE_BG_ISOLATION` in the environment does not reach the session, and
+  gives the worker in-place rules: no worktrees or branches, leave unrelated
+  changes alone, do not commit unless asked. `--isolation worktree` or no flag
+  keeps the current behaviour. `create-task` and `finish-task` describe it.
+- `tasks.js launch --no-worker-rules` leaves out `worker.md`, for prompts that
+  bring their own rules.
+
 ## 1.2.2 - 2026-10-12
 
 ### Fixed

@@ -24,6 +24,14 @@ asks for, e.g. `-- --model opus --effort high` or
 permission mode. `--name`, `--bg`, `--append-system-prompt`, `--print` and
 `--resume` are set by csquad and are refused.
 
+If the user wants a task to edit the main checkout in place, for example to see
+its changes live through a running dev server, add `--isolation none`: Claude
+Code then lets the task edit its working directory instead of forcing a
+worktree, and the worker is told to edit in place, create no branches and leave
+its changes uncommitted. Only one in-place task should work on a checkout at a
+time. `--no-worker-rules` leaves out the worker rules, for a prompt that brings
+its own.
+
 It assigns the next task number, starts the session in `--cwd` (default: the
 current directory) with the worker rules appended to its system prompt, and
 prints `launched T12 · title · session ID · dir`. Tell the user the task IDs.

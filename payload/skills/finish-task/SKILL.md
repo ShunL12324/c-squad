@@ -20,6 +20,10 @@ and carry on with the others.
    Its final message names the branch, commit and any worktree; the session's
    directory is shown in the header. A task that is still working or needs
    input is not finished: say so and stop.
+   A task launched with `--isolation none` worked in place: it leaves no
+   branch or worktree, only changes in the checkout. Finishing it means
+   removing its session (step 4); never revert or commit its changes unless
+   the user asks.
 2. In a git repository, merge as the user wants (usually into the branch
    checked out in the main checkout), resolving conflicts and running the
    tests. Skip this for work outside git.

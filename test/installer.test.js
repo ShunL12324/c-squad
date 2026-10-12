@@ -181,6 +181,8 @@ test('uninstall removes files tasks.js generated', () => {
   fs.mkdirSync(path.join(dir, 'csquad', 'prompts'));
   fs.writeFileSync(path.join(dir, 'csquad', 'prompts', 'T3.md'), 'big prompt');
   fs.mkdirSync(path.join(dir, 'csquad', 'launch.lock.takeover'));
+  fs.mkdirSync(path.join(dir, 'csquad', 'launches'));
+  fs.writeFileSync(path.join(dir, 'csquad', 'launches', 'abcdef12-0000.txt'), 'deadbeef\n');
   ok('uninstall');
   assert.ok(!fs.existsSync(path.join(dir, 'csquad')));
 });

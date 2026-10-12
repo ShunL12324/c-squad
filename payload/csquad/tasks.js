@@ -374,6 +374,7 @@ function start(args, cwd, prompt) {
     if (file) fs.rmSync(file, { force: true });
     throw new Error(`launching ${name} failed:\n${output || r.error}`);
   }
+  recordLaunch(process.env.CLAUDE_CODE_SESSION_ID, m[1]);
   // The "launched" marker lets the status line and status find, in the
   // launching session's transcript, which tasks that session started.
   console.log(`launched ${name} · session ${m[1]} · ${cwd}`);
@@ -591,7 +592,7 @@ function predecessorOf(dir, id) {
   }
   const buf = Buffer.alloc(2048);
   for (const name of names) {
-    if (!name.endsWith('.jsonl')) continue;
+    if (!name.endsWith('.jsonl') || name === id + '.jsonl') continue;
     let fd;
     try {
       fd = fs.openSync(path.join(dir, name), 'r');
@@ -641,14 +642,64 @@ function historyOfSession(sid) {
   return [];
 }
 
-// launchedBy returns the session ids recorded as launched in the transcripts.
-function launchedBy(transcripts) {
+// recordLaunch notes the child under the launching session's id, which Claude
+// Code exports to Bash commands. The transcript marker misses launches whose
+// output never reaches a tool_result (a Bash call run in the background), and
+// launches written as `node $T launch`; this record does not depend on either.
+const LAUNCHES = path.join(HERE, 'launches');
+const SESSION_ID = /^[0-9a-f][0-9a-f-]{7,63}$/;
+
+function recordLaunch(parent, child) {
+  if (typeof parent !== 'string' || !SESSION_ID.test(parent)) return;
+  try {
+    fs.mkdirSync(LAUNCHES, { recursive: true, mode: 0o700 });
+    fs.appendFileSync(path.join(LAUNCHES, parent + '.txt'), child + '\n', { mode: 0o600 });
+  } catch {} // the transcript marker still covers foreground launches
+}
+
+function recordedLaunches(parent) {
+  if (!SESSION_ID.test(parent)) return [];
+  try {
+    return fs.readFileSync(path.join(LAUNCHES, parent + '.txt'), 'utf8').split('\n').filter((x) => /^[0-9a-f]{6,}$/.test(x));
+  } catch {
+    return [];
+  }
+}
+
+// cachedPredecessorOf is predecessorOf, remembered: a session's predecessor is
+// fixed by the time the session exists, so the directory is scanned once.
+function cachedPredecessorOf(dir, id) {
+  const f = cacheFile('pred:' + path.join(dir, id));
+  const c = readJSON(f, null);
+  if (c && 'pred' in c) return c.pred;
+  const pred = predecessorOf(dir, id);
+  try {
+    fs.mkdirSync(path.dirname(f), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(f, JSON.stringify({ pred }));
+  } catch {}
+  return pred;
+}
+
+// launchedBy returns the session ids this session launched: markers in its
+// transcripts, plus the launch records of its id and of every session it
+// continues (records stay under the id that was current at launch).
+function launchedBy(transcripts, sid) {
   const ids = new Set();
+  const sessions = new Set(typeof sid === 'string' && sid ? [sid] : []);
   for (const file of transcripts) {
     try {
       for (const id of launchedIds(file)) ids.add(id);
     } catch {}
+    const dir = path.dirname(file);
+    const seen = new Set();
+    let id = path.basename(file, '.jsonl');
+    for (let depth = 0; depth < 10 && id && !seen.has(id); depth++) {
+      seen.add(id);
+      sessions.add(id);
+      id = cachedPredecessorOf(dir, id);
+    }
   }
+  for (const s of sessions) for (const id of recordedLaunches(s)) ids.add(id);
   return ids;
 }
 
@@ -694,7 +745,7 @@ function status(args) {
   let list = tasks();
   const sid = process.env.CLAUDE_CODE_SESSION_ID;
   if (!args.all && sid) {
-    list = ownTasks(list, launchedBy(historyOfSession(sid)));
+    list = ownTasks(list, launchedBy(historyOfSession(sid), sid));
   }
   if (!list.length) {
     console.log(args.all || !sid ? 'No tasks.' : 'No tasks launched by this session (status --all lists every task).');
@@ -721,7 +772,7 @@ function find(label) {
 function peek(args) {
   const t = find(args._[0]);
   const sid = process.env.CLAUDE_CODE_SESSION_ID;
-  if (!args.all && sid && !ownTasks([t], launchedBy(historyOfSession(sid))).length) {
+  if (!args.all && sid && !ownTasks([t], launchedBy(historyOfSession(sid), sid)).length) {
     fail(`${t.label} was launched by another session; pass --all to peek it anyway`);
   }
   const n = Number(args.n) || 6;
@@ -797,7 +848,7 @@ async function wait(args) {
         const missing = nums.filter((n) => !byNum.has(n));
         if (missing.length) fail(`T${missing[0]} is not listed by claude agents (removed or never started)`);
         if (!args.all && sid) {
-          const own = ownTasks(nums.map((n) => byNum.get(n)), launchedBy(historyOfSession(sid)));
+          const own = ownTasks(nums.map((n) => byNum.get(n)), launchedBy(historyOfSession(sid), sid));
           const other = nums.find((n) => !own.some((t) => t.num === n));
           if (other) fail(`T${other} was launched by another session; pass --all to wait for it anyway`);
         }
@@ -959,7 +1010,7 @@ async function statusline() {
   let ids = new Set();
   try {
     // Most sessions never launch a task: only ask claude when one did.
-    if (typeof transcript === 'string') ids = launchedBy(historyOf(transcript, key));
+    if (typeof transcript === 'string') ids = launchedBy(historyOf(transcript, key), key);
   } catch {}
   const [ownOut, agentsOut] = await Promise.all([
     typeof command === 'string' && command ? runAsync(shellCommand(command), input, 3000) : Promise.resolve(''),

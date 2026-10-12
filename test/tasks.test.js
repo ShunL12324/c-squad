@@ -352,6 +352,31 @@ function ownSession(list) {
 }
 const launched = (num, title) => ({ ...session(num), name: `T${num} · ${title}` });
 
+// Issues #36 and #37: a launch whose output never reaches a tool_result (a
+// background Bash call) or whose command names tasks.js through a variable
+// leaves no usable marker; the record under CLAUDE_CODE_SESSION_ID covers it.
+test('launch records the launching session; status, peek and the status line use it', () => {
+  setSessions([]);
+  const sid = ownSession([]); // a transcript without any marker
+  const proj = path.join(dir, 'projects', 'p');
+  const r = spawnSync(process.execPath, [tasksJs, 'launch', '--title', 'bg job', '--cwd', root], { env: { ...env, CLAUDE_CODE_SESSION_ID: sid }, input: 'go', encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 0, r.stderr);
+  const st = (e) => spawnSync(process.execPath, [tasksJs, 'status'], { env: { ...env, ...e }, encoding: 'utf8' }).stdout;
+  assert.match(st({ CLAUDE_CODE_SESSION_ID: sid }), /## T1 · bg job/);
+  assert.match(st({ CLAUDE_CODE_SESSION_ID: 'ffffffff-0000-0000-0000-000000000000' }), /No tasks launched by this session/);
+  assert.equal(spawnSync(process.execPath, [tasksJs, 'peek', 'T1'], { env: { ...env, CLAUDE_CODE_SESSION_ID: sid }, encoding: 'utf8' }).status, 0);
+  assert.match(statusline(100, JSON.stringify({ session_id: sid, transcript_path: path.join(proj, sid + '.jsonl') })).join('\n'), /T1 bg job/);
+  // After the session is continued under a new id, the record under the old id still counts.
+  const next = 'eeeeeeee-0000-0000-0000-000000000000';
+  fs.writeFileSync(path.join(proj, next + '.jsonl'), fs.readFileSync(path.join(proj, sid + '.jsonl'), 'utf8'));
+  fs.appendFileSync(path.join(proj, sid + '.jsonl'), cont(sid, next) + '\n');
+  assert.match(st({ CLAUDE_CODE_SESSION_ID: next }), /## T1 · bg job/);
+  // Without the variable nothing is recorded, and nothing breaks.
+  setSessions([]);
+  const r2 = spawnSync(process.execPath, [tasksJs, 'launch', '--title', 'plain', '--cwd', root], { env, input: 'go', encoding: 'utf8', timeout: 20000 });
+  assert.equal(r2.status, 0, r2.stderr);
+});
+
 test('peek: refuses tasks another session launched', () => {
   setSessions([session(1, 'mine'), session(2, 'theirs')]);
   const sid = ownSession([launched(1, 'mine')]);

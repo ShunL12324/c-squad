@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.2 - 2026-10-12
+
+### Fixed
+
+- Tasks launched from a background Bash call (#37), or through a variable such
+  as `node $T launch` (#36), now count as launched by the session.
+  `tasks.js launch` records the child under the launching session's id
+  (`CLAUDE_CODE_SESSION_ID`) in `csquad/launches/`, and the status line,
+  `status`, `peek` and `wait` read that record as well as the transcript
+  marker, including records of the sessions a continued session came from.
+  Uninstall removes the records.
+
 ## 1.2.1 - 2026-10-10
 
 ### Fixed

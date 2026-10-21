@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Task worktrees branch from the local HEAD: `launch` adds
+  `worktree.baseRef: "head"` to the task's `--settings` (Claude Code's default
+  branches from `origin/<default branch>`, without unpushed commits), unless
+  the user set a `baseRef` after `--`, in their settings or in the project's.
+- `finish-task` removes a task's verified worktree and merged branches with git
+  before `claude rm`, so `claude rm` has no unpushed commits to refuse. The
+  `--discard-unpushed` / `--force-remove-worktree` values are used only when
+  `claude rm` prints them; on Claude Code before 2.1.260, which has neither
+  flag, the skill does not invent one (#39).
+- `install` and `status` warn when Claude Code is older than 2.1.260; the
+  README states the requirement (#39).
+
 ## 1.3.0 - 2026-10-12
 
 ### Added

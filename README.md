@@ -136,13 +136,19 @@ in place ("edit the main checkout so I can see it live") and create-task adds
 `--isolation none`: Claude Code lets that task edit its working directory, and
 it leaves its changes uncommitted for you.
 
+A task's worktree branches from your local HEAD (`worktree.baseRef: "head"`),
+so it sees commits you have not pushed yet. Set `worktree.baseRef` yourself
+(in your settings, the project's, or after `--`) to choose otherwise.
+
 If a launch fails because the workspace is not trusted, open `claude` in that
 directory once and accept the trust prompt.
 
 ## Requirements
 
 - Node.js 18 or newer
-- Claude Code with background sessions (`claude --bg`, `claude agents`)
+- Claude Code with background sessions (`claude --bg`, `claude agents`);
+  2.1.260 or newer for finish-task's `claude rm` recovery flags (`install` and
+  `status` warn on older versions)
 - Linux, macOS, Windows or WSL. On Windows, Claude Code runs status line
   commands through Git Bash, so csquad does too for your original status line
   (without Git it falls back to `cmd.exe`). The skills work in Claude Code's Bash

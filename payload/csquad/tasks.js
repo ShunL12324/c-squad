@@ -311,12 +311,10 @@ function workerRules(text, inPlace) {
   return out.join('\n');
 }
 
-// inPlaceSettings makes Claude Code skip its worktree isolation for this task
-// (`worktree.bgIsolation: "none"`; a background session otherwise rejects edits
-// to the shared checkout). CLAUDE_BG_ISOLATION in the environment does not
-// reach the session, so it goes through --settings, merged into any --settings
-// already passed after `--` (inline JSON or a file).
-function inPlaceSettings(extra) {
+// withSettings merges `patch(settings)` into the --settings passed after `--`
+// (inline JSON or a file), or adds a --settings argument when there is none.
+// When patch returns the settings unchanged, the arguments stay as they were.
+function withSettings(extra, patch) {
   const out = [...extra];
   let i = out.findIndex((a) => a === '--settings' || a.startsWith('--settings='));
   let settings = {};
@@ -333,9 +331,44 @@ function inPlaceSettings(extra) {
   } else {
     i = out.length;
   }
-  const worktree = settings.worktree && typeof settings.worktree === 'object' ? settings.worktree : {};
-  out.splice(i, 0, '--settings', JSON.stringify({ ...settings, worktree: { ...worktree, bgIsolation: 'none' } }));
+  const next = patch(settings);
+  if (next === settings) return extra; // nothing to add: keep the user's argument as given
+  out.splice(i, 0, '--settings', JSON.stringify(next));
   return out;
+}
+
+function worktreeOf(settings) {
+  return settings && settings.worktree && typeof settings.worktree === 'object' ? settings.worktree : {};
+}
+
+// inPlaceSettings makes Claude Code skip its worktree isolation for this task
+// (`worktree.bgIsolation: "none"`; a background session otherwise rejects edits
+// to the shared checkout). CLAUDE_BG_ISOLATION in the environment does not
+// reach the session, so it goes through --settings.
+function inPlaceSettings(extra) {
+  return withSettings(extra, (s) => ({ ...s, worktree: { ...worktreeOf(s), bgIsolation: 'none' } }));
+}
+
+// headBaseSettings makes the task's worktree branch from the local HEAD
+// (`worktree.baseRef: "head"`) instead of Claude Code's default, origin's
+// default branch, which lacks commits that are not pushed yet. A baseRef the
+// user set (after `--`, in their own or the project's settings) wins.
+function headBaseSettings(extra, cwd) {
+  return withSettings(extra, (s) => {
+    if (worktreeOf(s).baseRef !== undefined || userSetsBaseRef(cwd)) return s;
+    return { ...s, worktree: { ...worktreeOf(s), baseRef: 'head' } };
+  });
+}
+
+function userSetsBaseRef(cwd) {
+  const dirs = [cwd];
+  try {
+    const top = execFileSync('git', ['-C', cwd, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10000, windowsHide: true }).trim();
+    if (top && canonical(top) !== cwd) dirs.push(canonical(top));
+  } catch {}
+  const files = [path.join(CLAUDE_HOME, 'settings.json')];
+  for (const d of dirs) files.push(path.join(d, '.claude', 'settings.json'), path.join(d, '.claude', 'settings.local.json'));
+  return files.some((f) => worktreeOf(readJSON(f, null)).baseRef !== undefined);
 }
 
 // Arguments csquad sets itself; passing them after `--` would break the launch.
@@ -350,6 +383,7 @@ function launch(args) {
   if (args.isolation === 'none') args.claude = inPlaceSettings(args.claude);
   const cwd = canonical(args.cwd || process.cwd());
   if (!fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) fail(cwd + ' is not a directory');
+  if (args.isolation !== 'none') args.claude = headBaseSettings(args.claude, cwd);
   const source = args['prompt-file'];
   let prompt;
   try {

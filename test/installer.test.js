@@ -36,11 +36,11 @@ beforeEach(() => {
 });
 afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
-function csquad(cmd, { configDir = dir, cwd = root } = {}) {
+function csquad(cmd, { configDir = dir, cwd = root, env = {} } = {}) {
   const r = spawnSync(process.execPath, [CLI, cmd], {
     cwd,
     encoding: 'utf8',
-    env: { ...process.env, CLAUDE_CONFIG_DIR: configDir, HOME: root, USERPROFILE: root },
+    env: { ...process.env, CLAUDE_CONFIG_DIR: configDir, HOME: root, USERPROFILE: root, ...env },
   });
   return { code: r.status, out: r.stdout + r.stderr };
 }
@@ -90,6 +90,18 @@ test('skills have valid frontmatter and unbroken inline code', () => {
       else if (!fence) assert.equal((line.match(/`/g) || []).length % 2, 0, `${file}:${i + 1}: inline code wraps: ${line}`);
     });
   }
+});
+
+test('install and status warn when Claude Code is too old for finish-task', { skip: process.platform === 'win32' && 'uses a sh fake claude' }, () => {
+  const bin = path.join(root, 'fake-bin');
+  fs.mkdirSync(bin, { recursive: true });
+  const fake = (v) => fs.writeFileSync(path.join(bin, 'claude'), `#!/bin/sh\necho "${v} (Claude Code)"\n`, { mode: 0o755 });
+  const env = { PATH: bin + path.delimiter + process.env.PATH };
+  fake('2.1.258');
+  assert.match(ok('install', { env }), /Claude Code 2\.1\.258 is older than 2\.1\.260/);
+  assert.match(ok('status', { env }), /older than 2\.1\.260/);
+  fake('2.1.295');
+  assert.doesNotMatch(ok('status', { env }), /older than/);
 });
 
 test('install into an empty dir', () => {

@@ -22,7 +22,7 @@ and carry on with the others.
    input is not finished: say so and stop.
    A task launched with `--isolation none` worked in place: it leaves no
    branch or worktree, only changes in the checkout. Finishing it means
-   removing its session (step 4); never revert or commit its changes unless
+   removing its session (step 5); never revert or commit its changes unless
    the user asks.
 2. In a git repository, merge as the user wants (usually into the branch
    checked out in the main checkout), resolving conflicts and running the
@@ -31,20 +31,22 @@ and carry on with the others.
    - `git merge-base --is-ancestor BRANCH TARGET` succeeds for every branch the
      task created, and for the worktree's `HEAD` if it is detached.
    - `git -C WORKTREE status --porcelain` is empty for its worktree.
-4. Remove the session: `claude rm SESSION_ID`. It also removes the worktree
-   Claude Code created for it. If it refuses because commits were never pushed
-   and step 3 showed they are merged, rerun it with the
-   `--discard-unpushed TOKEN` it printed.
-5. Remove what is left. `claude rm` with the token already deletes the
-   worktree and its branch; check `git worktree list` and `git branch`. Then
-   remove a worktree still present (`git worktree unlock PATH`, then
-   `git worktree remove PATH`), run `git worktree prune`, and
-   `git branch -d BRANCH` each merged branch that still exists.
+4. Remove what the task left, before its session: for its worktree,
+   `git worktree unlock PATH` (Claude Code locks the ones it creates), then
+   `git worktree remove PATH`; then `git worktree prune`, and
+   `git branch -d BRANCH` for each merged branch. Removing the merged worktree
+   first means `claude rm` has no unpushed commits left to object to.
+5. Remove the session: `claude rm SESSION_ID`. If it still refuses and prints a
+   value for `--discard-unpushed` or `--force-remove-worktree`, rerun it with
+   that value, but only for a worktree step 3 proved merged. If it prints no
+   such value (Claude Code before 2.1.260 has neither flag), do not invent
+   one: finish the cleanup with git as in step 4 and report that the session
+   is left.
 
 Hard rules: never delete unmerged branches or uncommitted work, never use
-`--force`, `-D` or `--discard-unpushed` unless step 3 proved the work is merged;
-on any doubt, report what you found and ask. Leave branches and worktrees the
-task did not create alone. Report what was merged and removed.
+`--force`, `-D`, `--discard-unpushed` or `--force-remove-worktree` unless step 3
+proved the work is merged; on any doubt, report what you found and ask. Leave
+branches and worktrees the task did not create alone. Report what was merged and removed.
 
 When deleting, use literal absolute paths: `rm -rf` on a path built from a
 variable (`"$D"/*`) needs a human's approval even in bypass mode; if you must

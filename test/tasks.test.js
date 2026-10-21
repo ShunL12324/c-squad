@@ -597,7 +597,7 @@ test('launch: arguments after -- go to claude and override the defaults', () => 
   assert.equal(r.status, 0, r.stderr);
   let argv = lastArgv();
   const tail = argv.slice(argv.indexOf('--append-system-prompt'));
-  assert.deepEqual(argv.slice(argv.indexOf('--model'), argv.indexOf('--append-system-prompt')), ['--model', 'opus', '--settings', '{"model":"x y"}', '--effort', 'high']);
+  assert.deepEqual(argv.slice(argv.indexOf('--model'), argv.indexOf('--append-system-prompt')), ['--model', 'opus', '--settings', '{"model":"x y","worktree":{"baseRef":"head"}}', '--effort', 'high']);
   assert.equal(argv.filter((a) => a === '--model').length, 1); // no configured default added
   assert.deepEqual(tail.slice(-2), ['--', 'go']);
   assert.ok(argv.includes('--permission-mode')); // still the configured default
@@ -624,7 +624,7 @@ test('launch: --isolation none works in place, --no-worker-rules drops the rules
   let r = run();
   assert.equal(r.status, 0, r.stderr);
   let argv = lastArgv();
-  assert.ok(!argv.includes('--settings'));
+  assert.deepEqual(settings(argv), { worktree: { baseRef: 'head' } });
   assert.match(sys(argv), /Prefer an isolated git\s+worktree/);
   assert.doesNotMatch(sys(argv), /launched to work in place|<!--/);
 
@@ -656,6 +656,47 @@ test('launch: --isolation none works in place, --no-worker-rules drops the rules
   r = run('--no-worker-rules');
   assert.equal(r.status, 0, r.stderr);
   assert.equal(sys(lastArgv()).trim(), 'Your task ID is T1.');
+});
+
+// Claude Code branches worktrees from origin's default branch unless
+// worktree.baseRef is "head"; tasks should see unpushed local commits.
+test('launch: worktrees branch from the local HEAD unless the user chose a baseRef', () => {
+  const run = (cwd, ...a) => {
+    setSessions([]);
+    fs.rmSync(state + '.argv', { force: true });
+    return spawnSync(process.execPath, [tasksJs, 'launch', '--title', 'base', '--cwd', cwd, ...a], { env, input: 'go', encoding: 'utf8', timeout: 20000 });
+  };
+  const settingsArg = () => {
+    const argv = lastArgv();
+    const i = argv.indexOf('--settings');
+    return i === -1 ? null : JSON.parse(argv[i + 1]);
+  };
+  assert.equal(run(root).status, 0);
+  assert.deepEqual(settingsArg(), { worktree: { baseRef: 'head' } });
+  // The user's own choice after --, kept exactly as given.
+  assert.equal(run(root, '--', '--settings', '{"worktree":{"baseRef":"fresh"}}').status, 0);
+  assert.deepEqual(lastArgv().slice(lastArgv().indexOf('--settings'), lastArgv().indexOf('--settings') + 2), ['--settings', '{"worktree":{"baseRef":"fresh"}}']);
+  // Set in the user's settings or in the project's (also from a subdirectory of the repo).
+  const user = path.join(dir, 'settings.json');
+  const before = fs.existsSync(user) ? fs.readFileSync(user) : null;
+  fs.writeFileSync(user, JSON.stringify({ worktree: { baseRef: 'fresh' } }));
+  try {
+    assert.equal(run(root).status, 0);
+    assert.equal(settingsArg(), null);
+  } finally {
+    if (before) fs.writeFileSync(user, before);
+    else fs.rmSync(user);
+  }
+  const repo = path.join(root, 'repo-base');
+  fs.mkdirSync(path.join(repo, 'sub'), { recursive: true });
+  spawnSync('git', ['init', '-q', repo]);
+  fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ worktree: { baseRef: 'fresh' } }));
+  assert.equal(run(path.join(repo, 'sub')).status, 0);
+  assert.equal(settingsArg(), null);
+  // In place: no worktree, so no baseRef.
+  assert.equal(run(root, '--isolation', 'none').status, 0);
+  assert.deepEqual(settingsArg(), { worktree: { bgIsolation: 'none' } });
 });
 
 test('launch: awkward characters in the title and prompt reach claude intact', () => {

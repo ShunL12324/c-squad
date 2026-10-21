@@ -136,6 +136,14 @@ in place ("edit the main checkout so I can see it live") and create-task adds
 `--isolation none`: Claude Code lets that task edit its working directory, and
 it leaves its changes uncommitted for you.
 
+A task uses the same provider as the session that launched it. Claude Code's
+background service does not see your shell environment, so `ANTHROPIC_*`,
+`CLAUDE_CODE_USE_*` and `CLAUDE_CODE_OAUTH_TOKEN` from the launching session go
+into the task's settings file (`<claude dir>/csquad/settings/T12.json`, mode
+600, removed once the task is gone), never into your own `settings.json`.
+Aliases that switch provider per session keep working; `"forwardEnv": false` in
+`config.json` turns this off.
+
 A task's worktree branches from your local HEAD (`worktree.baseRef: "head"`),
 so it sees commits you have not pushed yet. Set `worktree.baseRef` yourself
 (in your settings, the project's, or after `--`) to choose otherwise.

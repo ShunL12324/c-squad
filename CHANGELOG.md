@@ -13,6 +13,14 @@
   `--discard-unpushed` / `--force-remove-worktree` values are used only when
   `claude rm` prints them; on Claude Code before 2.1.260, which has neither
   flag, the skill does not invent one (#39).
+- Tasks use the launching session's provider. Claude Code's background
+  service does not see the shell environment, so tasks failed with "Login
+  expired" when the base URL and token were exported in the shell or set by an
+  alias. `launch` copies `ANTHROPIC_*`, `CLAUDE_CODE_USE_*`,
+  `CLAUDE_CODE_OAUTH_TOKEN` and `CLAUDE_CODE_SUBAGENT_MODEL` into the task's
+  `--settings` env (the user's `--settings` env wins), written to
+  `csquad/settings/T<n>.json` with mode 600 rather than the command line, and
+  pruned once the task is gone. `config.json` `"forwardEnv": false` disables it.
 - `install` and `status` warn when Claude Code is older than 2.1.260; the
   README states the requirement (#39).
 

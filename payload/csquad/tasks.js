@@ -415,7 +415,44 @@ function promptFile(num, prompt) {
   return file;
 }
 
+// The provider settings of the launching session reach its tasks. Claude Code's
+// background service does not see the shell environment (aliases that set
+// ANTHROPIC_BASE_URL for one session, a token exported in .zshrc), so these
+// variables go into the task's --settings env; values the user set in that
+// --settings win. They hold credentials, so the settings are written to
+// <csquad dir>/settings/T<n>.json (mode 0600) instead of the command line; the
+// file stays while the task exists, since a resumed task reads it again.
+const PROVIDER_ENV = /^(ANTHROPIC_[A-Z0-9_]+|CLAUDE_CODE_USE_[A-Z0-9_]+|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CODE_SUBAGENT_MODEL)$/;
+const SETTINGS = path.join(HERE, 'settings');
+
+function providerEnv(env = process.env) {
+  const out = {};
+  if (config.forwardEnv === false) return out;
+  for (const [k, v] of Object.entries(env)) if (PROVIDER_ENV.test(k) && typeof v === 'string' && v) out[k] = v;
+  return out;
+}
+
+function taskSettings(extra, num) {
+  const env = providerEnv();
+  if (!Object.keys(env).length) return { extra, file: null };
+  let merged;
+  const out = withSettings(extra, (s) => (merged = { ...s, env: { ...env, ...(s.env && typeof s.env === 'object' ? s.env : {}) } }));
+  fs.mkdirSync(SETTINGS, { recursive: true, mode: 0o700 });
+  const file = path.join(SETTINGS, `T${num}.json`);
+  fs.writeFileSync(file, JSON.stringify(merged, null, 2) + '\n', { mode: 0o600 });
+  fs.chmodSync(file, 0o600);
+  const i = out.indexOf('--settings');
+  out[i + 1] = file;
+  return { extra: out, file };
+}
+
 function prunePrompts(live) {
+  try {
+    for (const f of fs.readdirSync(SETTINGS)) {
+      const m = f.match(/^T(\d+)\.json$/);
+      if (m && !live.has(Number(m[1]))) fs.rmSync(path.join(SETTINGS, f), { force: true });
+    }
+  } catch {}
   try {
     for (const f of fs.readdirSync(PROMPTS)) {
       const m = f.match(/^T(\d+)\.md$/);
@@ -436,7 +473,7 @@ function start(args, cwd, prompt) {
   const name = `${label} · ${args.title}`;
   const rules = args['no-worker-rules'] ? '' : workerRules(fs.readFileSync(path.join(HERE, 'worker.md'), 'utf8'), args.isolation === 'none');
   const system = rules + `\nYour task ID is ${label}.\n`;
-  const extra = args.claude || [];
+  const { extra, file: settingsFile } = taskSettings(args.claude || [], num);
   const has = (...flags) => extra.some((a) => flags.includes(a.split('=')[0]));
   const argv = ['--bg', '--name', name];
   // Defaults apply only when the arguments after `--` do not set them.
@@ -454,6 +491,7 @@ function start(args, cwd, prompt) {
   // Throw rather than fail(): process.exit would skip withLock's cleanup.
   if (r.status !== 0 || !m) {
     if (file) fs.rmSync(file, { force: true });
+    if (settingsFile) fs.rmSync(settingsFile, { force: true });
     throw new Error(`launching ${name} failed:\n${output || r.error}`);
   }
   recordLaunch(process.env.CLAUDE_CODE_SESSION_ID, m[1]);

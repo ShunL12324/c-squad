@@ -80,7 +80,10 @@ before(() => {
   const bin = path.join(root, 'bin');
   fs.mkdirSync(bin);
   installFake(bin, FAKE);
-  env = withPath({ ...process.env, CLAUDE_CONFIG_DIR: dir, HOME: root, USERPROFILE: root, FAKE_STATE: state }, bin);
+  // The developer's own provider variables would reach every launch (they are
+  // forwarded to tasks); tests set them explicitly where they matter.
+  const base = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(ANTHROPIC_|CLAUDE_CODE_USE_|CLAUDE_CODE_OAUTH_TOKEN$|CLAUDE_CODE_SUBAGENT_MODEL$)/.test(k)));
+  env = withPath({ ...base, CLAUDE_CONFIG_DIR: dir, HOME: root, USERPROFILE: root, FAKE_STATE: state }, bin);
   delete env.CLAUDE_CODE_SESSION_ID;
   fs.mkdirSync(path.join(root, 'tmp'));
   env.TMPDIR = env.TEMP = env.TMP = path.join(root, 'tmp'); // the transcript scan cache lives here
@@ -697,6 +700,49 @@ test('launch: worktrees branch from the local HEAD unless the user chose a baseR
   // In place: no worktree, so no baseRef.
   assert.equal(run(root, '--isolation', 'none').status, 0);
   assert.deepEqual(settingsArg(), { worktree: { bgIsolation: 'none' } });
+});
+
+// Claude Code's background service does not see the launching shell's
+// environment: the session's provider variables go to the task through a 0600
+// settings file, merged with the user's --settings (whose env wins).
+test('launch: provider variables of the launching session reach the task', () => {
+  const run = (e, ...a) => {
+    setSessions([]);
+    fs.rmSync(state + '.argv', { force: true });
+    return spawnSync(process.execPath, [tasksJs, 'launch', '--title', 'env', '--cwd', root, ...a], { env: { ...env, ...e }, input: 'go', encoding: 'utf8', timeout: 20000 });
+  };
+  const provider = { ANTHROPIC_BASE_URL: 'https://proxy.example', ANTHROPIC_AUTH_TOKEN: 'sk-secret', CLAUDE_CODE_USE_BEDROCK: '1', UNRELATED: 'x' };
+  let r = run(provider, '--', '--settings', '{"model":"opus","env":{"ANTHROPIC_BASE_URL":"https://mine.example"}}');
+  assert.equal(r.status, 0, r.stderr);
+  let argv = lastArgv();
+  const file = argv[argv.indexOf('--settings') + 1];
+  assert.equal(file, path.join(dir, 'csquad', 'settings', 'T1.json'));
+  assert.ok(!argv.join(' ').includes('sk-secret'), 'the token must not be on the command line');
+  const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.deepEqual(saved.env, { ANTHROPIC_BASE_URL: 'https://mine.example', ANTHROPIC_AUTH_TOKEN: 'sk-secret', CLAUDE_CODE_USE_BEDROCK: '1' });
+  assert.equal(saved.model, 'opus');
+  assert.deepEqual(saved.worktree, { baseRef: 'head' });
+  if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  // A later launch prunes the file of a task that is gone, and keeps a listed one's.
+  const stale = path.join(dir, 'csquad', 'settings', 'T9.json');
+  fs.writeFileSync(stale, '{}');
+  setSessions([session(1, 'env')]);
+  r = spawnSync(process.execPath, [tasksJs, 'launch', '--title', 'env2', '--cwd', root], { env: { ...env, ...provider }, input: 'go', encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(!fs.existsSync(stale));
+  assert.ok(fs.existsSync(file));
+  assert.ok(fs.existsSync(path.join(dir, 'csquad', 'settings', 'T2.json')));
+  // Without provider variables nothing is written and the settings stay inline.
+  fs.rmSync(path.join(dir, 'csquad', 'settings'), { recursive: true, force: true });
+  r = run({});
+  assert.equal(r.status, 0, r.stderr);
+  argv = lastArgv();
+  assert.deepEqual(JSON.parse(argv[argv.indexOf('--settings') + 1]), { worktree: { baseRef: 'head' } });
+  assert.ok(!fs.existsSync(path.join(dir, 'csquad', 'settings')));
+  // A failed launch leaves no settings file behind.
+  r = spawnSync(process.execPath, [tasksJs, 'launch', '--title', 'FAILME', '--cwd', root], { env: { ...env, ...provider }, input: 'go', encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 1);
+  assert.ok(!fs.existsSync(path.join(dir, 'csquad', 'settings', 'T1.json')));
 });
 
 test('launch: awkward characters in the title and prompt reach claude intact', () => {

@@ -412,6 +412,13 @@ func TestParseOptions(t *testing.T) {
 	if got := (Options{}).Args(); got == nil || len(got) != 0 {
 		t.Errorf("empty: %#v", got)
 	}
+	e := New(engine.Config{})
+	if got, err := e.CheckArgs([]string{"-m", "x", "-s", "read-only"}, "/"); err != nil || !reflect.DeepEqual(got, []string{"--model", "x", "--sandbox", "read-only"}) {
+		t.Errorf("CheckArgs %q %v", got, err)
+	}
+	if _, err := e.CheckArgs([]string{"--settings", "{}"}, "/"); err == nil {
+		t.Error("CheckArgs took a Claude option")
+	}
 	for _, c := range []struct {
 		args []string
 		want string

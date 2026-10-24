@@ -114,6 +114,10 @@ func TestCodexLaunchValidatesThreadOptionsFirst(t *testing.T) {
 			t.Errorf("%v: %+v", bad, r)
 		}
 	}
+	// Refused before the prompt is even read.
+	if r := csq(t, h, opts{}, "launch", "--title", "t", "--engine", "codex", "--cwd", repo, "--", "--yolo"); r.code == 0 || !strings.Contains(r.stderr, "--yolo is not a Codex thread option") {
+		t.Errorf("%+v", r)
+	}
 	if len(srv.Calls()) != 0 {
 		t.Errorf("the daemon was asked: %v", srv.Methods())
 	}

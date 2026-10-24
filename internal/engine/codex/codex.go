@@ -59,8 +59,10 @@ func messageID() string {
 }
 
 // Start starts a thread in spec.Cwd with the worker rules as developer
-// instructions, names it "T12 · title" and starts its first turn. A thread
-// that cannot be named or started is archived again.
+// instructions, names it "T12 · title" and starts its first turn. A fork
+// (thread/fork of spec.Fork) ignores developer instructions, so its rules
+// travel in the first turn, before the prompt. A thread that cannot be named
+// or started is archived again.
 func (e *Engine) Start(ctx context.Context, spec engine.StartSpec) (engine.Started, error) {
 	var res engine.Started
 	o, err := ParseOptions(spec.Args)
@@ -80,21 +82,32 @@ func (e *Engine) Start(ctx context.Context, spec engine.StartSpec) (engine.Start
 	if model := or(o.Model, spec.Model); model != "" {
 		params["model"] = model
 	}
+	rules := ""
 	if spec.Rules != "" {
-		params["developerInstructions"] = spec.Rules + fmt.Sprintf("\nYour task ID is T%d.\n", spec.ID)
+		rules = spec.Rules + fmt.Sprintf("\nYour task ID is T%d.\n", spec.ID)
 	}
 	if len(o.Config) > 0 {
 		params["config"] = o.Config
 	}
+	method, prompt := "thread/start", spec.Prompt
+	if spec.Fork != "" {
+		method = "thread/fork"
+		params["threadId"], params["excludeTurns"] = spec.Fork, true
+		if rules != "" {
+			prompt = rules + "\n---\n\n" + spec.Prompt
+		}
+	} else if rules != "" {
+		params["developerInstructions"] = rules
+	}
 	var started struct {
 		Thread Thread `json:"thread"`
 	}
-	if err := c.call(ctx, "thread/start", params, &started); err != nil {
+	if err := c.call(ctx, method, params, &started); err != nil {
 		return res, fmt.Errorf("launching %s failed: %v", spec.Name(), err)
 	}
 	id := started.Thread.ID
 	if id == "" {
-		return res, fmt.Errorf("launching %s failed: thread/start returned no thread id", spec.Name())
+		return res, fmt.Errorf("launching %s failed: %s returned no thread id", spec.Name(), method)
 	}
 	undo := func(err error) (engine.Started, error) {
 		_ = c.call(context.Background(), "thread/archive", map[string]any{"threadId": id}, nil)
@@ -103,7 +116,7 @@ func (e *Engine) Start(ctx context.Context, spec engine.StartSpec) (engine.Start
 	if err := c.call(ctx, "thread/name/set", map[string]any{"threadId": id, "name": spec.Name()}, nil); err != nil {
 		return undo(err)
 	}
-	turn := map[string]any{"threadId": id, "input": textInput(spec.Prompt), "clientUserMessageId": messageID()}
+	turn := map[string]any{"threadId": id, "input": textInput(prompt), "clientUserMessageId": messageID()}
 	if o.Effort != "" {
 		turn["effort"] = o.Effort
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/ShunL12324/c-squad/assets"
 	"github.com/ShunL12324/c-squad/internal/check"
+	"github.com/ShunL12324/c-squad/internal/engine/claude"
 	"github.com/ShunL12324/c-squad/internal/flock"
 	"github.com/ShunL12324/c-squad/internal/flow"
 	"github.com/ShunL12324/c-squad/internal/gitx"
@@ -32,6 +33,33 @@ type LaunchArgs struct {
 	Max           int      // 0 = the default (3)
 	Merge         bool
 	MergeInto     string // "" with Merge = the main checkout's branch
+	Fork          bool   // start as a fork of the dispatching session
+}
+
+// forkEnv names, per engine, the variable that holds the dispatching
+// session's full id.
+var forkEnv = map[string]string{"claude": "CLAUDE_CODE_SESSION_ID", "codex": "CODEX_THREAD_ID"}
+
+// forkSource is the session --fork starts from: the dispatching session,
+// which must be of the task's engine.
+func (a *App) forkSource(engineName string) (string, error) {
+	name, ok := forkEnv[engineName]
+	if !ok {
+		return "", fmt.Errorf("--fork works with the claude and codex engines")
+	}
+	id := a.Env.Get(name)
+	if id == "" {
+		for other, v := range forkEnv {
+			if other != engineName && a.Env.Get(v) != "" {
+				return "", fmt.Errorf("--fork forks the dispatching session, which is a %s session, and a fork stays in its engine: use --engine %s", other, other)
+			}
+		}
+		return "", fmt.Errorf("--fork needs the dispatching session's id, and %s is not set: run launch from a %s session, or leave out --fork", name, engineName)
+	}
+	if engineName == "claude" && !claude.FullID(id) {
+		return "", fmt.Errorf("--fork needs the full session id; %s is %q", name, id)
+	}
+	return id, nil
 }
 
 // parseAfter reads "T3,T4" into ids of existing tasks.
@@ -119,6 +147,15 @@ func (a *App) Launch(ctx context.Context, la LaunchArgs) error {
 	if la.Max < 0 || la.Max > 0 && la.Check == "" {
 		return fmt.Errorf("--max sets the rounds of --check; it needs --check and a positive number")
 	}
+	fork := ""
+	if la.Fork {
+		if la.After != "" {
+			return fmt.Errorf("--fork starts the task now, from the conversation as it is; it cannot wait --after other tasks")
+		}
+		if fork, err = a.forkSource(la.Engine); err != nil {
+			return err
+		}
+	}
 	if la.Merge {
 		if inPlace {
 			return fmt.Errorf("--merge needs a worktree task; an in-place task (--isolation none) leaves its changes uncommitted")
@@ -202,7 +239,7 @@ func (a *App) Launch(ctx context.Context, la LaunchArgs) error {
 		return nil
 	}
 	l, _ := flock.Try(a.TaskLock(t.ID))
-	sid, err := a.startSession(ctx, t, flow.StartPrompt(t, deps))
+	sid, err := a.startSession(ctx, t, flow.StartPrompt(t, deps), fork)
 	if err != nil {
 		l.Release()
 		_ = db.Delete(context.Background(), t.ID)
@@ -213,7 +250,11 @@ func (a *App) Launch(ctx context.Context, la LaunchArgs) error {
 	if err != nil {
 		return err
 	}
-	a.printf("launched %s · session %s · %s%s\n", t.Name(), sid, cwd, flowPlan(t))
+	forked := ""
+	if fork != "" {
+		forked = "\n  a fork of this session: it starts with the conversation so far"
+	}
+	a.printf("launched %s · session %s · %s%s%s\n", t.Name(), sid, cwd, forked, flowPlan(t))
 	// The prompt is the task's own copy now; a file made just for this launch goes.
 	if la.PromptFile != "" && la.RmPrompt {
 		os.Remove(la.PromptFile)

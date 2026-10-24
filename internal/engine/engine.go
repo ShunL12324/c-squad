@@ -46,6 +46,9 @@ type StartSpec struct {
 	// Schema is a JSON schema the final answer must follow (a reviewer's
 	// verdict); engines that cannot enforce one ignore it.
 	Schema []byte
+	// Fork is a session of this engine (a full id) the task starts as a fork
+	// of, inheriting its conversation; "" starts a new one.
+	Fork string
 }
 
 // Name is the session name of a task: "T12 · title".

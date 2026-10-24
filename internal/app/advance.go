@@ -256,7 +256,7 @@ func (a *App) startQueued(ctx context.Context, t store.Task, prompt string) {
 	if err != nil || !store.Same(t, cur) || cur.SessionID != "" {
 		return
 	}
-	sid, err := a.startSession(ctx, cur, prompt)
+	sid, err := a.startSession(ctx, cur, prompt, "")
 	if err != nil {
 		a.fail(ctx, cur, flow.ResumeWaiting, "did not start: "+firstLineOf(err.Error())+"; csquad retry starts it again")
 		return
@@ -264,14 +264,16 @@ func (a *App) startQueued(ctx context.Context, t store.Task, prompt string) {
 	_ = db.SetSession(ctx, t.ID, sid)
 }
 
-func (a *App) startSession(ctx context.Context, t store.Task, prompt string) (string, error) {
+// startSession starts t's session; fork names a session of the same engine
+// to fork from ("" for a new one).
+func (a *App) startSession(ctx context.Context, t store.Task, prompt, fork string) (string, error) {
 	eng, err := a.Engine(t.Engine)
 	if err != nil {
 		return "", err
 	}
 	started, err := eng.Start(ctx, engine.StartSpec{
 		ID: t.ID, Title: t.Title, Cwd: t.Cwd, Model: t.Model, Prompt: prompt, Rules: t.WorkerRules, InPlace: t.InPlace,
-		Args: t.EngineArgs, StopHook: a.stopHook(),
+		Args: t.EngineArgs, StopHook: a.stopHook(), Fork: fork,
 	})
 	if err != nil {
 		return "", err

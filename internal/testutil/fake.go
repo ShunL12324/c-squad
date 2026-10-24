@@ -207,7 +207,7 @@ func fakeClaude(args []string) int {
 		}
 		writeState(state, out)
 		return 0
-	case has(args, "--bg") && has(args, "--resume"):
+	case has(args, "--bg") && has(args, "--resume") && !has(args, "--fork-session"):
 		record(state, args)
 		fmt.Println("woke session " + arg(args, "--resume"))
 		return 0

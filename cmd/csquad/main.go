@@ -38,8 +38,8 @@ var errUsage = errors.New("usage")
 var commands = []command{
 	{
 		name:  "launch",
-		usage: "launch --title T [--cwd DIR] [--engine claude|codex] [--model M] [--isolation none] [--after T3,T4] [--check codex|claude[:MODEL]|cmd:COMMAND] [--max 3] [--merge [BRANCH]] [--prompt-file F [--rm-prompt]] [--no-worker-rules] [-- ENGINE_ARGS...]  (prompt on stdin)",
-		flags: []string{"--title=", "--cwd=", "--engine=", "--model=", "--isolation=", "--prompt-file=", "--rm-prompt", "--no-worker-rules", "--after=", "--check=", "--max=", "--merge?"},
+		usage: "launch --title T [--cwd DIR] [--engine claude|codex] [--model M] [--isolation none] [--fork] [--after T3,T4] [--check codex|claude[:MODEL]|cmd:COMMAND] [--max 3] [--merge [BRANCH]] [--prompt-file F [--rm-prompt]] [--no-worker-rules] [-- ENGINE_ARGS...]  (prompt on stdin)",
+		flags: []string{"--title=", "--cwd=", "--engine=", "--model=", "--isolation=", "--fork", "--prompt-file=", "--rm-prompt", "--no-worker-rules", "--after=", "--check=", "--max=", "--merge?"},
 		run: func(ctx context.Context, a *app.App, p *parsed) error {
 			if len(p.args) > 0 {
 				return fmt.Errorf("unexpected argument %q (the prompt comes on stdin or with --prompt-file)", p.args[0])
@@ -56,6 +56,7 @@ var commands = []command{
 				Isolation: p.values["isolation"], PromptFile: p.values["prompt-file"], RmPrompt: p.bools["rm-prompt"],
 				NoWorkerRules: p.bools["no-worker-rules"], EngineArgs: p.rest,
 				After: p.values["after"], Check: p.values["check"], Max: max, Merge: p.has("merge"), MergeInto: p.values["merge"],
+				Fork: p.bools["fork"],
 			})
 		},
 	},

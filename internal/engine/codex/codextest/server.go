@@ -198,6 +198,16 @@ func (s *Server) Complete(id, text string) {
 	})
 }
 
+// Seed adds an idle thread with one completed turn (a dispatching thread).
+func (s *Server) Seed(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	s.threads[id] = &Thread{ID: id, Created: now, Status: "idle", Loaded: true, Turns: []*Turn{{ID: NewID(now), Status: "completed",
+		Items: []map[string]any{{"type": "agentMessage", "id": "msg_seed", "text": "earlier conversation"}}}}}
+	s.order = append(s.order, id)
+}
+
 // Unload makes the daemon forget a loaded thread (as after a restart).
 func (s *Server) Unload(id string) {
 	s.Edit(id, func(t *Thread) { t.Loaded = false; t.Status = "idle" })
@@ -319,6 +329,19 @@ func (s *Server) handle(method string, p map[string]any) (any, error) {
 		s.threads[t.ID] = t
 		s.order = append(s.order, t.ID)
 		return map[string]any{"thread": s.view(t, false)}, nil
+	case "thread/fork":
+		if t == nil || t.Archived {
+			return nil, fmt.Errorf("no rollout found for thread id %s", id)
+		}
+		now := time.Now()
+		f := &Thread{ID: NewID(now), Cwd: str(p, "cwd"), Created: now, Status: "idle", Loaded: true, Start: p}
+		for _, turn := range t.Turns {
+			c := *turn
+			f.Turns = append(f.Turns, &c)
+		}
+		s.threads[f.ID] = f
+		s.order = append(s.order, f.ID)
+		return map[string]any{"thread": s.view(f, false)}, nil
 	case "thread/name/set":
 		if err := needThread(); err != nil {
 			return nil, err

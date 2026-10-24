@@ -297,15 +297,26 @@ func PromptFile(home string, id int) string {
 	return filepath.Join(home, "prompts", fmt.Sprintf("T%d.md", id))
 }
 
-var backgrounded = regexp.MustCompile(`backgrounded\s+·\s+([0-9a-f]{6,})`)
+var (
+	backgrounded = regexp.MustCompile(`backgrounded\s+·\s+([0-9a-f]{6,})`)
+	// fullID is a whole session UUID.
+	fullID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+)
 
-// Start runs `claude --bg --name "T12 · title" [--permission-mode]
-// [--model] ENGINE_ARGS --settings FILE --append-system-prompt RULES --
-// PROMPT` in spec.Cwd. The merged settings always go to settings/T12.json
+// FullID reports whether id is a whole session UUID (not a short id).
+func FullID(id string) bool { return fullID.MatchString(id) }
+
+// Start runs `claude --bg [--resume FORK --fork-session] --name "T12 ·
+// title" [--permission-mode] [--model] ENGINE_ARGS --settings FILE
+// --append-system-prompt RULES -- PROMPT` in spec.Cwd. The merged settings always go to settings/T12.json
 // (mode 0600) and the command line names the path, so no credential lands on
 // it.
 func (e *Engine) Start(ctx context.Context, spec engine.StartSpec) (engine.Started, error) {
 	var res engine.Started
+	// A short id would open the interactive resume picker and hang.
+	if spec.Fork != "" && !FullID(spec.Fork) {
+		return res, fmt.Errorf("--fork needs the full session id, got %q", spec.Fork)
+	}
 	extra := append([]string(nil), spec.Args...)
 	var user map[string]any
 	i, value, inline, err := findSettings(extra)
@@ -341,6 +352,9 @@ func (e *Engine) Start(ctx context.Context, spec engine.StartSpec) (engine.Start
 		return false
 	}
 	argv := []string{"--bg", "--name", spec.Name()}
+	if spec.Fork != "" {
+		argv = []string{"--bg", "--resume", spec.Fork, "--fork-session", "--name", spec.Name()}
+	}
 	if e.PermissionMode != "" && !has("--permission-mode", "--dangerously-skip-permissions") {
 		argv = append(argv, "--permission-mode", e.PermissionMode)
 	}

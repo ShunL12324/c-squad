@@ -106,4 +106,10 @@ go test ./...
   absolute, shell-quoted path of the installed binary, and mark host-only
   parts with `<!-- claude -->` / `<!-- codex -->` blocks.
 
+## README
+
+`README.md` has a Chinese version, `README.zh-CN.md`. When you change one,
+change the other in the same commit. The README is also the npm package page,
+so use absolute `https://` URLs for images and links to other files.
+
 Contributions are provided under the project's [MIT license](LICENSE).

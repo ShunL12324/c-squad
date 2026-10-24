@@ -531,16 +531,28 @@ func TestWaitReportsChanges(t *testing.T) {
 	}
 }
 
+// A new state counts only when seen on two consecutive polls. The fake's
+// n-th `claude agents` call returns the n-th snapshot.
 func TestWaitTwoObservations(t *testing.T) {
 	h := testutil.NewHome(t)
 	n := launchAs(t, h, sid, "flaky")
-	// done for one poll only, then failed for good.
-	r := waitFor(t, h, []string{"CSQUAD_WAIT_INTERVAL_MS=150"}, []step{
-		{200 * time.Millisecond, func() { setState(h, n, func(s *testutil.Session) { s.State = "done" }) }},
-		{260 * time.Millisecond, func() { setState(h, n, func(s *testutil.Session) { s.State, s.Status = "working", "busy" }) }},
-		{700 * time.Millisecond, func() { setState(h, n, func(s *testutil.Session) { s.State = "failed" }) }},
-	}, "T"+n)
+	seq := func(states ...string) string {
+		var snaps []string
+		for _, st := range states {
+			setState(h, n, func(s *testutil.Session) { s.State, s.Status = st, "" })
+			b, _ := os.ReadFile(h.State)
+			snaps = append(snaps, string(b))
+		}
+		os.Remove(h.State + ".seq")
+		return "FAKE_SEQ=[" + strings.Join(snaps, ",") + "]"
+	}
+	// Poll 0 is the start state; done on one poll only, then failed for good.
+	r := waitFor(t, h, []string{seq("working", "working", "done", "working", "working", "failed", "failed")}, nil, "T"+n)
 	if r.stdout != "T1 · flaky · failed\n" {
+		t.Errorf("%+v", r)
+	}
+	r = waitFor(t, h, []string{seq("working", "done", "done")}, nil, "T"+n)
+	if r.stdout != "T1 · flaky · done\n" {
 		t.Errorf("%+v", r)
 	}
 }

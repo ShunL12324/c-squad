@@ -122,6 +122,17 @@ func fakeClaude(args []string) int {
 			return 1
 		}
 		b, err := os.ReadFile(state)
+		if seq := os.Getenv("FAKE_SEQ"); seq != "" {
+			// The n-th call returns the n-th snapshot; the last one repeats.
+			var snaps []json.RawMessage
+			json.Unmarshal([]byte(seq), &snaps)
+			n := 0
+			if c, err := os.ReadFile(state + ".seq"); err == nil {
+				n, _ = strconv.Atoi(string(c))
+			}
+			os.WriteFile(state+".seq", []byte(strconv.Itoa(n+1)), 0o644)
+			b, err = snaps[min(n, len(snaps)-1)], nil
+		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1

@@ -177,6 +177,7 @@ func TestUninstallRestoresSettingsByteForByte(t *testing.T) {
 		"no line":   "{\n  \"theme\": \"dark\"\n}\n",
 		"odd space": "{ \"theme\" : \"dark\" ,\n\t\"x\":[1, 2] }",
 		"empty":     "{}",
+		"blank":     "{ }\n", // only the saved bytes restore this one exactly
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := setup(t)
@@ -189,7 +190,7 @@ func TestUninstallRestoresSettingsByteForByte(t *testing.T) {
 			if strings.Contains(text, "\r\n") && strings.Contains(strings.ReplaceAll(wrapped, "\r\n", ""), "\n") {
 				t.Error("a CRLF file got LF line breaks")
 			}
-			if !strings.Contains(text, "\n") && text != "{}" && strings.Contains(wrapped, "\n") {
+			if !strings.Contains(text, "\n") && !strings.HasPrefix(text, "{}") && strings.Contains(wrapped, "\n") {
 				t.Error("a compact file got line breaks")
 			}
 			var v map[string]any

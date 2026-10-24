@@ -386,6 +386,21 @@ func TestUninstallSharedAfterTheLinkWent(t *testing.T) {
 	}
 }
 
+// A skills directory linked elsewhere (a junction on Windows) and emptied by
+// uninstall stays a link: removing it would delete the link itself.
+func TestLinkedSkillsDirStaysOnUninstall(t *testing.T) {
+	e := setup(t)
+	dotfiles := filepath.Join(e.h.Root, "dotfiles", "skills")
+	os.MkdirAll(dotfiles, 0o755)
+	os.MkdirAll(e.h.Claude, 0o755)
+	testutil.DirLink(t, dotfiles, e.claudeSkills())
+	e.install()
+	e.uninstall()
+	if _, err := os.Lstat(e.claudeSkills()); err != nil || !sameFile(e.claudeSkills(), dotfiles) {
+		t.Errorf("the link or its directory went: %v", err)
+	}
+}
+
 // Codex removed while the directory is shared: the Claude rendering
 // replaces the shared one, and nothing of the directory goes.
 func TestSharedSkillsWhenCodexGoes(t *testing.T) {

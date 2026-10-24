@@ -178,19 +178,21 @@ var skipped = map[string]bool{"reasoning": true, "plan": true, "hookPrompt": tru
 	"enteredReviewMode": true, "exitedReviewMode": true, "functionCallOutput": true}
 
 // Messages turns items (oldest first) into peek entries: user and assistant
-// text, runs of tool calls folded into one entry with counts.
+// text, runs of tool calls folded into one entry with counts. Items carry no
+// time of their own: a message is dated by the start of its turn.
 func Messages(turns []Turn) []engine.Message {
 	var out []engine.Message
 	for _, t := range turns {
+		at, _ := turnTime(t)
 		for _, it := range t.Items {
 			switch {
 			case it.Type == "userMessage":
 				if text := strings.TrimSpace(userText(it)); text != "" {
-					out = append(out, engine.Message{Role: "user", Text: text})
+					out = append(out, engine.Message{Role: "user", Text: text, At: at})
 				}
 			case it.Type == "agentMessage":
 				if text := strings.TrimSpace(it.Text); text != "" {
-					out = append(out, engine.Message{Role: "assistant", Text: text})
+					out = append(out, engine.Message{Role: "assistant", Text: text, At: at})
 				}
 			case skipped[it.Type]:
 			default:

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 func run(t *testing.T, g Git, dir string, args ...string) {
@@ -38,7 +39,7 @@ func TestTaskRefsByNaming(t *testing.T) {
 	run(t, g, r, "branch", "task/t120-other") // T120, not T12
 	run(t, g, r, "worktree", "add", "-q", "--detach", filepath.Join(r, "..", "t12-detached"))
 	run(t, g, r, "worktree", "add", "-q", "-b", "mine", filepath.Join(r, "..", "t12-named"))
-	refs, err := g.TaskRefs(r, 12)
+	refs, err := g.TaskRefs(r, 12, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,6 +59,39 @@ func TestTaskRefsByNaming(t *testing.T) {
 		if filepath.Base(w.Path) == "t12-detached" && (!w.Detached || w.Head == "") {
 			t.Errorf("%+v", w)
 		}
+	}
+}
+
+// Refs named for a task but made before it belong to an older task with the
+// same number: they are reported, never returned.
+func TestTaskRefsOlderThanTheTaskAreIgnored(t *testing.T) {
+	g, r := repo(t)
+	day := time.Now().Add(-24 * time.Hour)
+	old := Git{Env: append(append([]string{}, g.Env...), "GIT_COMMITTER_DATE="+day.Format(time.RFC3339))}
+	run(t, old, r, "worktree", "add", "-q", "-b", "worktree-t7-old", filepath.Join(r, "..", "t7-old"))
+	os.Chtimes(filepath.Join(r, "..", "t7-old", ".git"), day, day)
+	run(t, old, r, "branch", "task/t7-older")
+	run(t, old, r, "worktree", "add", "-q", "--detach", filepath.Join(r, "..", "t7-gone"))
+	os.Chtimes(filepath.Join(r, "..", "t7-gone", ".git"), day, day)
+	since := time.Now().Add(-time.Minute)
+	run(t, g, r, "worktree", "add", "-q", "-b", "worktree-t7-new", filepath.Join(r, "..", "t7-new"))
+	run(t, g, r, "branch", "task/t7-extra")
+	refs, err := g.TaskRefs(r, 7, since)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(refs.Branches)
+	sort.Strings(refs.Ignored)
+	if strings.Join(refs.Branches, ",") != "task/t7-extra,worktree-t7-new" || len(refs.Worktrees) != 1 || filepath.Base(refs.Worktrees[0].Path) != "t7-new" {
+		t.Errorf("kept %v %v", refs.Branches, refs.Worktrees)
+	}
+	want := []string{"branch task/t7-older", "branch worktree-t7-old", "worktree " + filepath.Join(filepath.Dir(r), "t7-gone"), "worktree " + filepath.Join(filepath.Dir(r), "t7-old")}
+	if strings.Join(refs.Ignored, "|") != strings.Join(want, "|") {
+		t.Errorf("ignored %q", refs.Ignored)
+	}
+	// Without a time every named ref counts.
+	if all, _ := g.TaskRefs(r, 7, time.Time{}); len(all.Branches) != 4 || len(all.Ignored) != 0 {
+		t.Errorf("all %+v", all)
 	}
 }
 

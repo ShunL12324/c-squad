@@ -71,8 +71,9 @@ type Manifest struct {
 	// Codex: what install wrote below AgentsDir, when $CODEX_HOME existed.
 	AgentsDir  string            `json:"agentsDir,omitempty"`
 	CodexFiles map[string]string `json:"codexFiles,omitempty"` // agents-dir relative path → sha256
-	// CodexHooks is the text install inserted into Codex's hooks.json.
-	CodexHooks string `json:"codexHooks,omitempty"`
+	// HooksText is the text install inserted into Codex's hooks.json (the
+	// whole file when install created it); uninstall removes exactly that.
+	HooksText string `json:"hooksText,omitempty"`
 	// Npm is the version of the npm package that installed csquad; "" for a
 	// build from source. See npm.go.
 	Npm string `json:"npm,omitempty"`

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/ShunL12324/c-squad/internal/engine/codex/codextest"
+	"github.com/ShunL12324/c-squad/internal/store"
 	"github.com/ShunL12324/c-squad/internal/testutil"
 )
 
@@ -347,6 +349,33 @@ func TestLaunchPromptHandling(t *testing.T) {
 	entries, _ := os.ReadDir(filepath.Join(h.Csquad, "prompts"))
 	if len(entries) != 1 {
 		t.Errorf("prompts: %v", entries)
+	}
+}
+
+// launch removes the lock files of finished tasks and of numbers the table
+// does not hold; a running task's lock stays.
+func TestLaunchPrunesLockFiles(t *testing.T) {
+	h := testutil.NewHome(t)
+	launch(t, h, "running")
+	launch(t, h, "cancelled")
+	db := openDB(t, h)
+	cur, _ := db.Get(context.Background(), 2)
+	next := cur
+	next.Phase = store.Cancelled
+	if _, err := db.Transition(context.Background(), cur, next); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	logs := filepath.Join(h.Csquad, "logs")
+	os.MkdirAll(logs, 0o700)
+	for _, f := range []string{"T1.lock", "T1-check-1.lock", "T2.lock", "T2-check-3.lock", "T9.lock", "advance.lock"} {
+		os.WriteFile(filepath.Join(logs, f), nil, 0o600)
+	}
+	launch(t, h, "third")
+	for f, want := range map[string]bool{"T1.lock": true, "T1-check-1.lock": true, "T2.lock": false, "T2-check-3.lock": false, "T9.lock": false, "advance.lock": true} {
+		if exists(filepath.Join(logs, f)) != want {
+			t.Errorf("%s: exists %v, want %v", f, !want, want)
+		}
 	}
 }
 

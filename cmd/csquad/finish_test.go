@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ShunL12324/c-squad/internal/testutil"
 )
@@ -93,6 +94,26 @@ func TestFinishVerifiesThenRemovesGitFirstThenTheSession(t *testing.T) {
 	}
 	if r := csq(t, h, opts{env: mine()}, "finish", "T1"); r.code != 1 || !strings.Contains(r.stderr, "already finished") {
 		t.Errorf("%+v", r)
+	}
+}
+
+// A branch named for T1 that is older than the task (csquad 1.x reused
+// numbers) is neither checked nor removed; finish names it.
+func TestFinishIgnoresOlderRefsOfTheSameNumber(t *testing.T) {
+	h, repo, _ := repoWithTask(t)
+	git(t, h, repo, "merge", "-q", "--ff-only", "worktree-t1-fix")
+	cmd := exec.Command("git", "-C", repo, "branch", "task/t1-ancient", "worktree-t1-fix~1")
+	cmd.Env = h.Env("GIT_COMMITTER_DATE=" + time.Now().Add(-72*time.Hour).Format(time.RFC3339))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	git(t, h, repo, "commit", "-q", "--allow-empty", "-m", "unrelated")
+	r := ok(t, csq(t, h, opts{env: mine()}, "finish", "T1"))
+	if !strings.Contains(r.stdout, "ignored, older than the task (another task with its number made them): branch task/t1-ancient") {
+		t.Errorf("%s", r.stdout)
+	}
+	if !strings.Contains(git(t, h, repo, "branch"), "task/t1-ancient") {
+		t.Error("the older branch was removed")
 	}
 }
 

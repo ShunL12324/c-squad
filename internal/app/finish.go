@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ShunL12324/c-squad/internal/engine"
 	"github.com/ShunL12324/c-squad/internal/engine/claude"
@@ -24,6 +25,7 @@ type plan struct {
 	worktrees []gitx.Worktree
 	branches  []string
 	problems  []string // unmerged or uncommitted work: nothing may be removed
+	ignored   []string // refs named for the task but older than it: never touched
 }
 
 // inspect finds what a task left in git and checks it against target ("" =
@@ -53,11 +55,11 @@ func (a *App) inspect(t store.Task, target string, l engine.Live) (plan, error) 
 		}
 	}
 	p.target = target
-	refs, err := g.TaskRefs(p.repo, t.ID)
+	refs, err := g.TaskRefs(p.repo, t.ID, time.UnixMilli(t.CreatedAt))
 	if err != nil {
 		return p, err
 	}
-	p.worktrees, p.branches = refs.Worktrees, refs.Branches
+	p.worktrees, p.branches, p.ignored = refs.Worktrees, refs.Branches, refs.Ignored
 	// The session's own worktree belongs to the task whatever its name.
 	if l.Cwd != "" {
 		for _, w := range wts[1:] {
@@ -248,6 +250,7 @@ func (a *App) finishOne(ctx context.Context, label, into string, all bool) error
 	if left != "" {
 		a.printf("  the session is left: %s\n", left)
 	}
+	a.printIgnored(p.ignored)
 	return nil
 }
 
@@ -273,7 +276,7 @@ func (a *App) Cancel(ctx context.Context, label string, discard, all bool) error
 	if err != nil {
 		return err
 	}
-	var done []string
+	var done, ignored []string
 	keep := ""
 	if t.SessionID != "" {
 		eng, err := a.Engine(t.Engine)
@@ -303,6 +306,7 @@ func (a *App) Cancel(ctx context.Context, label string, discard, all bool) error
 		if err != nil {
 			return err
 		}
+		ignored = p.ignored
 		if len(p.problems) > 0 && !discard {
 			keep = fmt.Sprintf("kept its work: %s\n  csquad cancel %s --discard deletes it, unmerged work included", strings.Join(p.problems, "; "), t.Label())
 		} else {
@@ -333,10 +337,18 @@ func (a *App) Cancel(ctx context.Context, label string, discard, all bool) error
 	if keep != "" {
 		a.printf("  %s\n", keep)
 	}
+	a.printIgnored(ignored)
 	lock.Release()
 	// Tasks queued after it stop for the user.
 	a.AdvanceAll(ctx, nil)
 	return nil
+}
+
+// printIgnored names the refs named for a task but older than it.
+func (a *App) printIgnored(refs []string) {
+	if len(refs) > 0 {
+		a.printf("  ignored, older than the task (another task with its number made them): %s\n", strings.Join(refs, ", "))
+	}
 }
 
 // removeFiles deletes a finished task's settings, prompt and lock files.

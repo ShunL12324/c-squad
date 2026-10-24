@@ -121,11 +121,15 @@ func marked(b []byte, el [2]int) bool {
 	return v
 }
 
-// addCodexHook returns raw with group in hooks.Stop and the text it inserted
-// ("" when the group was already there or replaced in place).
-func addCodexHook(raw []byte, group string) ([]byte, string, error) {
+// addCodexHook returns raw with group in hooks.Stop and the text csquad's
+// part of the file now is (the manifest's hooksText): what it inserted, a
+// whole file it created, or prev (what an earlier install inserted) when the
+// group was already there, with the group replaced when it changed. It is ""
+// only when prev is unknown and the group was there already.
+func addCodexHook(raw []byte, group, prev string) ([]byte, string, error) {
 	if strings.TrimSpace(string(raw)) == "" {
-		return []byte("{\n  \"hooks\": {\n    \"Stop\": [\n      " + group + "\n    ]\n  }\n}\n"), "", nil
+		file := "{\n  \"hooks\": {\n    \"Stop\": [\n      " + group + "\n    ]\n  }\n}\n"
+		return []byte(file), file, nil
 	}
 	if !json.Valid(raw) {
 		return nil, "", errors.New("not valid JSON")
@@ -139,30 +143,30 @@ func addCodexHook(raw []byte, group string) ([]byte, string, error) {
 	}
 	// A member added to the object at open: after its last member, or
 	// first in an empty one.
-	addMember := func(open int, ms []jsonMember, close int, def, text string) ([]byte, string, error) {
+	addMember := func(open int, ms []jsonMember, def, text string) ([]byte, string, error) {
 		if len(ms) == 0 {
-			return splice(raw, open+1, close, text), "", nil
+			return insert(open+1, text)
 		}
 		return insert(ms[len(ms)-1].valEnd, ","+leading(raw, open, def)+text)
 	}
-	ms, close, err := objectAt(raw, top)
+	ms, _, err := objectAt(raw, top)
 	if err != nil {
 		return nil, "", err
 	}
 	hooks, ok := memberOf(ms, "hooks")
 	if !ok {
-		return addMember(top, ms, close, "\n  ", `"hooks": {"Stop": [`+group+`]}`)
+		return addMember(top, ms, "\n  ", `"hooks": {"Stop": [`+group+`]}`)
 	}
 	if raw[hooks.valStart] != '{' {
 		return nil, "", errors.New(`"hooks" is not an object`)
 	}
-	hs, hclose, err := objectAt(raw, hooks.valStart)
+	hs, _, err := objectAt(raw, hooks.valStart)
 	if err != nil {
 		return nil, "", err
 	}
 	stop, ok := memberOf(hs, "Stop")
 	if !ok {
-		return addMember(hooks.valStart, hs, hclose, " ", `"Stop": [`+group+`]`)
+		return addMember(hooks.valStart, hs, " ", `"Stop": [`+group+`]`)
 	}
 	if raw[stop.valStart] != '[' {
 		return nil, "", errors.New(`"hooks.Stop" is not a list`)
@@ -173,10 +177,14 @@ func addCodexHook(raw []byte, group string) ([]byte, string, error) {
 	}
 	for _, el := range els {
 		if marked(raw, el) {
-			if string(raw[el[0]:el[1]]) == group {
-				return raw, "", nil
+			current := string(raw[el[0]:el[1]])
+			if !strings.Contains(string(raw), prev) || !strings.Contains(prev, current) {
+				prev = ""
 			}
-			return splice(raw, el[0], el[1], group), "", nil
+			if current == group {
+				return raw, prev, nil
+			}
+			return splice(raw, el[0], el[1], group), strings.Replace(prev, current, group, 1), nil
 		}
 	}
 	if len(els) == 0 {
@@ -248,14 +256,14 @@ func removeMarked(raw []byte) ([]byte, bool) {
 }
 
 // installCodexHook adds csquad's Stop group to Codex's hooks.json when
-// Codex is installed ($CODEX_HOME exists), and records what it inserted.
+// Codex is installed ($CODEX_HOME exists), and records csquad's text in it.
 func (o Options) installCodexHook(m *Manifest, old Manifest) error {
-	m.CodexHooks = old.CodexHooks
+	m.HooksText = old.HooksText
 	dir := o.codexHome()
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
-		if old.CodexHooks != "" {
+		if old.HooksText != "" {
 			o.uninstallCodexHook(old)
-			m.CodexHooks = ""
+			m.HooksText = ""
 		}
 		return nil
 	}
@@ -264,35 +272,39 @@ func (o Options) installCodexHook(m *Manifest, old Manifest) error {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	next, inserted, err := addCodexHook(raw, CodexHookGroup(BinaryPath(o.Home), o.Home))
+	next, text, err := addCodexHook(raw, CodexHookGroup(BinaryPath(o.Home), o.Home), old.HooksText)
 	if err != nil {
 		return fmt.Errorf("%s: %v; fix it or move it away, then run install again", file, err)
 	}
+	m.HooksText = text
 	if string(next) == string(raw) {
 		return nil
 	}
 	if err := writeAtomic(file, next, 0o644); err != nil {
 		return err
 	}
-	if inserted != "" {
-		m.CodexHooks = inserted
-	}
 	o.log("Codex: Stop hook added to %s; approve it once in Codex with /hooks (until then csquad notices finished Codex turns on its next command)", file)
 	return nil
 }
 
-// uninstallCodexHook takes csquad's group out of Codex's hooks.json.
+// uninstallCodexHook takes csquad's group out of Codex's hooks.json; a file
+// left empty (csquad created it) goes.
 func (o Options) uninstallCodexHook(m Manifest) {
 	file := o.codexHooksFile()
 	raw, err := os.ReadFile(file)
 	if err != nil {
 		return
 	}
-	next, changed := removeCodexHook(raw, m.CodexHooks)
+	next, changed := removeCodexHook(raw, m.HooksText)
 	if !changed {
 		return
 	}
-	if err := writeAtomic(file, next, 0o644); err != nil {
+	if strings.TrimSpace(string(next)) == "" {
+		err = os.Remove(file)
+	} else {
+		err = writeAtomic(file, next, 0o644)
+	}
+	if err != nil {
 		o.log("Codex: could not update %s (%v); remove the group marked \"__csquad__\" by hand", file, err)
 		return
 	}

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -191,9 +192,36 @@ func (a *App) task(ctx context.Context, s string, all bool, verb string) (store.
 	return t, nil
 }
 
+// EngineErrors are the engines that could not be observed, by name. The
+// other engines' states are still returned: one engine failing never hides
+// another engine's tasks.
+type EngineErrors map[string]error
+
+func (e EngineErrors) Error() string {
+	names := make([]string, 0, len(e))
+	for n := range e {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	parts := make([]string, 0, len(names))
+	for _, n := range names {
+		parts = append(parts, e[n].Error())
+	}
+	return strings.Join(parts, "; ")
+}
+
+// engineErrors returns the EngineErrors inside err (nil when none).
+func engineErrors(err error) EngineErrors {
+	var e EngineErrors
+	if errors.As(err, &e) {
+		return e
+	}
+	return nil
+}
+
 // observe returns the live state of each task with a session, one engine
-// query per engine. Tasks of an engine that failed are missing from the map
-// and the error names the engine.
+// query per engine. Tasks of an engine that failed are missing from the map;
+// the error is then an EngineErrors naming those engines.
 func (a *App) observe(ctx context.Context, tasks []store.Task) (map[int]engine.Live, error) {
 	byEngine := map[string][]store.Task{}
 	for _, t := range tasks {
@@ -202,33 +230,28 @@ func (a *App) observe(ctx context.Context, tasks []store.Task) (map[int]engine.L
 		}
 	}
 	out := map[int]engine.Live{}
-	var errs []string
-	names := make([]string, 0, len(byEngine))
-	for n := range byEngine {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for _, name := range names {
+	errs := EngineErrors{}
+	for name, list := range byEngine {
 		e, err := a.Engine(name)
 		if err != nil {
-			errs = append(errs, err.Error())
+			errs[name] = err
 			continue
 		}
-		ids := make([]string, 0, len(byEngine[name]))
-		for _, t := range byEngine[name] {
+		ids := make([]string, 0, len(list))
+		for _, t := range list {
 			ids = append(ids, t.SessionID)
 		}
 		states, err := e.States(ctx, ids)
 		if err != nil {
-			errs = append(errs, err.Error())
+			errs[name] = err
 			continue
 		}
-		for _, t := range byEngine[name] {
+		for _, t := range list {
 			out[t.ID] = states[t.SessionID]
 		}
 	}
 	if len(errs) > 0 {
-		return out, errors.New(strings.Join(errs, "; "))
+		return out, errs
 	}
 	return out, nil
 }
@@ -283,21 +306,29 @@ func stateText(s string) string {
 
 // prune removes the settings and prompt files of tasks that are finished or
 // not in the table (a failed launch), and of tasks observed gone: the
-// settings can hold a provider token. Files are listed before the table is
-// read, so a launch in flight (its row is written first) is never judged.
+// settings can hold a provider token. The lock files of finished tasks go
+// too. Files are listed before the table is read, so a launch in flight (its
+// row is written first) is never judged.
 func (a *App) prune(ctx context.Context, gone []int) {
 	type file struct {
 		path string
 		id   int
+		lock bool
 	}
 	var files []file
-	re := regexp.MustCompile(`^T(\d+)\.(json|md)$`)
-	for _, d := range []string{"settings", "prompts"} {
-		entries, _ := os.ReadDir(filepath.Join(a.Home, d))
+	for _, d := range []struct {
+		dir string
+		re  *regexp.Regexp
+	}{
+		{"settings", taskFileRe},
+		{"prompts", taskFileRe},
+		{"logs", lockFileRe},
+	} {
+		entries, _ := os.ReadDir(filepath.Join(a.Home, d.dir))
 		for _, e := range entries {
-			if m := re.FindStringSubmatch(e.Name()); m != nil {
+			if m := d.re.FindStringSubmatch(e.Name()); m != nil {
 				id, _ := strconv.Atoi(m[1])
-				files = append(files, file{filepath.Join(a.Home, d, e.Name()), id})
+				files = append(files, file{filepath.Join(a.Home, d.dir, e.Name()), id, d.dir == "logs"})
 			}
 		}
 	}
@@ -316,15 +347,21 @@ func (a *App) prune(ctx context.Context, gone []int) {
 	for _, t := range all {
 		keep[t.ID] = !store.Finished(t.Phase)
 	}
+	keepLock := maps.Clone(keep)
 	for _, id := range gone {
 		keep[id] = false
 	}
 	for _, f := range files {
-		if !keep[f.id] {
+		if f.lock && !keepLock[f.id] || !f.lock && !keep[f.id] {
 			os.Remove(f.path)
 		}
 	}
 }
+
+var (
+	taskFileRe = regexp.MustCompile(`^T(\d+)\.(json|md)$`)
+	lockFileRe = regexp.MustCompile(`^T(\d+)(-check-\d+)?\.lock$`)
+)
 
 // gone lists the tasks whose session the engine no longer lists.
 func gone(tasks []store.Task, live map[int]engine.Live) []int {

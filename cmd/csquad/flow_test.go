@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -701,11 +702,21 @@ func TestCodexStopHookSpawnsAdvance(t *testing.T) {
 	if exists(filepath.Join(h.Csquad, "logs", "advance.log")) {
 		t.Error("a thread that is no task")
 	}
+	// advance.log moves to advance.log.1 past 1 MiB.
+	log := filepath.Join(h.Csquad, "logs", "advance.log")
+	os.MkdirAll(filepath.Dir(log), 0o700)
+	os.WriteFile(log, bytes.Repeat([]byte("x"), 1<<20+1), 0o600)
 	ok(t, csq(t, h, opts{stdin: `{"session_id":"019a-thread","turn_id":"t","last_assistant_message":"done"}`, env: env}, "hook", "codex-stop"))
 	waitUntil(t, "advance --stopped T1", 10*time.Second, func() bool {
-		b, _ := os.ReadFile(filepath.Join(h.Csquad, "logs", "advance.log"))
+		b, _ := os.ReadFile(log)
 		return strings.Contains(string(b), "csquad advance --stopped T1")
 	})
+	if st, err := os.Stat(log + ".1"); err != nil || st.Size() != 1<<20+1 {
+		t.Errorf("advance.log was not rotated: %v", err)
+	}
+	if st, _ := os.Stat(log); st.Size() > 1<<16 {
+		t.Errorf("advance.log is %d bytes after rotation", st.Size())
+	}
 	if r := csq(t, h, opts{stdin: "{}"}, "hook", "other-stop"); r.code != 1 || !strings.Contains(r.stderr, "unknown hook") {
 		t.Errorf("%+v", r)
 	}

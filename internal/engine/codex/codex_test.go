@@ -295,6 +295,11 @@ func TestLastFoldsToolsAndPages(t *testing.T) {
 	if len(last) != 2 || last[0].Role != "tools" || last[1].Text != "last reply" {
 		t.Errorf("last 2: %+v", last)
 	}
+	// Messages are dated by their turn's start (its UUIDv7 id).
+	th := f.srv.Thread(id)
+	if at, _ := uuidTime(th.Turns[len(th.Turns)-1].ID); last[1].At.IsZero() || !last[1].At.Equal(at) {
+		t.Errorf("last reply dated %v, its turn started %v", last[1].At, at)
+	}
 	f.srv.Reset()
 	latest, err := f.eng.Last(ctx(t), id, 0)
 	if err != nil || engine.LastAssistant(latest) != "last reply" || len(f.srv.Methods()) != 1 {

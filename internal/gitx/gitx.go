@@ -9,7 +9,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Git runs git commands with an environment.
@@ -174,11 +176,69 @@ func (g Git) DeleteMerged(repo, branch, target string) error {
 type Refs struct {
 	Worktrees []Worktree
 	Branches  []string
+	// Ignored are refs so named that are older than the task ("worktree
+	// PATH", "branch NAME"): another task with the same number made them
+	// (csquad 1.x reused numbers). They are never checked or removed.
+	Ignored []string
 }
 
+// Slack is how much older than the task a ref may look and still be the
+// task's: reflogs count whole seconds.
+const Slack = 5 * time.Second
+
 // TaskRefs finds the worktrees and branches named for task id, and the
+// branches of worktrees so named, made after since (zero: any time). A
+// branch dates from its oldest reflog entry, a worktree from its .git file;
+// a ref whose age is unknown counts as the task's.
+func (g Git) TaskRefs(repo string, id int, since time.Time) (Refs, error) {
+	all, err := g.namedRefs(repo, id)
+	if err != nil || since.IsZero() {
+		return all, err
+	}
+	since = since.Add(-Slack)
+	var r Refs
+	old := map[string]bool{}
+	for _, b := range all.Branches {
+		if at, ok := g.branchCreated(repo, b); ok && at.Before(since) {
+			old[b] = true
+			r.Ignored = append(r.Ignored, "branch "+b)
+			continue
+		}
+		r.Branches = append(r.Branches, b)
+	}
+	for _, w := range all.Worktrees {
+		st, err := os.Stat(filepath.Join(w.Path, ".git"))
+		if err == nil && st.ModTime().Before(since) || w.Branch != "" && old[w.Branch] {
+			r.Ignored = append(r.Ignored, "worktree "+w.Path)
+			continue
+		}
+		r.Worktrees = append(r.Worktrees, w)
+	}
+	return r, nil
+}
+
+// branchCreated is the time of the branch's oldest reflog entry.
+func (g Git) branchCreated(repo, branch string) (time.Time, bool) {
+	out, err := g.Run(repo, "reflog", "show", "--date=unix", "--format=%gd", "refs/heads/"+branch, "--")
+	if err != nil || out == "" {
+		return time.Time{}, false
+	}
+	lines := strings.Split(out, "\n")
+	last := lines[len(lines)-1]
+	i, j := strings.LastIndex(last, "@{"), strings.LastIndex(last, "}")
+	if i < 0 || j < i {
+		return time.Time{}, false
+	}
+	sec, err := strconv.ParseInt(last[i+2:j], 10, 64)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return time.Unix(sec, 0), true
+}
+
+// namedRefs finds the worktrees and branches named for task id, and the
 // branches of worktrees so named.
-func (g Git) TaskRefs(repo string, id int) (Refs, error) {
+func (g Git) namedRefs(repo string, id int) (Refs, error) {
 	var r Refs
 	prefix := fmt.Sprintf("t%d-", id)
 	wts, err := g.Worktrees(repo)

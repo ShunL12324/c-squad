@@ -156,3 +156,33 @@ func TestStatuslineDoesNotStartTheCodexDaemon(t *testing.T) {
 		t.Errorf("status did not start the daemon")
 	}
 }
+
+// One engine failing hides none of another engine's tasks: status and the
+// status line show the Codex task while claude agents fails, wait reports
+// it, and wait fails only for a task of the failing engine.
+func TestEnginesApart(t *testing.T) {
+	h, srv, repo := codexHome(t)
+	ok(t, csq(t, h, opts{stdin: "x", env: mine()}, "launch", "--title", "claude job", "--cwd", repo))
+	r := ok(t, csq(t, h, opts{stdin: "x", env: mine()}, "launch", "--title", "codex job", "--engine", "codex", "--cwd", repo))
+	id := launchedCodexRe.FindStringSubmatch(r.stdout)[3]
+	broken := mine("FAKE_AGENTS_FAIL=1")
+
+	r = ok(t, csq(t, h, opts{env: broken}, "status"))
+	if !strings.Contains(r.stdout, "## T2 · codex job\nstate: working") || !strings.Contains(r.stderr, "claude agents failed") {
+		t.Errorf("status %+v", r)
+	}
+	lines := statusline(t, h, sid, "FAKE_AGENTS_FAIL=1")
+	if text := strings.Join(lines, "\n"); !strings.Contains(text, "T2") || !strings.Contains(text, "codex job") || !strings.Contains(text, "working") {
+		t.Errorf("status line %q", lines)
+	}
+
+	srv.Complete(id, "done.")
+	r = waitFor(t, h, append([]string{"CSQUAD_WAIT_FAIL_MS=60000"}, broken...), nil, "T2")
+	if r.code != 0 || r.stdout != "T2 · codex job · already idle\n" {
+		t.Errorf("wait for the codex task: %+v", r)
+	}
+	r = waitFor(t, h, append([]string{"CSQUAD_WAIT_FAIL_MS=300"}, broken...), nil, "T1")
+	if r.code != 1 || !strings.Contains(r.stderr, "the claude engine keeps failing") {
+		t.Errorf("wait for the claude task: %+v", r)
+	}
+}

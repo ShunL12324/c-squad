@@ -117,7 +117,8 @@ func (a *App) Wait(ctx context.Context, labels []string, timeoutMin float64, all
 	}
 	start := a.Now()
 	deadline := start.Add(time.Duration(timeoutMin * float64(time.Minute)))
-	var firstFailure, stopAt time.Time
+	var stopAt time.Time
+	firstFailure := map[string]time.Time{} // by engine
 	db, err := a.Store()
 	if err != nil {
 		return err
@@ -132,63 +133,73 @@ func (a *App) Wait(ctx context.Context, labels []string, timeoutMin float64, all
 			current = append(current, w.t)
 		}
 		live, oerr := a.observe(ctx, current)
-		if oerr != nil {
-			if firstFailure.IsZero() {
-				firstFailure = a.Now()
+		failing := engineErrors(oerr)
+		// Only an engine a watched, unfinished task needs can fail wait; its
+		// tasks sit this poll out, the other engines' tasks go on.
+		for name := range firstFailure {
+			if failing[name] == nil {
+				delete(firstFailure, name)
 			}
-			if a.Now().Sub(firstFailure) >= failLimit {
-				return fmt.Errorf("%s keeps failing: %v", "the engine", oerr)
+		}
+		for _, w := range ws {
+			err := failing[w.t.Engine]
+			if w.done || err == nil || w.t.SessionID == "" || store.Finished(w.t.Phase) {
+				continue
 			}
-		} else {
-			firstFailure = time.Time{}
-			for _, w := range ws {
-				if w.done {
-					continue
-				}
-				state := live[w.t.ID].State
-				switch {
-				case store.Finished(w.t.Phase):
-					state = "finished"
-				case flow.Orchestrated(w.t) || w.t.Phase == store.Waiting:
-					state = flowState(w.t, state)
-				case w.t.SessionID == "":
-					state = "starting"
-				}
-				if !w.inited {
-					w.inited, w.state, w.cand = true, state, state
-					if text, ok := report[state]; ok {
-						w.done = true
-						events = append(events, struct {
-							id   int
-							text string
-						}{w.t.ID, fmt.Sprintf("%s · already %s%s", w.t.Name(), text, noteOf(w.t))})
-					}
-					continue
-				}
-				if state == w.state {
-					w.cand, w.count = state, 0
-					continue
-				}
-				if state == w.cand {
-					w.count++
-				} else {
-					w.cand, w.count = state, 1
-				}
-				if w.count < 2 {
-					continue
-				}
-				w.state, w.count = state, 0
+			if _, ok := firstFailure[w.t.Engine]; !ok {
+				firstFailure[w.t.Engine] = a.Now()
+			}
+			if a.Now().Sub(firstFailure[w.t.Engine]) >= failLimit {
+				return fmt.Errorf("the %s engine keeps failing: %v", w.t.Engine, err)
+			}
+		}
+		for _, w := range ws {
+			if w.done || failing[w.t.Engine] != nil && w.t.SessionID != "" && !store.Finished(w.t.Phase) {
+				continue
+			}
+			state := live[w.t.ID].State
+			switch {
+			case store.Finished(w.t.Phase):
+				state = "finished"
+			case flow.Orchestrated(w.t) || w.t.Phase == store.Waiting:
+				state = flowState(w.t, state)
+			case w.t.SessionID == "":
+				state = "starting"
+			}
+			if !w.inited {
+				w.inited, w.state, w.cand = true, state, state
 				if text, ok := report[state]; ok {
 					w.done = true
 					events = append(events, struct {
 						id   int
 						text string
-					}{w.t.ID, fmt.Sprintf("%s · %s%s", w.t.Name(), text, noteOf(w.t))})
+					}{w.t.ID, fmt.Sprintf("%s · already %s%s", w.t.Name(), text, noteOf(w.t))})
 				}
+				continue
 			}
-			if len(events) > 0 && stopAt.IsZero() {
-				stopAt = a.Now().Add(grace)
+			if state == w.state {
+				w.cand, w.count = state, 0
+				continue
 			}
+			if state == w.cand {
+				w.count++
+			} else {
+				w.cand, w.count = state, 1
+			}
+			if w.count < 2 {
+				continue
+			}
+			w.state, w.count = state, 0
+			if text, ok := report[state]; ok {
+				w.done = true
+				events = append(events, struct {
+					id   int
+					text string
+				}{w.t.ID, fmt.Sprintf("%s · %s%s", w.t.Name(), text, noteOf(w.t))})
+			}
+		}
+		if len(events) > 0 && stopAt.IsZero() {
+			stopAt = a.Now().Add(grace)
 		}
 		now := a.Now()
 		allDone := true

@@ -10,7 +10,7 @@ Codex conversation to background sessions. Each task gets a name (`T1`, `T2`, �
 worktree and a row in the Claude Code status line. You keep the conversation, and the tasks
 work in parallel.
 
-![Claude Code in a terminal. Below the prompt, the status line shows six tasks: needs input, ready, done, checking 1/3, working with a usage trail, and waiting T5.](docs/images/csquad-main.png)
+![Animation: in Claude Code, the user types /create-task three times. T1 starts. T2 is for after T1 and shows "waiting T1". T3 runs on Codex and has the ⬡ mark. The rows show "working" and the tokens the tasks use. T1 becomes "done". The user types /finish-task T1. Claude merges T1, the T1 row goes, and T2 starts.](docs/images/demo.gif)
 
 csquad is one binary with no service of its own. It installs five skills that Claude uses when
 you ask for tasks, and it adds the task rows to your own status line.
@@ -57,7 +57,8 @@ you ask for tasks, and it adds the task rows to your own status line.
    ```
 
 3. Start `claude` in a git repository, or restart it if it runs.
-4. Ask Claude for a task, for example: "Create a task to add retry to the HTTP client."
+4. Type `/create-task` and the work in plain words, for example:
+   `/create-task add retry to the HTTP client`.
 
 The installer copies the binary to `~/.csquad/bin/csquad`. The skills and the status line use
 this copy. The installer does not change your `PATH`. To type `csquad` in a shell, add
@@ -74,7 +75,9 @@ To build from source, see [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Examples
 
 Each example shows what you type in Claude Code, what Claude replies, and the csquad command that
-Claude runs. You can also run the commands yourself in a shell.
+Claude runs. You type a slash command and then the work in plain words. Options such as "after
+T1" or "with codex" come in the same words. Requests without the slash command also work, for
+example "create a task to add retry". You can also run the commands yourself in a shell.
 
 The commands read the prompt from stdin. In PowerShell, pipe a here-string (`@' … '@`) into
 `csquad launch`.
@@ -82,7 +85,7 @@ The commands read the prompt from stdin. In PowerShell, pipe a here-string (`@' 
 ### Create a task
 
 ```text
-you     Create a task to add retry to the HTTP client.
+you     /create-task add retry to the HTTP client
 claude  Launched T1 · add http client retry. It works in the background.
 ```
 
@@ -103,11 +106,11 @@ launched T1 · add http client retry · session 93da1028 · ~/demo/httpclient
 
 ### Watch a task
 
-The status line always shows the task. Ask Claude to watch it only if you want a message when it
+The status line always shows the task. Use `/watch-task` only if you want a message when it
 changes.
 
 ```text
-you     Watch T1 and tell me when it is done.
+you     /watch-task T1
 claude  Watching T1. I will tell you when it finishes or needs input.
         ...
 claude  T1 is done: retries with backoff are on branch worktree-t1-http-client-retry,
@@ -123,12 +126,14 @@ csquad status                 # this session's tasks: state, age, session, lates
 csquad peek T1 -n 8           # the last 8 messages of the task, tool calls folded
 ```
 
-To ask for a report at any time, ask "How are my tasks going?".
+To get a report at any time, type `/task-status`.
+
+![Claude Code in a terminal. Below the prompt, the status line shows six tasks: needs input, ready, done, checking 1/3, working with a usage trail, and waiting T5.](docs/images/csquad-main.png)
 
 ### Finish and merge a task
 
 ```text
-you     Merge T1.
+you     /finish-task T1
 claude  Merged worktree-t1-http-client-retry into main, and go test passes.
         T1 is finished: its worktree, branch and session are removed.
 ```
@@ -173,14 +178,16 @@ csquad finish T1
 finished T1 · add http client retry · merged into main: worktree-t1-http-client-retry · removed worktree ~/demo/httpclient/.claude/worktrees/t1-http-client-retry, branch worktree-t1-http-client-retry, removed session 93da1028
 ```
 
-Say "finish everything that is done" to finish all tasks of this session that are done, idle or
-ready.
+Type `/finish-task everything that is done` to finish all tasks of this session that are done,
+idle or ready.
 
 ### Run two tasks in parallel
 
 ```text
-you     Create two tasks: add a request timeout option, and fix the auth header leak on redirect.
-claude  Launched T2 · add request timeout option and T3 · fix auth header on redirect.
+you     /create-task add a request timeout option
+claude  Launched T2 · add request timeout option.
+you     /create-task fix the auth header leak on redirects
+claude  Launched T3 · fix auth header on redirect.
 ```
 
 Each task has its own session, worktree and branch, so the tasks do not change the same files on
@@ -198,7 +205,7 @@ PROMPT
 ### Start a task after another task
 
 ```text
-you     Create a task to document the retry options, after T1.
+you     /create-task after T1, document the retry options
 claude  Queued T4 · document retry options. It starts when T1 is done.
 ```
 
@@ -218,8 +225,7 @@ queued T4 · document retry options · after T1 · ~/demo/httpclient
 ### Let Codex review a task, then merge it
 
 ```text
-you     Create a task to add a circuit breaker. Let codex review it, at most 3 rounds,
-        and merge it when it passes.
+you     /create-task add a circuit breaker, have codex review it, 3 rounds max, then merge
 claude  Launched T5 · add circuit breaker. Codex checks it when it stops, at most 3 rounds,
         and csquad merges it into main when the check passes.
 ```
@@ -257,7 +263,7 @@ Other checks:
 ### Run a task in Codex
 
 ```text
-you     Run it in codex: add structured request logging with log/slog.
+you     /create-task with codex: add request logging with log/slog
 claude  Launched T6 · add request logging (Codex). Open it with codex resume <thread>.
 ```
 
@@ -282,7 +288,7 @@ Codex tasks as for Claude Code tasks.
 ![Claude sends "use log/slog" to T2. The status line below shows T2 needs input, T7 needs you · max rounds, T1 ready, and "+4 more".](docs/images/status-line-80.png)
 
 ```text
-you     Tell T2 to use log/slog.
+you     /message-task T2 use log/slog
 claude  I sent T2 the instruction to use log/slog.
 ```
 
@@ -303,12 +309,12 @@ can hold the message until you approve it in agent view.
 
 ### More requests
 
-| You say | Claude adds | Effect |
+| You add after `/create-task` | Claude adds | Effect |
 | --- | --- | --- |
-| "Use opus with high effort for this one." | `-- --model opus --effort high` | Arguments after `--` go to `claude --bg` unchanged. |
-| "Edit my checkout in place, so I can see it live." | `--isolation none` | The task edits your checkout. It makes no branch and does not commit. |
-| "Fork this into a task, with what we discussed." | `--fork` | The task starts as a fork of this conversation. |
-| "Run it in ~/work/api." | `--cwd ~/work/api` | The task runs in that directory. |
+| "with opus, high effort" | `-- --model opus --effort high` | Arguments after `--` go to `claude --bg` unchanged. |
+| "in place, I want to see it live" | `--isolation none` | The task edits your checkout. It makes no branch and does not commit. |
+| "fork this conversation" | `--fork` | The task starts as a fork of this conversation. |
+| "in ~/work/api" | `--cwd ~/work/api` | The task runs in that directory. |
 
 ## Read the status line
 

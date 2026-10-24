@@ -115,22 +115,30 @@ func firstLine(s string) string {
 	return line
 }
 
-// RawState mirrors how agent view labels a session: a finished state wins
-// (crashed counts as failed); otherwise the status decides: busy or shell is
-// working, waiting (or waitingFor, or tempo blocked, or state blocked) needs
-// input, idle is idle. `state` alone stays "working" after a turn ends.
+// RawState mirrors how agent view labels a session. A session waiting on the
+// user (status waiting, or waitingFor while not busy) needs input whatever
+// its state: a message held for approval after the turn ended reads `state:
+// done, status: waiting, waitingFor: "permission prompt"` (Claude Code
+// 2.1.295). Then a finished state wins (crashed counts as failed);
+// otherwise the status decides: busy or shell is working, tempo blocked or
+// state blocked needs input, idle is idle. `state` alone stays "working"
+// after a turn ends.
 func RawState(s Session) string {
+	busy := s.Status == "busy" || s.Status == "shell"
+	waitingFor := len(s.WaitingFor) > 0 && string(s.WaitingFor) != "null" && string(s.WaitingFor) != `""`
+	if s.Status == "waiting" || waitingFor && !busy {
+		return engine.NeedsInput
+	}
 	switch s.State {
 	case "done", "failed", "stopped":
 		return s.State
 	case "crashed":
 		return engine.Failed
 	}
-	waitingFor := len(s.WaitingFor) > 0 && string(s.WaitingFor) != "null" && string(s.WaitingFor) != `""`
 	switch {
-	case s.Status == "busy" || s.Status == "shell":
+	case busy:
 		return engine.Working
-	case s.Status == "waiting" || waitingFor || s.Tempo == "blocked" || s.State == "blocked":
+	case s.Tempo == "blocked" || s.State == "blocked":
 		return engine.NeedsInput
 	case s.Status == "idle":
 		return engine.Idle

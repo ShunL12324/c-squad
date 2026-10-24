@@ -31,6 +31,14 @@ func TestRawStateFollowsAgentView(t *testing.T) {
 		want string
 	}{
 		{Session{State: "done", Status: "busy"}, "done"},
+		{Session{State: "done", Status: "idle"}, "done"},
+		// A message held for the user's approval after the turn ended, as
+		// claude agents --json --all lists it (Claude Code 2.1.295).
+		{Session{State: "done", Status: "waiting", WaitingFor: json.RawMessage(`"permission prompt"`)}, "needs_input"},
+		{Session{State: "done", Status: "idle", WaitingFor: json.RawMessage(`"permission prompt"`)}, "needs_input"},
+		{Session{State: "stopped", Status: "waiting"}, "needs_input"},
+		{Session{State: "done", Status: "idle", WaitingFor: json.RawMessage(`null`)}, "done"},
+		{Session{State: "working", Status: "busy", WaitingFor: json.RawMessage(`"permission prompt"`)}, "working"},
 		{Session{State: "crashed"}, "failed"},
 		{Session{State: "stopped", Status: "busy"}, "stopped"},
 		{Session{State: "working", Status: "busy"}, "working"},

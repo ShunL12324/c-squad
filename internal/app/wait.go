@@ -35,6 +35,9 @@ var report = map[string]string{
 func flowState(t store.Task, live string) string {
 	switch t.Phase {
 	case store.Ready:
+		if live == engine.NeedsInput {
+			return live // a message held for approval after the work was done
+		}
 		return "ready"
 	case store.NeedsYou:
 		return "needs_you"

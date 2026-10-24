@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -491,6 +492,32 @@ func TestStatesFollowAgentView(t *testing.T) {
 	h.SetSessions(nil)
 	if out := ok(t, csq(t, h, opts{env: mine()}, "status")).stdout; !strings.Contains(out, "state: gone ") {
 		t.Errorf("removed session: %s", out)
+	}
+}
+
+// A message sent to a finished task that Claude Code holds for the user's
+// approval needs the user: it must not read done, nor ready.
+func TestHeldMessageAfterDoneNeedsInput(t *testing.T) {
+	h := testutil.NewHome(t)
+	n := launchAs(t, h, sid, "x")
+	held := func(s *testutil.Session) {
+		s.State, s.Status, s.WaitingFor = "done", "waiting", "permission prompt"
+	}
+	setState(h, n, held)
+	if out := ok(t, csq(t, h, opts{env: mine()}, "status")).stdout; !strings.Contains(out, "state: needs input ") {
+		t.Errorf("status: %s", out)
+	}
+	if rows := statusline(t, h, sid); len(rows) != 1 || !strings.Contains(rows[0], "needs input") {
+		t.Errorf("status line: %q", rows)
+	}
+	id, _ := strconv.Atoi(n)
+	setTask(t, h, id, func(t *store.Task) { t.Phase = store.Ready })
+	if out := ok(t, csq(t, h, opts{env: mine()}, "status")).stdout; !strings.Contains(out, "state: needs input ") {
+		t.Errorf("ready: %s", out)
+	}
+	setState(h, n, func(s *testutil.Session) { s.Status, s.WaitingFor = "idle", nil })
+	if out := ok(t, csq(t, h, opts{env: mine()}, "status")).stdout; !strings.Contains(out, "state: ready ") {
+		t.Errorf("approved: %s", out)
 	}
 }
 

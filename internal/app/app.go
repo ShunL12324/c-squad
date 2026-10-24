@@ -283,7 +283,14 @@ func view(t store.Task, l engine.Live, observed bool) View {
 		return View{t.Phase, fmt.Sprintf("%s %d/%d", t.Phase, max(1, t.Round), t.MaxRounds)}
 	case store.Checking:
 		return View{t.Phase, fmt.Sprintf("%s %d/%d", t.Phase, max(1, t.Round), t.MaxRounds)}
-	case store.Ready, store.Done, store.Failed, store.Cancelled:
+	case store.Ready:
+		// A message sent after the work was done, held for the user's
+		// approval, must not hide behind "ready".
+		if observed && l.State == engine.NeedsInput {
+			return View{l.State, stateText(l.State)}
+		}
+		return View{t.Phase, t.Phase}
+	case store.Done, store.Failed, store.Cancelled:
 		return View{t.Phase, t.Phase}
 	case store.NeedsYou:
 		return View{"needs_you", "needs you"}

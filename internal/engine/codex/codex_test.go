@@ -192,6 +192,8 @@ func TestLiveMapping(t *testing.T) {
 		{"active", ThreadStatus{Type: "active"}, nil, engine.Working},
 		{"approval", ThreadStatus{Type: "active", ActiveFlags: []string{"waitingOnApproval"}}, nil, engine.NeedsInput},
 		{"user input", ThreadStatus{Type: "active", ActiveFlags: []string{"waitingOnUserInput"}}, nil, engine.NeedsInput},
+		// A wait on the user outranks how the newest turn ended.
+		{"approval after a completed turn", ThreadStatus{Type: "active", ActiveFlags: []string{"waitingOnApproval"}}, &Turn{Status: "completed", Items: []Item{{Type: "agentMessage", Text: "Done."}}}, engine.NeedsInput},
 		{"system error", ThreadStatus{Type: "systemError"}, nil, engine.Failed},
 		{"no turn", ThreadStatus{Type: "idle"}, nil, engine.Idle},
 		{"idle but turn running", ThreadStatus{Type: "idle"}, &Turn{Status: "inProgress"}, engine.Working},

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/ShunL12324/c-squad/internal/engine"
@@ -57,9 +56,7 @@ func (e *Engine) Usage(ctx context.Context, id, state string) (engine.Usage, err
 			return engine.Usage{}, errors.New("the thread has no rollout file")
 		}
 		s = rolloutState{Thread: id, Path: t.Path, UpdatedAt: t.UpdatedAt}
-		if b, err := json.Marshal(s); err == nil && os.MkdirAll(filepath.Dir(state), 0o700) == nil {
-			_ = os.WriteFile(state, b, 0o600)
-		}
+		engine.SaveState(state, s)
 	}
 	st, err := os.Stat(s.Path)
 	if err != nil {

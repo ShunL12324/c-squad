@@ -4,7 +4,10 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"time"
 
@@ -105,6 +108,20 @@ func (u Usage) Fresh() int64 { return u.Input + u.CacheWrite + u.Output }
 // engine may keep its reading position in between calls.
 type UsageReader interface {
 	Usage(ctx context.Context, sessionID, state string) (Usage, error)
+}
+
+// SaveState writes v as JSON to a state file (mode 0600) through a
+// temporary file, so a concurrent reader (the status line and a csquad
+// command) never sees half of it.
+func SaveState(file string, v any) {
+	b, err := json.Marshal(v)
+	if err != nil || os.MkdirAll(filepath.Dir(file), 0o700) != nil {
+		return
+	}
+	tmp := fmt.Sprintf("%s.%d.tmp", file, os.Getpid())
+	if os.WriteFile(tmp, b, 0o600) == nil && os.Rename(tmp, file) != nil {
+		os.Remove(tmp)
+	}
 }
 
 // Engine runs tasks.

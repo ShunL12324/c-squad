@@ -216,19 +216,19 @@ func (o Options) checkPaths(rels []string) error {
 	return nil
 }
 
-// skillFiles returns relative path → rendered content of the skills for a
-// host (claude or codex).
+// skillFiles returns relative path → rendered content of every file of the
+// skills for a host (claude or codex).
 func (o Options) skillFiles(host string) map[string][]byte {
 	binary := BinaryPath(o.Home)
 	win := runtime.GOOS == "windows"
 	triggers := Triggers(filepath.Join(o.Home, "models.md"))
 	out := map[string][]byte{}
-	for name, text := range assets.SkillsFor(host) {
+	for name, text := range assets.SkillFilesFor(host) {
 		text = assets.Render(text, binary, win)
-		if name == "create-task" && triggers != "" {
+		if name == "create-task/SKILL.md" && triggers != "" {
 			text = extendDescription(text, triggers)
 		}
-		out["skills/"+name+"/SKILL.md"] = []byte(text)
+		out["skills/"+name] = []byte(text)
 	}
 	return out
 }

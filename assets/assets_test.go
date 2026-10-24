@@ -20,6 +20,11 @@ func TestSkillsHaveValidFrontmatterAndUnbrokenInlineCode(t *testing.T) {
 		for name, text := range SkillsFor(host) {
 			skills[host+"/"+name] = text
 		}
+		for name, text := range SkillFilesFor(host) {
+			if !strings.HasSuffix(name, "/SKILL.md") {
+				files[host+"/"+name] = text
+			}
+		}
 	}
 	for name, text := range skills {
 		files[name] = text
@@ -106,11 +111,39 @@ func TestSkillsPerHost(t *testing.T) {
 			t.Errorf("claude/%s carries the Codex sandbox note", name)
 		}
 	}
-	if !strings.Contains(claude["message-task"], "SendMessage") || strings.Contains(codex["message-task"], "SendMessage") {
-		t.Error("SendMessage belongs to the Claude message-task only")
+	for _, host := range Hosts {
+		for name, text := range SkillFilesFor(host) {
+			// One way to send, one launch form: no SendMessage, no draft files.
+			if strings.Contains(text, "SendMessage") || strings.Contains(text, "--prompt-file") {
+				t.Errorf("%s/%s names SendMessage or --prompt-file", host, name)
+			}
+		}
+		create := SkillFilesFor(host)["create-task/SKILL.md"]
+		if !strings.Contains(create, "<<'PROMPT'") || !strings.Contains(create, "here-string") || !strings.Contains(create, "Before every launch, read `~/.csquad/models.md`") {
+			t.Errorf("%s/create-task: the prompt on stdin, models.md at every dispatch", host)
+		}
 	}
-	if strings.Contains(codex["create-task"], "--prompt-file") || !strings.Contains(codex["create-task"], "<<'PROMPT'") {
-		t.Error("Codex create-task passes the prompt on stdin only")
+}
+
+// create-task is a short core; the rest is in reference.md, read on demand.
+func TestCreateTaskIsACorePlusReference(t *testing.T) {
+	files := SkillFiles()
+	core, ref := files["create-task/SKILL.md"], files["create-task/reference.md"]
+	if ref == "" || !strings.Contains(core, "`reference.md` next to this file") {
+		t.Fatal("create-task/reference.md missing or not named by the core")
+	}
+	if words := len(strings.Fields(regexp.MustCompile(`(?s)^---\n.*?\n---\n`).ReplaceAllString(core, ""))); words > 470 {
+		t.Errorf("the create-task core has %d words", words)
+	}
+	for _, flag := range []string{"--after", "--check", "--merge", "--isolation none", "--fork", "--no-worker-rules", "-c/--config"} {
+		if !strings.Contains(ref, flag) {
+			t.Errorf("reference.md does not explain %s", flag)
+		}
+	}
+	for _, host := range Hosts {
+		if strings.Contains(SkillFilesFor(host)["create-task/reference.md"], "<!--") {
+			t.Errorf("%s/reference.md keeps a block marker", host)
+		}
 	}
 }
 

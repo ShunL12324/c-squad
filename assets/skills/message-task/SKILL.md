@@ -5,26 +5,24 @@ description: Send further instructions to a running or finished background task 
 
 # Message a task
 
-<!-- claude -->
-From a Claude Code session, a Claude task can be reached with Claude Code's
-built-in `SendMessage` tool: address the session by its full name,
-`T12 · title` (`ListAgents` shows the exact names, as does
-`{{CSQUAD}} status`). For a Codex task, or when SendMessage cannot reach it,
-run:
-<!-- /claude -->
 <!-- codex -->
 Run, outside Codex's sandbox (ask for escalated permissions):
 <!-- /codex -->
+<!-- claude -->
+Run:
+<!-- /claude -->
 
 ```bash
 {{CSQUAD}} send T12 "the message"
 ```
 
-For a Claude task it delivers the message to a live session's inbox, or wakes
-a stopped one with it (`claude --bg --resume`, with the task's own options). A
-task running in bypass-permissions mode may hold a message from `csquad send`
-until the user approves it in agent view; say so if you used it. For a Codex
-task it adds the message to the running turn, or starts a new turn.
+This is the one way to message a task, whatever its engine. For a Claude
+task it delivers the message to a live session's inbox, or wakes a stopped
+one with it (`claude --bg --resume`, with the task's own options). A task
+running in bypass-permissions mode may hold the message until the user
+approves it in agent view; say so. For a Codex task it adds the message to
+the running turn, or starts a new turn. For a long message, leave out the
+text and pass it on stdin (a quoted heredoc, or a PowerShell here-string).
 
 Message only this session's tasks, unless the user names a task from another
 session explicitly (then pass `--all`).

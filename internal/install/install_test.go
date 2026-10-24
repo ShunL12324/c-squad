@@ -127,6 +127,48 @@ func TestInstallIntoEmptyDir(t *testing.T) {
 	}
 }
 
+// A skill is several files: every one is installed (rendered) for both
+// hosts, an edited one is kept as .bak, one no longer shipped goes on update,
+// and uninstall leaves no skill directory behind.
+func TestMultiFileSkills(t *testing.T) {
+	e := setup(t)
+	os.MkdirAll(filepath.Join(e.h.Home, ".codex"), 0o755)
+	e.install()
+	ref := filepath.Join(e.h.Claude, "skills", "create-task", "reference.md")
+	codexRef := filepath.Join(e.h.Home, ".agents", "skills", "create-task", "reference.md")
+	for _, f := range []string{ref, codexRef} {
+		if text := e.read(f); strings.Contains(text, "{{CSQUAD}}") || !strings.Contains(text, BinaryPath(e.h.Csquad)+" retry T12") || strings.Contains(text, "<!--") {
+			t.Errorf("%s not rendered for its host:\n%s", f, text)
+		}
+	}
+	Status(e.o)
+	if out := e.out(); !strings.Contains(out, "ok       skills/create-task/reference.md") {
+		t.Errorf("status:\n%s", out)
+	}
+	// A file an older version shipped, recorded in the manifest.
+	var m Manifest
+	readJSON(filepath.Join(e.h.Csquad, "manifest.json"), &m)
+	old := filepath.Join(e.h.Claude, "skills", "create-task", "notes", "old.md")
+	os.MkdirAll(filepath.Dir(old), 0o755)
+	os.WriteFile(old, []byte("old"), 0o644)
+	m.Files["skills/create-task/notes/old.md"] = sha([]byte("old"))
+	writeJSON(filepath.Join(e.h.Csquad, "manifest.json"), m)
+	os.WriteFile(ref, []byte("my notes"), 0o644)
+	if out := e.update(); !strings.Contains(out, "skills/create-task/reference.md was edited; saved your version as skills/create-task/reference.md.bak") {
+		t.Errorf("update:\n%s", out)
+	}
+	if exists(old) || exists(filepath.Dir(old)) || e.read(ref+".bak") != "my notes" {
+		t.Error("the file no longer shipped is left, or the edit was not kept")
+	}
+	os.Remove(ref + ".bak")
+	e.uninstall()
+	for _, d := range []string{filepath.Join(e.h.Claude, "skills", "create-task"), filepath.Join(e.h.Home, ".agents", "skills", "create-task")} {
+		if exists(d) {
+			t.Errorf("%s is left", d)
+		}
+	}
+}
+
 func TestInstallWrapsTheUsersLineKeepingEverythingElse(t *testing.T) {
 	e := setup(t)
 	e.seed("{\n    \"theme\": \"dark\",\n    \"statusLine\": {\n        \"type\": \"command\",\n        \"command\": \"echo mine\",\n        \"refreshInterval\": 30\n    },\n    \"env\": {\n        \"A\": \"1\"\n    }\n}\n")

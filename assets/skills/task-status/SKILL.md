@@ -38,7 +38,8 @@ Report in this order, briefly:
 2. **Failed**: what went wrong.
 3. **Done or idle**: the result in a line or two (branch, verification,
    anything left unresolved), and that it is ready to merge and finish.
-4. **Working**: one line each on what it is doing now.
+4. **Working**: one line each on what it is doing now. `status` also shows
+   its token usage and last activity; mention a long quiet spell.
 
 Do not invent progress the messages do not show. Run this only when the user
 asks; do not poll.

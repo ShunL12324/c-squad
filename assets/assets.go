@@ -33,18 +33,48 @@ func Skills() map[string]string {
 	return out
 }
 
-// SkillsFor returns the skills for one host: only its own blocks, which are
-// marked like `<!-- codex -->` ... `<!-- /codex -->`.
+// SkillFiles returns every file of every skill as "name/SKILL.md",
+// "name/reference.md", ... → text (unrendered, with the blocks of every
+// host). A skill is SKILL.md plus files it reads on demand.
+func SkillFiles() map[string]string {
+	out := map[string]string{}
+	_ = fs.WalkDir(files, "skills", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		if b, err := files.ReadFile(p); err == nil {
+			out[strings.TrimPrefix(p, "skills/")] = string(b)
+		}
+		return nil
+	})
+	return out
+}
+
+// SkillFilesFor returns SkillFiles for one host: only its own blocks, which
+// are marked like `<!-- codex -->` ... `<!-- /codex -->`.
+func SkillFilesFor(host string) map[string]string {
+	out := SkillFiles()
+	for name, text := range out {
+		out[name] = filter(text, hostDrop(host))
+	}
+	return out
+}
+
+// SkillsFor returns the skills' SKILL.md for one host.
 func SkillsFor(host string) map[string]string {
+	out := Skills()
+	for name, text := range out {
+		out[name] = filter(text, hostDrop(host))
+	}
+	return out
+}
+
+func hostDrop(host string) map[string]bool {
 	drop := map[string]bool{}
 	for _, h := range Hosts {
 		drop[h] = h != host
 	}
-	out := Skills()
-	for name, text := range out {
-		out[name] = filter(text, drop)
-	}
-	return out
+	return drop
 }
 
 // SkillNames returns the skill names, sorted.

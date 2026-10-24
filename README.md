@@ -50,9 +50,9 @@ claude  launched T1 · fix login redirect, T2 · add parser tests, T3 · update 
 Your status line now lists the tasks, most urgent first:
 
 ```text
-▎ ◆ T2 add parser tests ··························  needs input   18m
-▎ ✓ T1 fix login redirect ························  done        1h05m
-▎ ● T3 update the docs ···························  working        7m
+▎ ◆ T2 add parser tests ··························  needs input        18m
+▎ ✓ T1 fix login redirect ························  done        326k 1h05m
+▎ ● T3 update the docs ···························  working ▇▆·▇▆▅▃▆    7m
 ```
 
 ```text
@@ -101,14 +101,15 @@ Just ask; Claude picks the skill from what you say.
 | --- | --- | --- |
 | `create-task` | Starts one background session per task, numbered `T1`, `T2`, ... | "Create a task to retry on SQLite busy errors." "Queue three tasks: ..." |
 | `task-status` | Reports state and latest message of each task: needs input, failed, done, working | "How are my tasks going?" "Which tasks need input?" |
-| `message-task` | Sends follow-up instructions to a task (Claude Code's native `SendMessage`) | "Tell T3 to also handle the empty-input case." |
+| `message-task` | Sends follow-up instructions to a task with `csquad send`, for any engine | "Tell T3 to also handle the empty-input case." |
 | `watch-task` | Opt-in: runs a background command that checks the named tasks every 10 s and tells you when one needs input, finishes, fails or disappears. Never runs unless you ask | "Watch T3." "Tell me when T2 is done." "Stop watching." |
 | `finish-task` | Merges a done task, then removes its session, worktree and branch, only after checking the work is merged | "Merge and clean up T2 and T4." "Finish everything that is done." |
 
 ## The status line
 
 Your own status line stays exactly as it is; csquad prints it first, then one row
-per task: its state, id and title, and how long it has been in that state.
+per task: its state, id and title, its token usage, and how long it has been in
+that state.
 
 | State | Meaning |
 | --- | --- |
@@ -119,8 +120,30 @@ per task: its state, id and title, and how long it has been in that state.
 | `◇ idle` | finished its turn and waiting |
 | `■ stopped` | stopped before finishing |
 
+The usage cell answers "is it moving, and how hard". A working task (also
+fixing or merging) shows a trail of its last 8 refreshes (about 80 s): one cell
+per refresh, newest on the right, on a log scale from `▁` (under 500 tokens)
+to `█` (32k or more); `·` means nothing changed, `▪` that the session changed
+but its gateway reports no token counts. After 2 minutes without activity the
+trail turns into dots and the idle time in amber (`····· 3m`); that is only a
+look, the task's state does not change. Other tasks show their total, faint
+(`326k`, `1.2M`, `?` when unknown). Fresh work counts input, cache writes and
+output; cache reads are never counted. A Claude task's numbers come from its
+transcript, a Codex task's from its rollout file; the status line keeps 9
+readings per task in `~/.csquad/cache`. `csquad status` shows the full block
+for each working task:
+
+```text
+## T365 · cancel smoke
+state: working · started 27s ago · session ca47ac83 · ~/project
+usage: 51.8k fresh · +0 since the last refresh (0 s) · last activity 13s ago
+       input 4 · cache write 51.1k · output 622  cache read 50.5k (not counted)
+       context 26% (51k of 200k) · last 20 s █·
+```
+
 Wide terminals show two to four tasks side by side (from 124, 187 and 250
-columns). At most four rows are used; when more tasks run, the last row lists
+columns; each cell is at least 60 wide). Below about 52 columns a cell drops
+its usage trail step by step after the title has shrunk. At most four rows are used; when more tasks run, the last row lists
 the rest as `+N more`. `NO_COLOR` turns colours off and keeps bold, faint and
 reverse video.
 
@@ -163,10 +186,13 @@ models.md         your model routing, optional, never written by csquad
 statusline.json   your original status line
 settings/T12.json a task's session settings while it runs (mode 600)
 prompts/T12.md    a prompt too large for the command line
+cache/            the status line's last output and each task's usage readings
+logs/             check logs, events.jsonl, advance.log (rotated past 1 MiB)
 ```
 
-Install and update are idempotent. If you edited an installed skill, the next
-run saves your version as `SKILL.md.bak` and says so. Uninstall keeps
+Install and update are idempotent. A skill can be several files (create-task is
+a short `SKILL.md` plus a `reference.md` it reads when needed); if you edited
+one, the next run saves your version as `.bak` next to it and says so. Uninstall keeps
 `csquad.db` and `models.md`; running task sessions are not affected.
 
 A csquad 1.x installation (`~/.claude/csquad/`) is not migrated: install stops
@@ -176,8 +202,9 @@ status line.
 ## Configuration
 
 Model routing lives in `~/.csquad/models.md`, a short file you own: which
-model or `claude` arguments for which kind of work. create-task reads it before
-dispatching. Its `## When to use create-task` section (extra trigger phrases)
+engine, model or arguments for which kind of work. create-task reads it before
+every launch, so keep it a short lookup table and name model aliases
+explicitly (without one the engine's default model runs). Its `## When to use create-task` section (extra trigger phrases)
 is appended to the installed skill's description by install and update.
 
 For one task, ask Claude for any `claude` option ("use opus with high effort
@@ -203,6 +230,13 @@ A task's worktree branches from your local HEAD (`worktree.baseRef: "head"`),
 so it sees commits you have not pushed yet. Set `worktree.baseRef` yourself
 (in your settings, the project's, or after `--`) to choose otherwise.
 
+To hand over the conversation you are in ("fork this into a task, with what we
+just discussed"), create-task adds `--fork`: the task starts as a fork of your
+session and inherits its conversation (Claude Code:
+`claude --bg --resume SESSION_ID --fork-session`; Codex: `thread/fork`). It
+stays in the engine of the session you dispatch from, and its first turn reads
+the whole inherited context again.
+
 If a launch fails because the workspace is not trusted, open `claude` in that
 directory once and accept the trust prompt.
 
@@ -222,7 +256,9 @@ After `--` a Codex task takes thread options: `-m/--model`, `--effort`,
 Codex sessions can dispatch too: when `$CODEX_HOME` (default `~/.codex`)
 exists, install also puts the skills into `~/.agents/skills`, and tasks
 launched from a Codex thread belong to it (`CODEX_THREAD_ID`). Codex must run
-`csquad` outside its sandbox. Codex has no status line, so there are no task
+`csquad` outside its sandbox. Install also adds one Stop hook group, marked
+`"__csquad__": true`, to `~/.codex/hooks.json` (approve it once with `/hooks`
+in Codex); uninstall removes exactly the text it inserted. Codex has no status line, so there are no task
 chips there.
 
 ## Requirements

@@ -4,6 +4,28 @@
 
 ### Added
 
+- Token usage in the status line (#41): working, fixing and merging rows show
+  a trail of their last 8 refreshes on a log scale (`▁` to `█`, `·` for no
+  change, `▪` for a change of unknown size), a stall after 2 minutes as dots
+  and the idle time in amber; other rows show their total, faint (`326k`,
+  `1.2M`, `?`). Urgent badges run across the cell; below about 52 columns it
+  steps down after the title shrinks. Claude usage comes from the transcript
+  (one usage per message id, fresh work = input + cache writes + output,
+  cache reads never counted; read incrementally), Codex usage from the
+  rollout's newest `token_count` event. The status line keeps 9 readings per
+  task in `~/.csquad/cache` (readings less than 8 s apart are dropped) and
+  gives reading usage at most 1 s of its 3.5 s budget.
+- `csquad status` and `--json` show a usage block for each working task:
+  fresh total, change since the last refresh, last activity, the parts,
+  context fill and the trail.
+- `csquad launch --fork` starts a task as a fork of the dispatching session,
+  inheriting its conversation (Claude:
+  `claude --bg --resume <full id> --fork-session`; Codex: `thread/fork`,
+  with the worker rules in the first turn). Same engine only; refused
+  without the dispatching session's id.
+- Codex as an engine (#41, M2): Codex threads on Codex's app-server daemon
+  as workers, reviewers and dispatchers; skills in `~/.agents/skills`.
+
 - Orchestration (#41, M3): `launch --after T3,T4` (queued until they are
   done; the prompt gets what they left), `--check codex|claude[:MODEL]|cmd:COMMAND`
   with `--max N` fix rounds, `--merge [BRANCH]` (csquad rebases, fast-forwards
@@ -44,6 +66,26 @@
   manual). `csquad update` run by the installed copy of an npm installation
   runs `npx --yes csquad@latest update`. `csquad COMMAND --help` prints the
   command's usage.
+- Skills are slimmer and may be several files: create-task is a core of
+  about 450 words plus `reference.md`, read on demand; one launch form (the
+  prompt on stdin, a quoted heredoc or a PowerShell here-string, no draft
+  files) and one way to send (`csquad send`, also for Claude tasks).
+  create-task reads `models.md` before every launch.
+
+### Fixed
+
+- One engine failing no longer hides the other's tasks: `status` and the
+  status line show what the other engines report, and `wait` fails only
+  when the engine of a watched, unfinished task keeps failing.
+- Worktrees and branches named for a task but older than it (csquad 1.x
+  reused numbers) are reported by `finish` and `cancel` and never checked,
+  merged or removed.
+- The install manifest records csquad's text in Codex's `hooks.json`
+  (`hooksText`) in every case, so uninstall removes exactly that; a file
+  install created goes.
+- In `fixing` and `merging`, a Codex worker's reply is dated by its turn's
+  start, as Claude's is by the transcript.
+- `launch` removes the lock and usage files of finished tasks.
 
 ## 1.4.0 - 2026-10-24
 

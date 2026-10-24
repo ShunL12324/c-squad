@@ -90,10 +90,14 @@ go test ./...
 - Opt-in live tests: `CSQUAD_CODEX_LIVE=1 go test ./internal/engine/codex
   -run Live` runs one trivial thread on the real Codex daemon (your login and
   configuration) and deletes it afterwards.
-- The status line ledger has golden files in `internal/statusline/testdata`;
-  after a deliberate layout change, `go test ./internal/statusline -run
-  TestGolden -update` rewrites them; read the diff.
-- `assets/` is what users get. Skills reference `{{CSQUAD}}`, which install
-  replaces with the absolute, shell-quoted path of the installed binary.
+- The status line ledger has golden files in `internal/statusline/testdata`
+  (without and with usage cells); after a deliberate layout change,
+  `go test ./internal/statusline -run Golden -update` rewrites them; read the
+  diff.
+- `assets/` is what users get. A skill is a directory: `SKILL.md` plus any
+  files it reads on demand (create-task's `reference.md`); install copies
+  every file. Skills reference `{{CSQUAD}}`, which install replaces with the
+  absolute, shell-quoted path of the installed binary, and mark host-only
+  parts with `<!-- claude -->` / `<!-- codex -->` blocks.
 
 Contributions are provided under the project's [MIT license](LICENSE).

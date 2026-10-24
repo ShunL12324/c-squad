@@ -1,8 +1,44 @@
 # Changelog
 
-## Unreleased
+## 3.0.1 - unreleased
+
+### Changed
+
+- The status line's usage cell shows numbers instead of a trail: working,
+  checking, fixing and merging rows show the fresh total and the change
+  since the last refresh (`326k  +4.1k`; `+0` faint; `+?` when the provider
+  reports no or partial usage); a stall shows `idle 3m` in amber after the
+  total (not for a checking task, which waits for its check). Other rows
+  show their total, faint, as before. In a narrow cell the change goes
+  first, then the total. The status line keeps two readings per task
+  instead of nine. `csquad status` shows the same change
+  (`status line +4.1k in 10 s`) instead of the trail; `status --json` has
+  `change`, `changeText` and `changeSeconds` instead of `trail` and
+  `trailSeconds`.
+- `csquad peek` shows the last assistant message in full, so `peek T12 -n 1`
+  is the whole final report; older messages are still cut at 3000
+  characters. `csquad status` says when it cut the latest message and which
+  peek shows all of it.
 
 ### Fixed
+
+- A message held for your approval after a task was done (Claude Code lists
+  the session as `state: done, status: waiting, waitingFor: "permission
+  prompt"`) showed the task as `done` (or `ready`) in `status`, `wait` and
+  the status line. It now shows `needs input`: a wait on the user comes
+  before a finished state.
+- `csquad cancel T3 --discard` on a task that a plain cancel already
+  cancelled failed with "already cancelled", although cancel had printed
+  that command. It now deletes the task's own worktrees and branches
+  (unmerged ones included) and its session; an in-place task's checkout is
+  never touched. A plain cancel of a cancelled task names the work that is
+  left and the `--discard` command.
+- The status line no longer loses the age at the right of a full row:
+  Claude Code indents the status line and cuts a row longer than
+  `COLUMNS-4` with `…`, and the ledger filled `COLUMNS-1`. Rows now fit
+  `COLUMNS-4`; the column thresholds (124, 187, 250) stay. In a narrow cell
+  the title shrinks first, then the usage cell steps down and the reason of
+  a `needs you` badge is cut, then the title gives the rest.
 
 - Windows: a detached csquad (a check, an advance) no longer opens a console
   window for every git, shell or agent it starts; they share its hidden

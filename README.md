@@ -10,7 +10,7 @@ Codex conversation to background sessions. Each task gets a name (`T1`, `T2`, â€
 worktree and a row in the Claude Code status line. You keep the conversation, and the tasks
 work in parallel.
 
-![Claude Code in a terminal. Below the prompt, the status line shows six tasks: needs input, ready, done, checking 1/3, working with a usage trail, and waiting T5.](docs/images/csquad-main.png)
+![Animation: in Claude Code, the user asks for two tasks. T1 and T2 start, and their status line rows show "working" and the tokens they use. The user asks for a third task after T1, and T3 shows "waiting T1". T1 becomes "done". The user says "finish T1". Claude merges T1, the T1 row goes, and T3 starts.](docs/images/demo.gif)
 
 csquad is one binary with no service of its own. It installs five skills that Claude uses when
 you ask for tasks, and it adds the task rows to your own status line.
@@ -124,6 +124,8 @@ csquad peek T1 -n 8           # the last 8 messages of the task, tool calls fold
 ```
 
 To ask for a report at any time, ask "How are my tasks going?".
+
+![Claude Code in a terminal. Below the prompt, the status line shows six tasks: needs input, ready, done, checking 1/3, working with a usage trail, and waiting T5.](docs/images/csquad-main.png)
 
 ### Finish and merge a task
 

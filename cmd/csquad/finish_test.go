@@ -166,6 +166,26 @@ func TestFinishInPlaceTouchesNoGit(t *testing.T) {
 	}
 }
 
+// --discard on a cancelled in-place task never touches the user's checkout.
+func TestDiscardAfterCancelInPlaceTouchesNoGit(t *testing.T) {
+	h := testutil.NewHome(t)
+	h.ExtraEnv = gitIdentity
+	repo := filepath.Join(h.Root, "repo")
+	os.MkdirAll(repo, 0o755)
+	git(t, h, repo, "init", "-q", "-b", "main")
+	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("a\n"), 0o644)
+	git(t, h, repo, "add", ".")
+	git(t, h, repo, "commit", "-qm", "init")
+	ok(t, csq(t, h, opts{stdin: "go", env: mine()}, "launch", "--title", "live", "--cwd", repo, "--isolation", "none"))
+	git(t, h, repo, "branch", "worktree-t1-live") // named for the task, but in the user's checkout
+	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("changed by the task\n"), 0o644)
+	ok(t, csq(t, h, opts{env: mine()}, "cancel", "T1"))
+	ok(t, csq(t, h, opts{env: mine()}, "cancel", "T1", "--discard"))
+	if b, _ := os.ReadFile(filepath.Join(repo, "a.txt")); string(b) != "changed by the task\n" || !strings.Contains(git(t, h, repo, "branch"), "worktree-t1-live") {
+		t.Error("--discard touched an in-place task's checkout")
+	}
+}
+
 func TestCancelKeepsUnmergedWorkUnlessDiscard(t *testing.T) {
 	h, repo, wt := repoWithTask(t)
 	setState(h, "1", func(s *testutil.Session) { s.Status = "busy" })
@@ -179,12 +199,37 @@ func TestCancelKeepsUnmergedWorkUnlessDiscard(t *testing.T) {
 	if out := ok(t, csq(t, h, opts{env: mine()}, "status")).stdout; strings.Contains(out, "T1") {
 		t.Errorf("a cancelled task is still listed: %s", out)
 	}
-	if r := csq(t, h, opts{env: mine()}, "cancel", "T1"); r.code != 1 {
-		t.Error("cancelling twice")
+	if r := csq(t, h, opts{env: mine()}, "cancel", "T1"); r.code != 1 || !strings.Contains(r.stderr, "T1 is already cancelled; its work is kept (worktree "+wt) || !strings.Contains(r.stderr, "csquad cancel T1 --discard deletes it") {
+		t.Errorf("cancelling twice: %+v", r)
 	}
 	// Numbering continues past a cancelled task.
 	if n := launchAs(t, h, sid, "next"); n != "2" {
 		t.Errorf("next number %s", n)
+	}
+	// The command cancel printed deletes the kept work, and only the task's.
+	git(t, h, repo, "branch", "user-work")
+	git(t, h, repo, "branch", "worktree-t2-next")
+	r = csq(t, h, opts{env: mine("FAKE_RM_REFUSE=1")}, "cancel", "T1", "--discard")
+	if r.code != 0 || !strings.Contains(r.stdout, "discarded T1 · fix · ") || !strings.Contains(r.stdout, "branch worktree-t1-fix") || !strings.Contains(r.stdout, "removed session") {
+		t.Fatalf("--discard after cancel: %+v", r)
+	}
+	branches := git(t, h, repo, "branch")
+	if exists(wt) || strings.Contains(branches, "worktree-t1-fix") || !strings.Contains(branches, "user-work") || !strings.Contains(branches, "worktree-t2-next") {
+		t.Errorf("refs after --discard: %s", branches)
+	}
+	for _, s := range h.Sessions() {
+		if strings.HasPrefix(s.Name, "T1 · ") {
+			t.Error("the session of T1 is left")
+		}
+	}
+	if r := csq(t, h, opts{env: mine()}, "cancel", "T1"); r.code != 1 || !strings.Contains(r.stderr, "T1 is already cancelled") || strings.Contains(r.stderr, "--discard") {
+		t.Errorf("nothing left: %+v", r)
+	}
+	if r := csq(t, h, opts{env: mine()}, "cancel", "T1", "--discard"); r.code != 0 || !strings.Contains(r.stdout, "discarded T1 · fix · nothing") {
+		t.Errorf("--discard twice: %+v", r)
+	}
+	if exists(filepath.Join(h.Csquad, "logs", "T1.lock")) {
+		t.Error("the lock file is left")
 	}
 
 	h2, repo2, wt2 := repoWithTask(t)

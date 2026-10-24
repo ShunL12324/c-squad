@@ -384,7 +384,7 @@ tasks".
 | `wait T12 [T13...] [--timeout MIN]` | Return when a task needs input, finishes, fails or is removed. |
 | `send T12 "text"` | Send a follow-up instruction. The text comes from stdin when omitted. |
 | `finish T12 [T13...] [--into BRANCH]` | Make sure that the work is merged and clean, then remove worktrees, branches and the session. |
-| `cancel T12 [--discard]` | Stop a task and remove it from the list. Unmerged work stays unless `--discard`. |
+| `cancel T12 [--discard]` | Stop a task and remove it from the list. Unmerged work stays unless `--discard`; `--discard` also works on a task that is already cancelled. |
 | `retry T12` | Continue a task that needs you, where it stopped. |
 | `statusline` | The status line command. It reads the JSON of Claude Code on stdin. |
 | `install` | Install the binary to `~/.csquad/bin`, the skills, and the status line wrapper. |
@@ -554,7 +554,8 @@ that has these variables, then create the task again.
 
 **I sent a message, but the task did nothing.**
 Claude Code can hold a message to a task in bypass-permissions mode. Open agent view
-(`claude agents`), select the task and approve the message.
+(`claude agents`), select the task and approve the message. Such a task shows `needs input`
+in `csquad status` and the status line, also when it was done.
 
 **A task shows `needs you · max rounds`.**
 The check failed in each round. Run `csquad status` to read the findings. Send a message with a

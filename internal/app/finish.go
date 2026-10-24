@@ -258,11 +258,15 @@ func (a *App) finishOne(ctx context.Context, label, into string, all bool) error
 // number). Its session is stopped. A task with nothing to lose has its
 // worktrees, branches and session removed as finish does; otherwise they are
 // kept and cancel says where. With discard, the task's own refs go even when
-// unmerged; an in-place task's checkout is never touched.
+// unmerged; an in-place task's checkout is never touched. Discard also
+// deletes what an earlier cancel of the task kept.
 func (a *App) Cancel(ctx context.Context, label string, discard, all bool) error {
 	t, err := a.task(ctx, label, all, "cancel")
 	if err != nil {
 		return err
+	}
+	if t.Phase == store.Cancelled {
+		return a.cancelAgain(ctx, t, discard)
 	}
 	if store.Finished(t.Phase) {
 		return fmt.Errorf("%s is already %s", t.Label(), t.Phase)
@@ -341,6 +345,79 @@ func (a *App) Cancel(ctx context.Context, label string, discard, all bool) error
 	lock.Release()
 	// Tasks queued after it stop for the user.
 	a.AdvanceAll(ctx, nil)
+	return nil
+}
+
+// cancelAgain handles cancel on a cancelled task. With discard it deletes
+// what the first cancel kept: the task's own worktrees and branches,
+// unmerged ones included, then its session. Without discard it is an error
+// that says whether work is left.
+func (a *App) cancelAgain(ctx context.Context, t store.Task, discard bool) error {
+	lock, err := flock.Try(a.TaskLock(t.ID))
+	if err != nil {
+		return fmt.Errorf("%s is busy; try again in a moment", t.Label())
+	}
+	defer func() { a.removeFiles(t.ID, lock) }()
+	var l engine.Live
+	var eng engine.Engine
+	if t.SessionID != "" {
+		if eng, err = a.Engine(t.Engine); err != nil {
+			return err
+		}
+		live, err := a.observe(ctx, []store.Task{t})
+		if err != nil {
+			return err
+		}
+		l = live[t.ID]
+	}
+	p, err := a.inspect(t, "", l)
+	if err != nil {
+		return err
+	}
+	session := t.SessionID != "" && l.State != engine.Gone
+	if !discard {
+		var left []string
+		for _, w := range p.worktrees {
+			left = append(left, "worktree "+w.Path)
+		}
+		for _, b := range p.branches {
+			left = append(left, "branch "+b)
+		}
+		if session {
+			left = append(left, "session "+t.SessionID)
+		}
+		if len(left) == 0 {
+			return fmt.Errorf("%s is already cancelled", t.Label())
+		}
+		return fmt.Errorf("%s is already cancelled; its work is kept (%s)\n  csquad cancel %s --discard deletes it, unmerged work included", t.Label(), strings.Join(left, ", "), t.Label())
+	}
+	var done []string
+	if session && (l.State == engine.Working || l.State == engine.NeedsInput || l.State == engine.Idle) {
+		if err := eng.Stop(ctx, t.SessionID); err != nil {
+			a.warnf("csquad: stopping %s: %v\n", t.Label(), err)
+		} else {
+			done = append(done, "stopped session "+t.SessionID)
+		}
+	}
+	removed, gitDone, err := a.clean(p, true)
+	done = append(done, gitDone...)
+	if err != nil {
+		return fmt.Errorf("%s: %v (removed so far: %s)", t.Label(), err, orNone(done))
+	}
+	left := ""
+	if session {
+		how, err := eng.Remove(ctx, t.SessionID, removed)
+		if err != nil {
+			left = err.Error()
+		} else {
+			done = append(done, how)
+		}
+	}
+	a.printf("discarded %s · %s\n", t.Name(), orNone(done))
+	if left != "" {
+		a.printf("  the session is left: %s\n", left)
+	}
+	a.printIgnored(p.ignored)
 	return nil
 }
 

@@ -99,10 +99,6 @@ const (
 // columns.
 var columnsFrom = []int{124, 187, 250}
 
-// usageWidths are the usage cell's widths, widest first: the whole trail,
-// then a short one, then the newest change alone.
-var usageWidths = []int{trailCells, 4, 1}
-
 // Age is the time since since, at most five columns: now, 42m, 1h05m, 12h.
 func Age(since, now time.Time) string {
 	if since.IsZero() {
@@ -291,7 +287,7 @@ func Layout(tasks []Task, columns int, now time.Time, noColor bool) []string {
 // minBadge; then the title gives what is left and states are cut. The age
 // is never cut while the cell has room for the row without title and state.
 func column(entries []entry, cellMax int, now time.Time, p painter) []line {
-	idW, stateW, urgentW, titleW, marks, usage := 0, 0, 0, 0, false, false
+	idW, stateW, urgentW, titleW, changeW, marks, usage := 0, 0, 0, 0, 0, false, false
 	for _, e := range entries {
 		idW = max(idW, width(e.label()))
 		if e.st.urgent {
@@ -302,15 +298,22 @@ func column(entries []entry, cellMax int, now time.Time, p painter) []line {
 		titleW = max(titleW, width(e.title))
 		marks = marks || e.t.Mark != ""
 		usage = usage || showsUsage(e)
+		changeW = max(changeW, width(changePart(e, now, p).text))
 	}
 	base := 4 + idW + 1 + 2 + 1 + 5 // rail glyph id … state age
 	if marks {
 		base += 2
 	}
 	want := min(minTitle, titleW+1+minLeader) // the title area kept while the rest gives
+	// The usage cell's widths, widest first: the total and the change, then
+	// the total alone.
+	widths := []int{totalCells}
+	if changeW > 0 {
+		widths = []int{totalCells + 2 + changeW, totalCells}
+	}
 	usageW, span := 0, 0
 	if usage {
-		for _, w := range usageWidths {
+		for _, w := range widths {
 			if cellMax-(base+max(stateW, urgentW-w-1)+w+1) >= want {
 				usageW, span = w, w+1
 				break

@@ -140,7 +140,8 @@ func TestStatuslineCleansTitlesAndPrunesGoneTasks(t *testing.T) {
 }
 
 // The usage cell: the status line reads the transcript's usage, keeps the
-// reading with the earlier ones and shows the trail; status shows the block.
+// reading with the earlier one and shows the total and the change; status
+// shows the block.
 func TestUsageInTheStatusLineAndStatus(t *testing.T) {
 	h := testutil.NewHome(t)
 	launchAs(t, h, sid, "busy job")
@@ -155,7 +156,7 @@ func TestUsageInTheStatusLineAndStatus(t *testing.T) {
 	os.WriteFile(filepath.Join(h.Csquad, "cache", "T1.usage.json"), []byte(seed), 0o600)
 
 	rows := statusline(t, h, sid)
-	if len(rows) != 1 || !regexp.MustCompile(`working +▁█ +now$`).MatchString(rows[0]) {
+	if len(rows) != 1 || !regexp.MustCompile(`working +52k +\+52k +now$`).MatchString(rows[0]) {
 		t.Errorf("status line %q", rows)
 	}
 	b, _ := os.ReadFile(filepath.Join(h.Csquad, "cache", "T1.usage.json"))
@@ -175,7 +176,7 @@ func TestUsageInTheStatusLineAndStatus(t *testing.T) {
 	}
 	for _, want := range []string{
 		"       input 4 · cache write 51.1k · output 622  cache read 50.5k (not counted)",
-		"       context 25% (50k of 200k) · last 20 s ▁█",
+		"       context 25% (50k of 200k) · status line +52k in ",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("no %q in\n%s", want, out)
@@ -184,16 +185,17 @@ func TestUsageInTheStatusLineAndStatus(t *testing.T) {
 	var list []struct {
 		Usage *struct {
 			Fresh, CacheRead, ContextMax int64
-			Trail                        string
+			ChangeText                   string
+			Change                       *int64
 			SinceRefresh                 *int64
 		} `json:"usage"`
 	}
 	r := ok(t, csq(t, h, opts{env: mine()}, "status", "--json"))
 	if json.Unmarshal([]byte(r.stdout), &list) != nil || len(list) != 1 || list[0].Usage == nil || list[0].Usage.Fresh != 51726 ||
-		list[0].Usage.CacheRead != 50500 || list[0].Usage.ContextMax != 200_000 || list[0].Usage.Trail != "▁█" || list[0].Usage.SinceRefresh == nil {
+		list[0].Usage.CacheRead != 50500 || list[0].Usage.ContextMax != 200_000 || list[0].Usage.ChangeText != "+52k" || list[0].Usage.Change == nil || *list[0].Usage.Change != 51626 || list[0].Usage.SinceRefresh == nil {
 		t.Errorf("status --json %s", r.stdout)
 	}
-	// Not working: the total, faint, instead of a trail; no block in status.
+	// Not working: the total, faint, without the change; no block in status.
 	setState(h, "1", func(s *testutil.Session) { s.State, s.Status = "done", "" })
 	if rows := statusline(t, h, sid); !regexp.MustCompile(`done +52k +now$`).MatchString(rows[0]) {
 		t.Errorf("done: %q", rows)

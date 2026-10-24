@@ -109,13 +109,13 @@ func TestUsageCells(t *testing.T) {
 	rows := Layout(usageTasks(), 255, now, true)
 	plain := strip(strings.Join(rows, "\n"))
 	for _, want := range []string{
-		`working ▅▃▆▅▅▆▅▅ +42m`,                 // a full trail, newest on the right
-		`working +▇▆·▇▆ +7m`,                    // a short history is right-aligned
-		`fixing 2/3 +····· 3m +31m`,             // a stall: dots and the idle time
-		`merging +▪▪·▪▪▪·▪ +3m`,                 // changes of unknown size
-		`checking 1/3 +326k +12m`,               // not working: the total
-		`done +1.2M 1h05m`, `failed +61k 2h10m`, // totals
-		`idle +\? +5m`, `stopped +\? 4h00m`, // unknown totals
+		`working +800k +\+5\.0k +42m`,              // the total, then the change since the last refresh
+		`working +120k +\+10k +7m`,                 //
+		`fixing 2/3 +210k +idle 3m +31m`,           // a stall: the idle time
+		`merging +\? +\+\? +3m`,                    // a change of unknown size
+		`checking 1/3 +326k +12m`,                  // one reading: no change yet
+		`done +1\.2M +1h05m`, `failed +61k +2h10m`, // totals
+		`idle +\? +5m`, `stopped +\? +4h00m`, // unknown totals
 		`waiting T4 +7m`,                 // no session, no cell
 		`needs you · merge confl… 1h35m`, // the badge runs across the cell
 	} {
@@ -123,50 +123,54 @@ func TestUsageCells(t *testing.T) {
 			t.Errorf("no %q in\n%s", want, plain)
 		}
 	}
-	// The stall's idle time is amber; changes are in the state's colour.
+	// The idle time is amber; a change is in the state's colour; +0 is faint.
 	colored := strings.Join(Layout(usageTasks(), 255, now, false), "\n")
-	if !strings.Contains(colored, "\x1b[38;2;"+amber+"m3m\x1b[0m") || !strings.Contains(colored, "\x1b[38;2;"+blue+"m▅\x1b[0m") {
+	if !strings.Contains(colored, "\x1b[38;2;"+amber+"midle 3m\x1b[0m") || !strings.Contains(colored, "\x1b[38;2;"+blue+"m+5.0k\x1b[0m") {
 		t.Errorf("colours:\n%q", colored)
+	}
+	still := []Task{{ID: 1, Title: "x", State: Working, Since: now, Usage: usage(5000, 0, 100, 0)}}
+	if r := Layout(still, 80, now, false)[0]; !strings.Contains(r, "\x1b[2m+0\x1b[0m") || !regexp.MustCompile(`working +5\.0k +\+0 +now$`).MatchString(strip(r)) {
+		t.Errorf("+0: %q", r)
 	}
 }
 
 // Below about 52 columns a cell steps down: the title shrinks first, then
-// the usage cell narrows (short trail, newest change), then goes.
+// the change goes, then the total.
 func TestUsageCellStepsDown(t *testing.T) {
 	tasks := []Task{{ID: 1, Title: "Port the store to modernc sqlite", State: Working, Since: now.Add(-42 * time.Minute),
 		Usage: usage(800_000, 0, 5000, 1500, 10000, 5000, 5000, 10000, 5000, 5000)}}
 	cell := func(c int) string {
 		row := strip(Layout(tasks, c, now, true)[0])
-		m := regexp.MustCompile(`working( +[▁-█·▪]+)? +42m$`).FindStringSubmatch(row)
+		m := regexp.MustCompile(`working( +[0-9.kM?]+)?( +\+[0-9.kM?]+)? +42m$`).FindStringSubmatch(row)
 		if m == nil {
 			t.Fatalf("%d columns: %q", c, row)
 		}
-		return strings.TrimSpace(m[1])
+		return strings.TrimSpace(m[1] + m[2])
 	}
-	if got := cell(60); got != "▅▃▆▅▅▆▅▅" {
+	if got := cell(60); got != "800k  +5.0k" {
 		t.Errorf("60: %q", got)
 	}
-	last := 8
+	last := len("800k  +5.0k")
 	for c := 60; c >= 30; c-- {
-		n := len([]rune(cell(c)))
+		n := len(cell(c))
 		if n > last {
 			t.Errorf("%d columns: the cell widened to %d", c, n)
 		}
 		last = n
 	}
-	if got := cell(43); got != "▅▆▅▅" {
-		t.Errorf("43: %q", got)
+	if got := cell(50); got != "800k  +5.0k" {
+		t.Errorf("50: %q", got)
 	}
-	if got := cell(40); got != "▅" {
-		t.Errorf("40: %q", got)
+	if got := cell(49); got != "800k" {
+		t.Errorf("49: %q", got)
 	}
-	if got := cell(33); got != "" {
-		t.Errorf("33: %q", got)
+	if got := cell(42); got != "" {
+		t.Errorf("42: %q", got)
 	}
-	// A short title needs no more room: the whole trail stays.
+	// A short title needs no more room: the whole cell stays.
 	tasks[0].Title = "fix"
-	if got := cell(43); got != "▅▃▆▅▅▆▅▅" {
-		t.Errorf("43, short title: %q", got)
+	if got := cell(45); got != "800k  +5.0k" {
+		t.Errorf("45, short title: %q", got)
 	}
 }
 
@@ -175,7 +179,7 @@ func TestSamples(t *testing.T) {
 	for i := 0; i < 12; i++ {
 		list = AddSample(list, Sample{At: int64(i) * 10_000, Fresh: int64(i)})
 	}
-	if len(list) != MaxSamples || list[0].Fresh != 3 {
+	if len(list) != MaxSamples || list[0].Fresh != 10 {
 		t.Errorf("%+v", list)
 	}
 	if got := AddSample(list, Sample{At: list[len(list)-1].At + 7_999}); len(got) != MaxSamples || got[len(got)-1] != list[len(list)-1] {
@@ -191,11 +195,29 @@ func TestSamples(t *testing.T) {
 	}
 }
 
-func TestStepsAndNumbers(t *testing.T) {
-	for n, want := range map[int64]string{0: "·", unsized: "▪", 1: "▁", 499: "▁", 500: "▂", 999: "▂", 1000: "▃", 4000: "▅", 16000: "▇", 31999: "▇", 32000: "█", 1 << 30: "█"} {
-		if got := step(n); got != want {
-			t.Errorf("step(%d) = %s, want %s", n, got, want)
+func TestChangeAndNumbers(t *testing.T) {
+	for _, c := range []struct {
+		samples []Sample
+		n       int64
+		ok      bool
+		text    string
+	}{
+		{nil, 0, false, ""},
+		{[]Sample{{Fresh: 10, Known: true}}, 0, false, ""},
+		{[]Sample{{At: 0, Fresh: 10, Known: true}, {At: 10_000, Fresh: 4110, Known: true}}, 4100, true, "+4.1k"},
+		{[]Sample{{Fresh: 40_000, Known: true}, {Fresh: 40_000, Known: true, Activity: 5}}, 0, true, "+0"},
+		{[]Sample{{Fresh: 40_000, Known: true}, {Activity: 9}}, Unsized, true, "+?"},
+		{[]Sample{{Activity: 9}, {Activity: 9}}, 0, true, "+0"},
+		// Samples kept by 3.0.0 (up to 9): the last two count.
+		{[]Sample{{Fresh: 0, Known: true}, {Fresh: 5, Known: true}, {Fresh: 326_405, Known: true}}, 326_400, true, "+326k"},
+	} {
+		n, _, ok := Change(c.samples)
+		if n != c.n || ok != c.ok || ok && ChangeText(n) != c.text {
+			t.Errorf("%+v: %d %v %s", c.samples, n, ok, ChangeText(n))
 		}
+	}
+	if _, span, _ := Change([]Sample{{At: 1000}, {At: 11_000}}); span != 10*time.Second {
+		t.Errorf("span %v", span)
 	}
 	for n, want := range map[int64]string{622: "622", 4100: "4.1k", 9949: "9.9k", 61_000: "61k", 326_400: "326k", 999_499: "999k", 999_500: "1.0M", 1_200_000: "1.2M", 12_000_000: "12M"} {
 		if got := Tokens(n); got != want {
@@ -206,9 +228,5 @@ func TestStepsAndNumbers(t *testing.T) {
 		if got := TokensExact(n); got != want {
 			t.Errorf("TokensExact(%d) = %s, want %s", n, got, want)
 		}
-	}
-	samples := []Sample{{Fresh: 10, Known: true}, {Fresh: 40_000, Known: true}, {Fresh: 40_000, Known: true, Activity: 5}, {Activity: 9}}
-	if got := Trail(samples); got != "█·▪" {
-		t.Errorf("trail %q", got)
 	}
 }

@@ -12,15 +12,14 @@ import (
 
 // The usage cell. The status line takes a reading of each task's fresh
 // tokens (input + cache writes + output) per refresh and keeps the last
-// MaxSamples of them per task in the cache directory. Working rows show the
-// change between consecutive readings as a trail on a log scale, newest on
-// the right; other rows show their total.
+// MaxSamples of them per task in the cache directory. Rows whose worker is
+// at it show the total and the change between the last two readings
+// (`326k  +4.1k`); other rows show their total.
 
 const (
-	MaxSamples = 9               // readings kept per task: 8 changes
+	MaxSamples = 2               // readings kept per task: the change since the last refresh
 	MinGap     = 8 * time.Second // a reading closer to the previous one is dropped
 	StallAfter = 2 * time.Minute // no activity for this long shows as a stall
-	trailCells = MaxSamples - 1
 )
 
 // Sample is one reading of a task's usage.
@@ -52,52 +51,34 @@ func AddSample(list []Sample, s Sample) []Sample {
 	return list
 }
 
-// unsized is a step in which the session changed but the size is unknown.
-const unsized = -1
+// Unsized is a change in which the session changed but the size is unknown
+// (a gateway that reports no or partial usage).
+const Unsized = -1
 
-// steps are the changes between consecutive samples, oldest first: tokens,
-// 0 for nothing, unsized for a change of unknown size.
-func steps(samples []Sample) []int64 {
-	var out []int64
-	for i := 1; i < len(samples); i++ {
-		a, b := samples[i-1], samples[i]
-		switch {
-		case a.Known && b.Known && b.Fresh > a.Fresh:
-			out = append(out, b.Fresh-a.Fresh)
-		case !(a.Known && b.Known) && b.Activity > a.Activity:
-			out = append(out, unsized)
-		default:
-			out = append(out, 0)
-		}
+// Change is the change between the last two samples: tokens, 0 for
+// nothing, Unsized for a change of unknown size; ok is false with fewer than
+// two samples. span is the time between them.
+func Change(samples []Sample) (n int64, span time.Duration, ok bool) {
+	if len(samples) < 2 {
+		return 0, 0, false
 	}
-	return out
-}
-
-var bars = []string{"▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"}
-
-// step is one trail cell: ▁ (< 500 tokens) to █ (>= 32k), doubling per
-// level; · for nothing, ▪ for a change of unknown size.
-func step(n int64) string {
+	a, b := samples[len(samples)-2], samples[len(samples)-1]
+	span = time.Duration(b.At-a.At) * time.Millisecond
 	switch {
-	case n == unsized:
-		return "▪"
-	case n <= 0:
-		return "·"
+	case a.Known && b.Known && b.Fresh > a.Fresh:
+		return b.Fresh - a.Fresh, span, true
+	case !(a.Known && b.Known) && b.Activity > a.Activity:
+		return Unsized, span, true
 	}
-	level := 0
-	for limit := int64(500); n >= limit && level < len(bars)-1; limit *= 2 {
-		level++
-	}
-	return bars[level]
+	return 0, span, true
 }
 
-// Trail is the trail of samples as text, oldest first.
-func Trail(samples []Sample) string {
-	var b strings.Builder
-	for _, s := range steps(samples) {
-		b.WriteString(step(s))
+// ChangeText is a change as the ledger shows it: +4.1k, +0, +?.
+func ChangeText(n int64) string {
+	if n == Unsized {
+		return "+?"
 	}
-	return b.String()
+	return "+" + Tokens(max(0, n))
 }
 
 // Tokens is a count in at most four cells, for the ledger: 622, 4.1k,
@@ -168,9 +149,11 @@ func saveSamples(dir string, id int, session string, samples []Sample) {
 	}
 }
 
-// trailState: rows whose worker is at work show a trail; the others their
-// total.
-func trailState(key string) bool { return key == Working || key == Fixing || key == Merging }
+// workingState: rows whose worker is at it show the change since the last
+// refresh after their total; the others their total only.
+func workingState(key string) bool {
+	return key == Working || key == Checking || key == Fixing || key == Merging
+}
 
 // showsUsage: the row has a usage cell (an urgent badge runs across it; a
 // waiting task has no session).
@@ -178,48 +161,54 @@ func showsUsage(e entry) bool {
 	return e.t.Usage != nil && !e.st.urgent && e.t.State != Waiting
 }
 
-// usageCell is the usage cell of an entry, w cells wide (right-aligned), or
+// totalCells is the width of a total: Tokens is at most four cells.
+const totalCells = 4
+
+// changePart is what follows the total of a working row: the change since
+// the last refresh (+4.1k in the state's colour, +0 faint, +? for a change
+// of unknown size), or after StallAfter without activity the idle time in
+// amber. A stall is only a look: it changes no state and no ordering (a long
+// build writes nothing either). A checking task's worker waits for the check
+// by design, so it shows no stall. "" when there is nothing to show yet.
+func changePart(e entry, now time.Time, p painter) segment {
+	u := e.t.Usage
+	if !showsUsage(e) || !workingState(e.t.State) {
+		return segment{}
+	}
+	if e.t.State != Checking && !u.Activity.IsZero() && now.Sub(u.Activity) >= StallAfter {
+		return p.fg(amber, "idle "+Age(u.Activity, now))
+	}
+	n, _, ok := Change(u.Samples)
+	switch {
+	case !ok:
+		return segment{}
+	case n == 0:
+		return segment{"+0", "2"}
+	}
+	return p.fg(e.st.rgb, ChangeText(n))
+}
+
+// usageCell is the usage cell of an entry, w cells wide: the total, right-
+// aligned in totalCells (faint unless the worker is at it), then, when w has
+// room for more, two spaces and the change part right-aligned in the rest;
 // nil when the row shows none.
 func usageCell(e entry, w int, now time.Time, p painter) line {
-	u := e.t.Usage
-	if w <= 0 || !showsUsage(e) {
+	if w < totalCells || !showsUsage(e) {
 		return nil
 	}
-	if !trailState(e.t.State) {
-		text := "?"
-		if u.Known {
-			text = Tokens(u.Total)
-		}
-		if width(text) > w {
-			return nil
-		}
-		return line{{padLeft(text, w), "2"}}
+	u := e.t.Usage
+	total := "?"
+	if u.Known {
+		total = Tokens(u.Total)
 	}
-	if !u.Activity.IsZero() && now.Sub(u.Activity) >= StallAfter {
-		// A stall: dots ending in the idle time. Only a look: it changes no
-		// state and no ordering (a long build writes nothing either).
-		idle := Age(u.Activity, now)
-		var l line
-		if dots := w - 1 - width(idle); dots >= 1 {
-			l = line{{strings.Repeat("·", dots) + " ", "2"}}
-		} else if width(idle) > w {
-			return line{{padLeft("·", w), "2"}}
-		} else {
-			l = line{{strings.Repeat(" ", w-width(idle)), ""}}
-		}
-		return append(l, p.fg(amber, idle))
+	sgr := "2"
+	if workingState(e.t.State) {
+		sgr = ""
 	}
-	st := steps(u.Samples)
-	if len(st) > w {
-		st = st[len(st)-w:]
+	l := line{{padLeft(total, totalCells), sgr}}
+	if w == totalCells {
+		return l
 	}
-	l := line{{strings.Repeat(" ", w-len(st)), ""}}
-	for _, s := range st {
-		if s == 0 {
-			l = append(l, segment{"·", "2"})
-		} else {
-			l = append(l, p.fg(e.st.rgb, step(s)))
-		}
-	}
-	return l
+	part := changePart(e, now, p)
+	return append(l, segment{strings.Repeat(" ", w-totalCells-width(part.text)), ""}, part)
 }

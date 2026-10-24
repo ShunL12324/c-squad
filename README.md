@@ -299,7 +299,7 @@ Each task has one row. A row has these parts, from left to right:
 2. The task ID and the engine mark: `✻` for Claude Code, `⬡` for Codex.
 3. The title, with a dotted leader.
 4. The state.
-5. The usage: a trail, a total, or nothing.
+5. The usage: the total and the new tokens, the total only, or nothing.
 6. The time since the task entered its state.
 
 The most urgent tasks come first.
@@ -330,20 +330,20 @@ of the reason, for example `needs you · max rounds` or `needs you · merge conf
 - `merge conflict`, `merge stopped`: the merge runs again.
 - `dependency gone`: the task waits again.
 
-### The usage trail
+### The usage
 
-A task that is `working`, `fixing` or `merging` shows a trail of its last 8 refreshes, about 80
-seconds. The newest cell is on the right. Each cell shows the new tokens since the refresh before:
+A task that is `working`, `checking`, `fixing` or `merging` shows its total, then the new tokens
+since the refresh before (about 10 seconds), for example `326k  +4.1k`:
 
-| Cell | Meaning |
+| After the total | Meaning |
 | --- | --- |
-| `▁` to `█` | New tokens, on a log scale: `▁` is less than 500, `█` is 32k or more. |
-| `·` | No change. |
-| `▪` | The session changed, but its provider reports no token counts. |
-| `····· 3m` | No activity for 2 minutes or more. The time shows in amber. The state does not change. |
+| `+4.1k` | New tokens since the last refresh. |
+| `+0` | No change. It shows faint. |
+| `+?` | The session changed, but its provider reports no token counts, or only some. |
+| `idle 3m` | No activity for 2 minutes or more. The time shows in amber. The state does not change. A `checking` task shows no `idle`: it waits for its check. |
 
-Other tasks show their total, faint: `326k`, `1.2M`, or `?` when the total is not known. The total
-counts input, cache writes and output. It does not count cache reads.
+Other tasks show their total only, faint: `326k`, `1.2M`, or `?` when the total is not known.
+The total counts input, cache writes and output. It does not count cache reads.
 
 `csquad status` shows the full usage of each working task:
 
@@ -352,7 +352,7 @@ counts input, cache writes and output. It does not count cache reads.
 state: working · started 27s ago · session ca47ac83 · ~/project
 usage: 51.8k fresh · +0 since the last refresh (0 s) · last activity 13s ago
        input 4 · cache write 51.1k · output 622  cache read 50.5k (not counted)
-       context 26% (51k of 200k) · last 20 s █·
+       context 26% (51k of 200k) · status line +0 in 10 s
 ```
 
 ### Width and number of rows
@@ -363,8 +363,8 @@ usage: 51.8k fresh · +0 since the last refresh (0 s) · last activity 13s ago
   ID of each other task.
 - A row is at most 4 cells narrower than the terminal: Claude Code indents the status line and
   cuts longer rows.
-- In a narrow terminal, the title gets shorter first. Then the usage trail and the reason of a
-  `needs you` badge get shorter. The age is never cut.
+- In a narrow terminal, the title gets shorter first. Then the usage drops the new tokens, then
+  the total, and the reason of a `needs you` badge gets shorter. The age is never cut.
 - `NO_COLOR` removes the colors. The glyphs, bold, faint and reverse video stay.
 
 ### Which tasks show

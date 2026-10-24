@@ -27,11 +27,13 @@ type usageEntry struct {
 	ContextMax   int64  `json:"contextMax,omitempty"`
 	LastActivity string `json:"lastActivity,omitempty"`
 	// The status line's samples: the change since its newest one, when that
-	// was taken, and the trail over them.
-	SinceRefresh *int64 `json:"sinceRefresh,omitempty"`
-	RefreshedAt  string `json:"refreshedAt,omitempty"`
-	Trail        string `json:"trail,omitempty"`
-	TrailSeconds int64  `json:"trailSeconds,omitempty"`
+	// was taken, and the change it shows (between its last two readings:
+	// tokens, absent when the size is unknown; as shown; their distance).
+	SinceRefresh  *int64 `json:"sinceRefresh,omitempty"`
+	RefreshedAt   string `json:"refreshedAt,omitempty"`
+	Change        *int64 `json:"change,omitempty"`
+	ChangeText    string `json:"changeText,omitempty"`
+	ChangeSeconds int64  `json:"changeSeconds,omitempty"`
 }
 
 // working: the worker of a task in these states is at it; status shows its
@@ -142,11 +144,13 @@ func (a *App) usageOf(ctx context.Context, t store.Task) (*usageEntry, []string)
 		pct := int(math.Round(float64(u.Context) * 100 / float64(window)))
 		tail = append(tail, fmt.Sprintf("context %d%% (%s of %s)", pct, statusline.Tokens(u.Context), statusline.Tokens(window)))
 	}
-	if len(samples) >= 2 {
-		e.Trail = statusline.Trail(samples)
-		span := time.Duration(samples[len(samples)-1].At-samples[0].At) * time.Millisecond
-		e.TrailSeconds = int64(span.Seconds())
-		tail = append(tail, fmt.Sprintf("last %s %s", seconds(span), e.Trail))
+	if n, span, ok := statusline.Change(samples); ok {
+		if n != statusline.Unsized {
+			e.Change = &n
+		}
+		e.ChangeText = statusline.ChangeText(n)
+		e.ChangeSeconds = int64(span.Seconds())
+		tail = append(tail, fmt.Sprintf("status line %s in %s", e.ChangeText, seconds(span)))
 	}
 	if len(tail) > 0 {
 		lines = append(lines, "       "+strings.Join(tail, " · "))

@@ -1,7 +1,9 @@
 package app
 
 import (
+	"context"
 	"fmt"
+	"os"
 
 	"github.com/ShunL12324/c-squad/internal/install"
 )
@@ -18,9 +20,16 @@ func (a *App) installOptions() install.Options {
 	}
 }
 
-// Install installs or updates csquad.
+// Install installs or updates csquad. The installed copy of an npm
+// installation updates through npx: it is the old version itself.
 func (a *App) Install(update bool) error {
-	return install.Install(a.installOptions(), update)
+	o := a.installOptions()
+	if update {
+		if exe, err := os.Executable(); err == nil && install.ViaNpm(o, exe) {
+			return install.NpmUpdate(context.Background(), o, a.Stdin, a.Stdout, a.Stderr)
+		}
+	}
+	return install.Install(o, update)
 }
 
 // Uninstall removes csquad.

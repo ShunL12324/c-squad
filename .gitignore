@@ -9,3 +9,6 @@
 *~
 /csquad
 /csquad.exe
+
+# npm packages written by scripts/build-npm.js.
+/dist/

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (3.0, milestones 1 and 3)
+## Unreleased (3.0, milestones 1 to 4)
 
 ### Added
 
@@ -34,7 +34,16 @@
   (mode 600) and passed by path, including a user's inline `--settings`.
 - Model routing lives in `~/.csquad/models.md`; `config.json` is gone.
 - A csquad 1.x installation is not migrated: `install` asks for
-  `npx csquad@1 uninstall` first. npm packaging is not rebuilt yet.
+  `npx csquad@1 uninstall` first.
+- npm packaging (#41, M4): `npx csquad@latest install` runs the Go binary.
+  The `csquad` package is a small Node shim with optional dependencies on
+  `@shunl12324/csquad-{linux,darwin,win32}-{x64,arm64}`, which carry the
+  binaries; nothing is downloaded at install time. `node scripts/build-npm.js
+  VERSION` builds them, and a `v*` tag publishes them with npm trusted
+  publishing (`.github/workflows/release.yml`; the GitHub release stays
+  manual). `csquad update` run by the installed copy of an npm installation
+  runs `npx --yes csquad@latest update`. `csquad COMMAND --help` prints the
+  command's usage.
 
 ## 1.4.0 - 2026-10-24
 

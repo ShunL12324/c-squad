@@ -1,0 +1,66 @@
+name: Release
+# A v* tag publishes csquad to npm: the per-platform binary packages first,
+# then the main `csquad` package that depends on them. The GitHub release is
+# created by hand once this is green.
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      CGO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test -count=1 ./...
+  npm:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing (OIDC)
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+      - name: Version from the tag
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          tag=latest
+          case "$version" in *-*) tag=next ;; esac
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "NPM_TAG=$tag" >> "$GITHUB_ENV"
+      # Cross-compiles every platform and checks the linux-x64 binary reports
+      # $VERSION.
+      - run: node scripts/build-npm.js "$VERSION"
+      # Trusted publishing needs npm >= 11.5.1.
+      - run: npm install --global npm@11.6.2
+      # The main package's optional dependencies must exist before it does.
+      # A version already on npm (a re-run after a partial publish) is skipped.
+      - name: Publish the platform packages, then csquad
+        run: |
+          for dir in dist/npm/csquad-* dist/npm/csquad; do
+            name=$(node -p "require('./$dir/package.json').name")
+            if [ "$(npm view "$name@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
+              echo "$name@$VERSION is already published"
+              continue
+            fi
+            (cd "$dir" && npm publish --provenance --access public --tag "$NPM_TAG")
+          done

@@ -15,8 +15,17 @@ its own git worktree while you carry on. One static binary, no daemon.
 
 ## Quick start
 
-csquad 3 is a single Go binary. Until its npm packages exist, build it from
-source (Go 1.26+, no C toolchain needed) and let it install itself:
+```sh
+npx csquad@latest install
+```
+
+csquad 3 is a single Go binary; npm only delivers it. The `csquad` package
+pulls in the binary for your platform through an optional dependency (such as
+`@shunl12324/csquad-linux-x64`; nothing is downloaded by an install script),
+and `install` copies it to `~/.csquad/bin/csquad`, so the skills and the status
+line never run from the npx cache. Node.js is needed for `npx` only.
+
+From source instead (Go 1.26+, no C toolchain needed):
 
 ```sh
 git clone https://github.com/ShunL12324/c-squad.git && cd c-squad
@@ -130,11 +139,19 @@ overrides the wrapper in that project; `install` and `status` warn about it.
 ## Install, update, uninstall
 
 ```sh
-csquad install          # copy the binary to ~/.csquad/bin, install the skills, wrap the status line
-csquad update           # the same, for an existing installation (run it from a newer build)
-csquad uninstall        # restore the status line, remove what install wrote
-csquad status-install   # what is installed and whether the status line is wrapped
+npx csquad@latest install   # copy the binary to ~/.csquad/bin, install the skills, wrap the status line
+npx csquad@latest update    # the same, for an existing installation
+csquad update               # the installed copy of an npm install runs npx csquad@latest update
+csquad uninstall            # restore the status line, remove what install wrote
+csquad status-install       # what is installed and whether the status line is wrapped
 ```
+
+`install` does not change your `PATH`: `csquad` above is
+`~/.csquad/bin/csquad` (add `~/.csquad/bin` to `PATH` to type it short), or
+`npx csquad@latest` in its place. `npx csquad@3 install` stays on 3.x. With
+optional dependencies turned off (`--omit=optional`) npm installs no binary,
+and the `csquad` command says so. A build from source updates by running
+`update` from the newer build.
 
 The skills go to `$CLAUDE_CONFIG_DIR/skills` (default `~/.claude`), everything
 else to `$CSQUAD_HOME` (default `~/.csquad`):

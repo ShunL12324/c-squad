@@ -21,9 +21,54 @@ e.g. `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o csquad.exe ./cmd/csqua
 `-ldflags "-X github.com/ShunL12324/c-squad/internal/app.Version=3.0.0"` sets
 the version.
 
-npm packaging (a small main package plus per-platform optional packages with
-the binary, so `npx csquad@latest install` keeps working) is a later
-milestone; until then there is no release pipeline.
+## npm packages
+
+`csquad` on npm is a small main package (the shim `bin/csquad.js`, from
+`npm/csquad/`) with one optional dependency per platform,
+`@shunl12324/csquad-{linux,darwin,win32}-{x64,arm64}`, each holding the
+binary for its `os`/`cpu`. The shim runs that binary with the same arguments,
+stdio, exit status and signals, and sets `CSQUAD_NPM`, so `install` records
+that npm installed it and `update` run by the installed copy runs
+`npx --yes csquad@latest update`. There is no postinstall step.
+
+```sh
+node scripts/build-npm.js 3.0.0                    # every platform, into dist/npm/
+node scripts/build-npm.js 3.0.0 --only linux-x64   # one platform, for a local try
+```
+
+It builds with `CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X
+github.com/ShunL12324/c-squad/internal/app.Version=VERSION"` and checks that
+the binary for this machine reports VERSION. To try the result without the
+registry:
+
+```sh
+cd dist/npm && npm pack ./csquad ./csquad-linux-x64
+npm i -g --prefix /tmp/csq ./csquad-3.0.0.tgz ./shunl12324-csquad-linux-x64-3.0.0.tgz
+/tmp/csq/bin/csquad --version
+```
+
+Point `HOME`, `CSQUAD_HOME` and `CLAUDE_CONFIG_DIR` at a temporary directory
+before running `install` from there.
+
+## Release
+
+1. Move "Unreleased" in `CHANGELOG.md` under the new version and commit.
+2. Tag and push the tag: `git tag v3.0.0 && git push origin v3.0.0`.
+3. `.github/workflows/release.yml` runs `go vet` and `go test` on Linux,
+   macOS and Windows, builds the packages for the tag's version, and
+   publishes the six platform packages, then `csquad`, with npm trusted
+   publishing (`npm publish --provenance --access public`; a version with a
+   `-` goes to the `next` dist-tag). A package version already on npm is
+   skipped, so a failed run can be re-run.
+4. When it is green, create the GitHub release for the tag by hand; the
+   workflow does not.
+
+One-time npm setup: every package name (`csquad` and each
+`@shunl12324/csquad-<platform>`) needs a trusted publisher on npmjs.com for
+this repository and `release.yml`. npm offers that only for a package that
+exists, so publish each new platform package once by hand (`npm publish
+--access public` in its `dist/npm` directory), then add the trusted
+publisher.
 
 ## Test
 

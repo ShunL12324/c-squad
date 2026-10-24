@@ -73,6 +73,9 @@ type Manifest struct {
 	CodexFiles map[string]string `json:"codexFiles,omitempty"` // agents-dir relative path → sha256
 	// CodexHooks is the text install inserted into Codex's hooks.json.
 	CodexHooks string `json:"codexHooks,omitempty"`
+	// Npm is the version of the npm package that installed csquad; "" for a
+	// build from source. See npm.go.
+	Npm string `json:"npm,omitempty"`
 }
 
 // Saved is the user's own status line, kept in $CSQUAD_HOME/statusline.json.
@@ -258,7 +261,7 @@ func Install(o Options, update bool) error {
 	if err := o.installBinary(); err != nil {
 		return err
 	}
-	m := Manifest{Version: o.Version, ClaudeDir: o.ClaudeDir, Binary: BinaryPath(o.Home), Settings: old.Settings}
+	m := Manifest{Version: o.Version, ClaudeDir: o.ClaudeDir, Binary: BinaryPath(o.Home), Settings: old.Settings, Npm: o.Env.Get("CSQUAD_NPM")}
 	if m.Files, err = o.writeManaged(o.ClaudeDir, files, old.Files); err != nil {
 		return err
 	}

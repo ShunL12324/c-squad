@@ -315,6 +315,15 @@ func run(argv []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		help(stderr)
 		return 2
 	}
+	for _, arg := range argv[1:] {
+		if arg == "--" {
+			break
+		}
+		if arg == "-h" || arg == "--help" {
+			fmt.Fprintf(stdout, "usage: csquad %s\n", c.usage)
+			return 0
+		}
+	}
 	a := app.New(proc.Env(os.Environ()), stdin, stdout, stderr)
 	defer a.Close()
 	p, err := parse(c, argv[1:])

@@ -93,7 +93,11 @@ go test ./...
 - The status line ledger has golden files in `internal/statusline/testdata`
   (without and with usage cells); after a deliberate layout change,
   `go test ./internal/statusline -run Golden -update` rewrites them; read the
-  diff.
+  diff. The same command rewrites the README's status line samples,
+  `docs/images/ledger/*-{dark,light}.svg`, which `samples_test.go` renders
+  from the real `Layout` (the samples are listed in `readmeSamples`); the
+  tests fail while one is out of date. Look at a changed SVG in a browser
+  before you commit it.
 - `assets/` is what users get. A skill is a directory: `SKILL.md` plus any
   files it reads on demand (create-task's `reference.md`); install copies
   every file. Skills reference `{{CSQUAD}}`, which install replaces with the

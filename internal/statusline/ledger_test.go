@@ -87,9 +87,14 @@ func cellEnds(row string) []int {
 // checkGolden compares got with testdata/name; -update rewrites the file.
 func checkGolden(t *testing.T, name, got string) {
 	t.Helper()
-	file := filepath.Join("testdata", name)
+	checkFile(t, filepath.Join("testdata", name), got)
+}
+
+// checkFile compares got with file; -update rewrites it.
+func checkFile(t *testing.T, file, got string) {
+	t.Helper()
 	if *update {
-		os.MkdirAll("testdata", 0o755)
+		os.MkdirAll(filepath.Dir(file), 0o755)
 		if err := os.WriteFile(file, []byte(got), 0o644); err != nil {
 			t.Fatal(err)
 		}

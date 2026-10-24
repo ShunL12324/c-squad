@@ -561,7 +561,7 @@ func TestPeekFoldsToolsAndRefusesOtherSessions(t *testing.T) {
 	if out := ok(t, csq(t, h, opts{env: mine()}, "peek", "T1", "-n", "1")).stdout; strings.Contains(out, "On it") {
 		t.Errorf("-n 1: %s", out)
 	}
-	if out := ok(t, csq(t, h, opts{env: mine()}, "status")).stdout; !strings.Contains(out, "latest:\nDone: branch worktree-t1-x") {
+	if out := ok(t, csq(t, h, opts{env: mine()}, "status")).stdout; !strings.Contains(out, "latest:\n  Done: branch worktree-t1-x") {
 		t.Errorf("status latest: %s", out)
 	}
 	r := csq(t, h, opts{env: mine()}, "peek", "T"+other)

@@ -4,6 +4,8 @@
 
 ### Changed
 
+- `csquad status` indents a task's latest message, so its own `## ` headings do not
+  read as the next task's header.
 - A Claude task accepts cross-session messages (`"crossSessionInbound":
   "accept"` in its settings, unless `--settings` sets a value). A task runs in
   bypass mode, where Claude Code otherwise held every `csquad send` message

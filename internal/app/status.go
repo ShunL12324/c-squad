@@ -147,10 +147,12 @@ func (a *App) Status(ctx context.Context, all, asJSON bool) error {
 			if p := strings.TrimPrefix(flowPlan(t), "\n  then: "); p != "" {
 				a.printf("flow: %s\n", p)
 			}
+			// The message is indented, so its own "## " headings never read
+			// as the next task's header.
 			if cut := clip(latest, 1200); cut != latest {
-				a.printf("latest:\n%s\n(cut: csquad peek %s -n 1 shows all of it)\n\n", cut, t.Label())
+				a.printf("latest:\n%s\n  (cut: csquad peek %s -n 1 shows all of it)\n\n", indent(cut), t.Label())
 			} else {
-				a.printf("latest:\n%s\n\n", latest)
+				a.printf("latest:\n%s\n\n", indent(latest))
 			}
 		}
 	}
@@ -240,4 +242,9 @@ func (a *App) Send(ctx context.Context, label, text string, all bool) error {
 	}
 	a.printf("sent to %s: %s\n", t.Name(), how)
 	return nil
+}
+
+// indent indents every line of s by two spaces.
+func indent(s string) string {
+	return "  " + strings.ReplaceAll(s, "\n", "\n  ")
 }

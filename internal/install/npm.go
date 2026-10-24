@@ -34,6 +34,8 @@ func ViaNpm(o Options, exe string) bool {
 	return sameFile(exe, BinaryPath(o.Home))
 }
 
+// sameFile reports whether two paths name the same existing file or
+// directory, through any symlinks or junctions on the way.
 func sameFile(a, b string) bool {
 	if r, err := filepath.EvalSymlinks(a); err == nil {
 		a = r

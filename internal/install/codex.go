@@ -41,11 +41,22 @@ func (o Options) agentsDir() string {
 	return filepath.Join(o.userHome(), ".agents")
 }
 
+// agentsDirOf is the agents dir a manifest recorded, or today's.
+func (o Options) agentsDirOf(m Manifest) string {
+	if m.AgentsDir != "" {
+		return m.AgentsDir
+	}
+	return o.agentsDir()
+}
+
 // codexPlan is what install will write for Codex; nil files when
 // $CODEX_HOME does not exist.
 type codexPlan struct {
 	dir   string            // the agents dir
 	files map[string][]byte // agents-dir relative path → content
+	// shared: the agents dir's skills/ is the Claude skills directory, so
+	// the shared copy written there serves Codex too and files is unused.
+	shared bool
 }
 
 // planCodex renders the Codex skills and refuses, before anything is
@@ -65,7 +76,7 @@ func (o Options) planCodex() (codexPlan, error) {
 		dirs[filepath.Dir(f)] = true
 	}
 	for d := range dirs {
-		if isLink(d) {
+		if isDirLink(d) {
 			if _, err := os.Stat(d); err != nil {
 				return p, fmt.Errorf("%s is a dangling symlink; fix or remove it first, nothing was changed", d)
 			}
@@ -74,27 +85,43 @@ func (o Options) planCodex() (codexPlan, error) {
 	return p, nil
 }
 
-// installCodex writes the Codex skills (or removes the ones a previous
-// install wrote when $CODEX_HOME is gone) and records them in m.
-func (o Options) installCodex(p codexPlan, m *Manifest, old Manifest) error {
-	oldDir := old.AgentsDir
-	if oldDir == "" {
-		oldDir = p.dir
+// codexCopies is what an install left below its agents dir: the Codex
+// copies, or the shared copy, which is there too.
+func codexCopies(m Manifest) map[string]string {
+	if m.SharedSkills {
+		return m.Files
 	}
+	return m.CodexFiles
+}
+
+// installCodex writes the Codex skills (or removes the ones a previous
+// install wrote when $CODEX_HOME is gone) and records them in m. In a
+// skills directory shared with Claude Code, install already wrote the one
+// copy both read.
+func (o Options) installCodex(p codexPlan, m *Manifest, old Manifest, known map[string][]string) error {
+	oldDir := o.agentsDirOf(old)
+	previous := codexCopies(old)
 	if p.files == nil {
-		if len(old.CodexFiles) > 0 {
-			o.removeCodex(oldDir, old.CodexFiles)
+		if o.removeCodex(oldDir, previous, known) {
 			o.log("Codex: %s does not exist; removed the Codex skills from %s", o.codexHome(), filepath.Join(oldDir, "skills"))
 		}
 		return nil
 	}
-	previous := old.CodexFiles
+	if p.shared {
+		// Separate copies an earlier install wrote go, unless they are the
+		// very files just written (today's directory, or a link to it).
+		o.removeCodex(oldDir, old.CodexFiles, known)
+		m.AgentsDir, m.SharedSkills = p.dir, true
+		o.log("Codex: %s is the same directory as %s; wrote one copy of each skill, with the instructions for both Claude Code and Codex (run csquad outside Codex's sandbox)",
+			filepath.Join(p.dir, "skills"), filepath.Join(o.ClaudeDir, "skills"))
+		return nil
+	}
 	if oldDir != p.dir {
 		// The home moved: take the old copies back, write fresh ones.
-		o.removeCodex(oldDir, previous)
+		o.removeCodex(oldDir, previous, known)
 		previous = nil
 	}
-	hashes, err := o.writeManaged(p.dir, p.files, previous)
+	hashes, err := o.writeManaged(p.dir, p.files, previous, known)
 	if err != nil {
 		return err
 	}
@@ -104,24 +131,44 @@ func (o Options) installCodex(p codexPlan, m *Manifest, old Manifest) error {
 	return nil
 }
 
-func (o Options) removeCodex(dir string, files map[string]string) {
-	for rel, hash := range files {
-		o.removeFrom(dir, rel, hash)
+// removeCodex removes files csquad wrote below the agents dir dir and
+// reports whether there were any. A file that is also the Claude skill of
+// that name (a skills directory both share) is csquad's current copy and
+// stays, and so does a shared skills directory, even emptied: the link to
+// it would dangle.
+func (o Options) removeCodex(dir string, files map[string]string, known map[string][]string) bool {
+	removed := false
+	for rel := range files {
+		f := filepath.Join(dir, filepath.FromSlash(rel))
+		if sameFile(f, filepath.Join(o.ClaudeDir, filepath.FromSlash(rel))) {
+			continue
+		}
+		if _, err := os.Stat(f); err == nil {
+			removed = true
+		}
+		o.removeFrom(dir, rel, known[rel])
 	}
-	rmdirIfEmpty(filepath.Join(dir, "skills"))
-	rmdirIfEmpty(dir)
+	if !o.sharedSkills(dir) {
+		rmdirIfEmpty(filepath.Join(dir, "skills"))
+		rmdirIfEmpty(dir)
+	}
+	return removed
 }
 
-// uninstallCodex removes what install wrote for Codex.
-func (o Options) uninstallCodex(m Manifest) {
-	if len(m.CodexFiles) == 0 {
-		return
+// uninstallCodex removes what install wrote for Codex: in a shared skills
+// directory nothing is left by now, unless the link went since.
+func (o Options) uninstallCodex(m Manifest, known map[string][]string) {
+	if files := codexCopies(m); len(files) > 0 {
+		o.removeCodex(o.agentsDirOf(m), files, known)
 	}
-	o.removeCodex(m.AgentsDir, m.CodexFiles)
 }
 
 // statusCodex prints the Codex part of an installation.
 func (o Options) statusCodex(m Manifest) {
+	if m.SharedSkills {
+		o.log("Codex:       reads the skills above (%s is the same directory)", filepath.Join(m.AgentsDir, "skills"))
+		return
+	}
 	if len(m.CodexFiles) == 0 {
 		if st, err := os.Stat(o.codexHome()); err == nil && st.IsDir() {
 			o.log("Codex:       not set up (%s exists; run csquad update)", o.codexHome())

@@ -20,6 +20,14 @@ const Placeholder = "{{CSQUAD}}"
 // Hosts are the agents the skills are installed for.
 var Hosts = []string{"claude", "codex"}
 
+// Shared is the pseudo-host of a skills directory both hosts read (one
+// linked to the other): every host's blocks stay, each labelled with its
+// host.
+const Shared = "shared"
+
+// labels name the hosts in the shared rendering.
+var labels = map[string]string{"claude": "Claude Code", "codex": "Codex"}
+
 // Skills returns the skills as name → SKILL.md text (unrendered, with the
 // blocks of every host).
 func Skills() map[string]string {
@@ -51,22 +59,30 @@ func SkillFiles() map[string]string {
 }
 
 // SkillFilesFor returns SkillFiles for one host: only its own blocks, which
-// are marked like `<!-- codex -->` ... `<!-- /codex -->`.
+// are marked like `<!-- codex -->` ... `<!-- /codex -->`. For Shared every
+// block stays, labelled.
 func SkillFilesFor(host string) map[string]string {
 	out := SkillFiles()
 	for name, text := range out {
-		out[name] = filter(text, hostDrop(host))
+		out[name] = forHost(text, host)
 	}
 	return out
 }
 
-// SkillsFor returns the skills' SKILL.md for one host.
+// SkillsFor returns the skills' SKILL.md for one host (or Shared).
 func SkillsFor(host string) map[string]string {
 	out := Skills()
 	for name, text := range out {
-		out[name] = filter(text, hostDrop(host))
+		out[name] = forHost(text, host)
 	}
 	return out
+}
+
+func forHost(text, host string) string {
+	if host == Shared {
+		return shared(text)
+	}
+	return filter(text, hostDrop(host))
 }
 
 func hostDrop(host string) map[string]bool {
@@ -104,6 +120,55 @@ func filter(text string, drop map[string]bool) string {
 		if !skip {
 			out = append(out, line)
 		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// nonParagraph matches a line that does not start a plain paragraph: a
+// fence, list item, quote, table, heading, HTML or indented code.
+var nonParagraph = regexp.MustCompile("^( {4}|\t| *([-*+>|#<]|\\d+[.)]|```|~~~))")
+
+// shared keeps every host block as a paragraph of its own, its first line
+// starting "**Codex:** " (a block that does not start with a paragraph gets
+// the label on a line of its own), and drops the marker lines.
+func shared(text string) string {
+	var out []string
+	sep := func() {
+		if len(out) > 0 && out[len(out)-1] != "" {
+			out = append(out, "")
+		}
+	}
+	label, first, closed := "", false, false
+	for _, line := range strings.Split(text, "\n") {
+		if m := marker.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
+			if l, ok := labels[m[2]]; ok {
+				if m[1] == "" {
+					sep()
+					label, first, closed = l, true, false
+				} else {
+					label, first, closed = "", false, true
+				}
+			}
+			continue
+		}
+		blank := strings.TrimSpace(line) == ""
+		switch {
+		case closed:
+			// Whatever follows a block starts a paragraph of its own.
+			if !blank {
+				sep()
+			}
+			closed = false
+		case first && blank:
+			continue // the separating blank line is already there
+		case first && nonParagraph.MatchString(line):
+			out = append(out, "**"+label+":**", "")
+			first = false
+		case first:
+			line = "**" + label + ":** " + line
+			first = false
+		}
+		out = append(out, line)
 	}
 	return strings.Join(out, "\n")
 }

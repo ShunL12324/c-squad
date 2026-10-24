@@ -279,6 +279,13 @@ func isLink(p string) bool {
 	return err == nil && st.Mode()&fs.ModeSymlink != 0
 }
 
+// isDirLink is isLink for a directory, which on Windows may also be a
+// junction: Go reports a mount point as irregular, not as a symlink.
+func isDirLink(p string) bool {
+	st, err := os.Lstat(p)
+	return err == nil && (st.Mode()&fs.ModeSymlink != 0 || runtime.GOOS == "windows" && st.Mode()&fs.ModeIrregular != 0)
+}
+
 // resolveLink follows a chain of symlinks to the path a write should land
 // on, also when the last link is dangling.
 func resolveLink(file string) (string, error) {

@@ -1,5 +1,29 @@
 # Changelog
 
+## 3.0.2 - unreleased
+
+### Fixed
+
+- A skills directory that Claude Code and Codex share (`~/.claude/skills`
+  linked to `~/.agents/skills`, a junction on Windows, the other way round, or
+  both linked to a third directory) no longer gets the Codex skills written
+  over the Claude ones. Before, Claude Code read the Codex instructions (for
+  example, "run as a long-running command" instead of `run_in_background`),
+  and every install or update reported each skill file as edited and wrote
+  `.bak` files. Now install writes one copy of each skill there, with both
+  agents' instructions as labelled paragraphs (**Claude Code:** ... /
+  **Codex:** ...), says so (`Codex: ... is the same directory as ...`), and
+  records the copy once in the manifest (`sharedSkills`). Update and
+  uninstall handle the change to a shared directory, back to separate ones
+  (the link removed), and a manifest from 3.0.1 that records both copies of
+  the same files. A file that holds exactly what csquad wrote before, for
+  either agent, is not reported as edited. Uninstall removes each file once
+  and keeps the link, the shared directory and other skills in it.
+- On Windows, an emptied skills directory that is a junction is no longer
+  removed: Go reports a junction as irregular, not as a symlink.
+- message-task and watch-task: the Codex sandbox note and the way to run
+  `wait` are whole sentences of their own (the same instructions as before).
+
 ## 3.0.1 - 2026-10-25
 
 ### Changed

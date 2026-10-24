@@ -358,6 +358,21 @@ func Symlink(t testing.TB, target, link string) {
 	}
 }
 
+// DirLink links the directory link to target as users do to share a
+// directory: a symlink, or on Windows a junction, which needs no privilege.
+func DirLink(t testing.TB, target, link string) {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	if out, err := exec.Command("cmd", "/c", "mklink", "/J", link, target).CombinedOutput(); err != nil {
+		t.Fatalf("mklink /J: %v: %s", err, out)
+	}
+}
+
 // RequireSymlinks skips a test that needs symlinks on Windows when the
 // process may not create them (no Developer Mode, not elevated). CI runs
 // elevated and covers these tests there.

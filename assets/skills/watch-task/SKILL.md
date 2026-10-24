@@ -10,19 +10,18 @@ never report back, so this is a plain background command, not polling by you.
 
 ## Start
 
-<!-- codex -->
-Run every csquad command outside Codex's sandbox (ask for escalated
-permissions): it writes `~/.csquad` and talks to Codex's app-server.
-
-<!-- /codex -->
 <!-- claude -->
-Run, with the shell tool's (Bash or PowerShell) `run_in_background` option,
-naming only the tasks the user asked about:
+Run the command below with the shell tool's (Bash or PowerShell)
+`run_in_background` option.
 <!-- /claude -->
 <!-- codex -->
-Run, as a long-running command (it returns when a task changes), naming only
-the tasks the user asked about:
+Run the command below as a long-running command (it returns when a task
+changes). Run every csquad command outside Codex's sandbox (ask for
+escalated permissions): it writes `~/.csquad` and talks to Codex's
+app-server.
 <!-- /codex -->
+
+Name only the tasks the user asked about:
 
 ```bash
 {{CSQUAD}} wait T12 T13
@@ -67,10 +66,10 @@ authorization covers only the tasks it was given for.
 
 ## Stop
 
-When the user says to stop watching, kill the running `wait` command
+When the user says to stop watching, kill the running `wait` command.
 <!-- claude -->
-with the harness's stop/kill tool for background shells.
+Use the harness's stop/kill tool for background shells.
 <!-- /claude -->
 <!-- codex -->
-(interrupt it, or end its process).
+Interrupt it, or end its process.
 <!-- /codex -->

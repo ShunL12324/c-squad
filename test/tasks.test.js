@@ -732,7 +732,7 @@ test('launch: provider variables of the launching session reach the task', () =>
   assert.equal(saved.model, 'opus');
   assert.deepEqual(saved.worktree, { baseRef: 'head' });
   if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600);
-  assert.match(r.stderr, /T1 uses this session's provider settings \(ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_DEFAULT_OPUS_MODEL, CLAUDE_CODE_USE_BEDROCK\)/);
+  assert.match(r.stderr, /T1 uses this session's provider settings \(ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, ANTHROPIC_DEFAULT_OPUS_MODEL, CLAUDE_CODE_USE_BEDROCK\)/);
   assert.doesNotMatch(r.stderr, /sk-secret/);
 
   // #43: a task routed to another provider gets none of this session's variables.

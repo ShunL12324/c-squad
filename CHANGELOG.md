@@ -1,6 +1,10 @@
 # Changelog
 
-## 1.3.2 - 2026-10-24
+## 1.3.3 - 2026-10-24
+
+1.3.2 was tagged but never published: its Windows test run failed on the
+order of the forwarded keys in `launch`'s stderr note, which is now sorted.
+These are the 1.3.2 changes.
 
 ### Fixed
 

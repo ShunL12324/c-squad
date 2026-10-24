@@ -442,7 +442,7 @@ function taskSettings(extra, user, { inPlace, cwd, num }) {
   let forwarded = [];
   if (!choosesProvider(base) && !ambient.some(choosesProvider)) {
     const env = providerEnv();
-    forwarded = Object.keys(env);
+    forwarded = Object.keys(env).sort(); // a stable order: Windows lists the environment differently
     if (forwarded.length) next.env = { ...envOf(base), ...env };
   }
   // Nothing added: the user's arguments stay exactly as given.

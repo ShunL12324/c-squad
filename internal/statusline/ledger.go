@@ -93,7 +93,6 @@ const (
 	columnGap   = 3
 	fieldGap    = 2
 	maxRows     = 4
-	maxCols     = 4
 	minLeader   = 3  // a title this many cells shorter than the column's title field gets a dotted leader
 	minColTitle = 16 // a column is added only while every title keeps this many cells
 	minTitle    = 12 // titles shrink to this before the usage cell steps down
@@ -219,12 +218,14 @@ func newEntry(t Task) entry {
 
 func (e entry) label() string { return "T" + strconv.Itoa(e.t.ID) }
 
-// Layout lays out the ledger: one row per task, most urgent first, at most
-// four rows (the last one "+N more" when the tasks do not fit), no row wider
-// than Claude Code shows (COLUMNS minus Margin). Up to four tasks take one
-// column; more take ⌈n/4⌉ columns when they fit with every title keeping
-// minColTitle cells, else one column fewer. Each column is as wide as its
-// widest row. It is a pure function of its arguments.
+// Layout lays out the ledger: most urgent first, in the fewest rows that
+// fit in what Claude Code shows (COLUMNS minus Margin), at most four (the
+// last one "+N more" when the tasks do not fit). A layout of r rows takes
+// ⌈n/r⌉ columns, filled column by column, so one row reads left to right;
+// a column is added only while every title keeps minColTitle cells. When
+// four rows do not fit, it takes one column fewer and a "+N more" row, down
+// to one column. Each column is as wide as its widest row. It is a pure
+// function of its arguments.
 func Layout(tasks []Task, columns int, now time.Time, noColor bool) []string {
 	usable := columns - Margin
 	if len(tasks) == 0 || usable < 1 {
@@ -241,16 +242,14 @@ func Layout(tasks []Task, columns int, now time.Time, noColor bool) []string {
 		}
 		return entries[i].t.ID < entries[j].t.ID
 	})
-	n := len(entries)
-	for ncol := min(maxCols, (n+maxRows-1)/maxRows); ncol >= 1; ncol-- {
+	for _, g := range grids(len(entries)) {
 		shown, rest := entries, []entry(nil)
-		if n > maxRows*ncol {
-			shown, rest = entries[:(maxRows-1)*ncol], entries[(maxRows-1)*ncol:]
+		if g.shown < len(entries) {
+			shown, rest = entries[:g.shown], entries[g.shown:]
 		}
-		rows := (len(shown) + ncol - 1) / ncol
 		var cols [][]entry
-		for i := 0; i < len(shown); i += rows {
-			cols = append(cols, shown[i:min(i+rows, len(shown))])
+		for i := 0; i < len(shown); i += g.rows {
+			cols = append(cols, shown[i:min(i+g.rows, len(shown))])
 		}
 		try := func(f fit) ([]fields, bool) {
 			ws := make([]fields, len(cols))
@@ -261,10 +260,11 @@ func Layout(tasks []Task, columns int, now time.Time, noColor bool) []string {
 			}
 			return ws, total <= usable
 		}
-		steps := fitSteps(shown, ncol > 1)
+		last := len(cols) == 1
+		steps := fitSteps(shown, !last)
 		for k, f := range steps {
 			ws, ok := try(f)
-			if !ok && !(ncol == 1 && k == len(steps)-1) {
+			if !ok && !(last && k == len(steps)-1) {
 				continue
 			}
 			// A badge wider than the state and usage fields leaves room
@@ -281,6 +281,26 @@ func Layout(tasks []Task, columns int, now time.Time, noColor bool) []string {
 		}
 	}
 	return nil
+}
+
+// A grid is a layout to try: rows rows of tasks (the "+N more" row not
+// counted), the first shown tasks of them.
+type grid struct{ rows, shown int }
+
+// grids are the layouts of n tasks to try, the fewest rows first; for a
+// number of rows, the fewest columns: one row of n columns, two rows of
+// ⌈n/2⌉, and so on to four rows of ⌈n/4⌉. Then three rows of one column
+// fewer and a "+N more" row, and so on down to one column, which always
+// fits.
+func grids(n int) []grid {
+	var out []grid
+	for r := 1; r <= min(n, maxRows); r++ {
+		out = append(out, grid{r, n})
+	}
+	for ncol := (n+maxRows-1)/maxRows - 1; ncol >= 1; ncol-- {
+		out = append(out, grid{maxRows - 1, (maxRows - 1) * ncol})
+	}
+	return out
 }
 
 // fit is how much of the rows a layout keeps: the widest title, the usage

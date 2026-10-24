@@ -1,5 +1,22 @@
 # Changelog
 
+## 3.0.3 - unreleased
+
+### Changed
+
+- The status line ledger fills the terminal width first: it takes the fewest
+  rows that fit, with as many columns as fit, up to one per task. Two tasks
+  in a 280-column window now sit side by side in one row instead of two rows
+  of one column with the rest of the window empty. For a number of rows it
+  takes the fewest columns (3 tasks that fit in one row take 3 columns, not
+  2 columns of 2 rows), and a column is still added only when every title
+  keeps 16 cells. When four rows of tasks do not fit, it takes one column
+  fewer and a `+N more` row, as before; 9 tasks at 160 columns now show in
+  four rows of 3 columns instead of 6 tasks and `+3 more`. One row reads
+  left to right, most urgent first; several rows fill column by column, as
+  before, so the first column holds the most urgent tasks. The rule "up to
+  four tasks in one column, ⌈n/4⌉ columns for more" of 3.0.1 is gone.
+
 ## 3.0.2 - 2026-10-25
 
 ### Fixed

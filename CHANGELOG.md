@@ -22,7 +22,8 @@
   inheriting its conversation (Claude:
   `claude --bg --resume <full id> --fork-session`; Codex: `thread/fork`,
   with the worker rules in the first turn). Same engine only; refused
-  without the dispatching session's id.
+  without the dispatching session's id. A fork's usage leaves out the
+  parent's, which its transcript or rollout carries over.
 - Codex as an engine (#41, M2): Codex threads on Codex's app-server daemon
   as workers, reviewers and dispatchers; skills in `~/.agents/skills`.
 

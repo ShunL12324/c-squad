@@ -2,8 +2,11 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -52,6 +55,39 @@ func contextMax(t store.Task, u engine.Usage) int64 {
 	return 200_000
 }
 
+// usageBase is a fork's starting usage: its parent's at the fork, which the
+// fork's transcript or rollout carries over.
+func (a *App) usageBase(id int) string {
+	return filepath.Join(a.cacheDir(), fmt.Sprintf("T%d.base.json", id))
+}
+
+// saveForkBase records the usage of the session a task forks from.
+func (a *App) saveForkBase(ctx context.Context, eng engine.Engine, id int, parent string) {
+	ur, ok := eng.(engine.UsageReader)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if u, err := ur.Usage(ctx, parent, ""); err == nil && u.Known {
+		engine.SaveState(a.usageBase(id), u)
+	}
+}
+
+// taskUsage reads the usage of task id's session sid, less what it forked
+// with.
+func (a *App) taskUsage(ctx context.Context, id int, ur engine.UsageReader, sid string) (engine.Usage, error) {
+	u, err := ur.Usage(ctx, sid, a.usageState(id))
+	if err != nil {
+		return u, err
+	}
+	var base engine.Usage
+	if b, err := os.ReadFile(a.usageBase(id)); err == nil && json.Unmarshal(b, &base) == nil {
+		u = u.Minus(base)
+	}
+	return u, nil
+}
+
 // usageOf reads a task's usage now and the status line's samples of it.
 func (a *App) usageOf(ctx context.Context, t store.Task) (*usageEntry, []string) {
 	eng, err := a.Engine(t.Engine)
@@ -64,7 +100,7 @@ func (a *App) usageOf(ctx context.Context, t store.Task) (*usageEntry, []string)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	u, err := ur.Usage(ctx, t.SessionID, a.usageState(t.ID))
+	u, err := a.taskUsage(ctx, t.ID, ur, t.SessionID)
 	if err != nil {
 		return nil, []string{"usage: unknown (" + firstLineOf(err.Error()) + ")"}
 	}

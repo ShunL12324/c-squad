@@ -110,9 +110,9 @@ func (a *App) statusQuery(ctx context.Context, in statusline.Input) ([]statuslin
 				o.Activity = func() (time.Time, bool) { return act.Activity(sid) }
 			}
 			if ur, ok := e.(engine.UsageReader); ok {
-				state := a.usageState(t.ID)
+				id := t.ID
 				o.ReadUsage = func(ctx context.Context) (statusline.Reading, error) {
-					u, err := ur.Usage(ctx, sid, state)
+					u, err := a.taskUsage(ctx, id, ur, sid)
 					return statusline.Reading{Known: u.Known, Fresh: u.Fresh(), Activity: u.Activity}, err
 				}
 			}

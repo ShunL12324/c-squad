@@ -88,7 +88,7 @@ const (
 	maxColumns   = 4
 	maxRows      = 4
 	minLeader    = 3  // dots after the longest title of a column
-	minTitle     = 12 // below this the usage cell steps down before the title shrinks further
+	minTitle     = 12 // titles shrink to this before the usage cell steps down
 )
 
 // usageWidths are the usage cell's widths, widest first: the whole trail,
@@ -295,7 +295,7 @@ func column(entries []entry, cellMax int, now time.Time, p painter) []line {
 	usageW, span := 0, 0
 	if usage {
 		for _, w := range usageWidths {
-			if cellMax-(base+max(stateW, urgentW-w-1)+w+1) >= minTitle {
+			if cellMax-(base+max(stateW, urgentW-w-1)+w+1) >= min(minTitle, titleW+1+minLeader) {
 				usageW, span = w, w+1
 				break
 			}

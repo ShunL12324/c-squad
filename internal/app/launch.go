@@ -238,10 +238,14 @@ func (a *App) Launch(ctx context.Context, la LaunchArgs) error {
 		}
 		return nil
 	}
+	if fork != "" {
+		a.saveForkBase(ctx, eng, t.ID, fork)
+	}
 	l, _ := flock.Try(a.TaskLock(t.ID))
 	sid, err := a.startSession(ctx, t, flow.StartPrompt(t, deps), fork)
 	if err != nil {
 		l.Release()
+		os.Remove(a.usageBase(t.ID)) // the number is free again
 		_ = db.Delete(context.Background(), t.ID)
 		return err
 	}

@@ -235,7 +235,9 @@ just discussed"), create-task adds `--fork`: the task starts as a fork of your
 session and inherits its conversation (Claude Code:
 `claude --bg --resume SESSION_ID --fork-session`; Codex: `thread/fork`). It
 stays in the engine of the session you dispatch from, and its first turn reads
-the whole inherited context again.
+the whole inherited context again. Its usage counts from the fork on: the
+parent's usage, which the fork's transcript or rollout carries over, is
+recorded at launch and left out.
 
 If a launch fails because the workspace is not trusted, open `claude` in that
 directory once and accept the trust prompt.

@@ -104,6 +104,16 @@ type Usage struct {
 // Fresh is the work the session did: input + cache writes + output.
 func (u Usage) Fresh() int64 { return u.Input + u.CacheWrite + u.Output }
 
+// Minus takes base off the counts (never below zero): a fork starts with
+// its parent's history, usage included.
+func (u Usage) Minus(base Usage) Usage {
+	u.Input = max(0, u.Input-base.Input)
+	u.CacheWrite = max(0, u.CacheWrite-base.CacheWrite)
+	u.Output = max(0, u.Output-base.Output)
+	u.CacheRead = max(0, u.CacheRead-base.CacheRead)
+	return u
+}
+
 // UsageReader is an engine that reads a session's usage. state is a file the
 // engine may keep its reading position in between calls.
 type UsageReader interface {

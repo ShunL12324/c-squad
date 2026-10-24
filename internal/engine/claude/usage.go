@@ -103,8 +103,14 @@ func checksum(f *os.File, offset int64) string {
 	return hex.EncodeToString(s[:8])
 }
 
+const (
+	ctxEvery  = 4 << 20  // bytes between looks at ctx
+	saveEvery = 32 << 20 // bytes between saves of the position, so a reader cut off by its caller's exit loses little
+)
+
 // Usage reads the session transcript's token usage from where the previous
-// call (state) stopped. Activity is the transcript's last write.
+// call (state; "" keeps none) stopped. Activity is the transcript's last
+// write.
 func (e *Engine) Usage(ctx context.Context, id, state string) (engine.Usage, error) {
 	path := TranscriptPath(e.claudeDir(), id)
 	if path == "" {
@@ -120,7 +126,7 @@ func (e *Engine) Usage(ctx context.Context, id, state string) (engine.Usage, err
 		return engine.Usage{}, err
 	}
 	var s usageState
-	if b, err := os.ReadFile(state); err == nil {
+	if b, err := os.ReadFile(state); state != "" && err == nil {
 		_ = json.Unmarshal(b, &s)
 	}
 	if s.Path != path || s.Offset > info.Size() || s.Offset > 0 && checksum(f, s.Offset) != s.Sum {
@@ -129,27 +135,44 @@ func (e *Engine) Usage(ctx context.Context, id, state string) (engine.Usage, err
 	if _, err := f.Seek(s.Offset, io.SeekStart); err != nil {
 		return engine.Usage{}, err
 	}
+	save := func() {
+		if state != "" {
+			s.Sum = checksum(f, s.Offset)
+			engine.SaveState(state, s)
+		}
+	}
 	r := bufio.NewReaderSize(f, 1<<20)
 	var readErr error
-	for n := 0; ; n++ {
-		if n%4096 == 0 && ctx.Err() != nil {
-			readErr = ctx.Err() // the next call goes on from here
-			break
+	var sinceCtx, sinceSave int64
+	for {
+		if sinceCtx >= ctxEvery || s.Offset == 0 {
+			sinceCtx = 0
+			if readErr = ctx.Err(); readErr != nil {
+				break // the next call goes on from here
+			}
+		}
+		if sinceSave >= saveEvery {
+			sinceSave = 0
+			save()
 		}
 		line, err := r.ReadSlice('\n')
 		if errors.Is(err, bufio.ErrBufferFull) {
-			// A line longer than the buffer: read it whole.
+			// A line longer than the buffer: copy what the buffer holds
+			// before reading on overwrites it, then read the rest.
+			head := append([]byte(nil), line...)
 			rest, err2 := r.ReadBytes('\n')
-			line, err = append(append([]byte(nil), line...), rest...), err2
+			line, err = append(head, rest...), err2
 		}
 		if err != nil {
 			break // EOF, or a line still being written: read it next time
 		}
-		s.Offset += int64(len(line))
+		n := int64(len(line))
+		s.Offset += n
+		sinceCtx += n
+		sinceSave += n
 		s.take(line)
 	}
-	s.Sum = checksum(f, s.Offset)
-	engine.SaveState(state, s)
+	save()
 	if readErr != nil {
 		return engine.Usage{}, readErr
 	}

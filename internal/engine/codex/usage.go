@@ -35,11 +35,12 @@ type tokenInfo struct {
 	Window int64      `json:"model_context_window"`
 }
 
-// Usage reads the thread's usage from its rollout file. Activity is the later
-// of the thread's updatedAt and the rollout's last write.
+// Usage reads the thread's usage from its rollout file, whose path state
+// keeps ("" keeps none). Activity is the later of the thread's updatedAt and
+// the rollout's last write.
 func (e *Engine) Usage(ctx context.Context, id, state string) (engine.Usage, error) {
 	var s rolloutState
-	if b, err := os.ReadFile(state); err == nil {
+	if b, err := os.ReadFile(state); state != "" && err == nil {
 		_ = json.Unmarshal(b, &s)
 	}
 	if _, err := os.Stat(s.Path); s.Thread != id || s.Path == "" || err != nil {
@@ -56,7 +57,9 @@ func (e *Engine) Usage(ctx context.Context, id, state string) (engine.Usage, err
 			return engine.Usage{}, errors.New("the thread has no rollout file")
 		}
 		s = rolloutState{Thread: id, Path: t.Path, UpdatedAt: t.UpdatedAt}
-		engine.SaveState(state, s)
+		if state != "" {
+			engine.SaveState(state, s)
+		}
 	}
 	st, err := os.Stat(s.Path)
 	if err != nil {

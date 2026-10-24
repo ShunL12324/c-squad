@@ -69,6 +69,22 @@ func TestUsageCountsEachMessageOnceAndReadsIncrementally(t *testing.T) {
 	}
 }
 
+// A line longer than the read buffer (a large tool input) is read whole.
+func TestUsageReadsLongLines(t *testing.T) {
+	h := testutil.NewHome(t)
+	e := newEngine(h)
+	sid := "0f0f0f0f-1111-4222-8333-444455551111"
+	dir := filepath.Join(h.Claude, "projects", "-repo")
+	os.MkdirAll(dir, 0o755)
+	big := `{"type":"assistant","message":{"id":"big","content":[{"type":"tool_use","input":{"content":"` + strings.Repeat("x", 3<<20) +
+		`"}}],"usage":{"input_tokens":1,"cache_creation_input_tokens":2,"cache_read_input_tokens":3,"output_tokens":40000}}}`
+	os.WriteFile(filepath.Join(dir, sid+".jsonl"), []byte(assistant("a", 1, 0, 0, 1)+"\n"+big+"\n"+assistant("b", 1, 0, 0, 1)+"\n"), 0o644)
+	u, err := e.Usage(context.Background(), sid, filepath.Join(h.Csquad, "cache", "T3.read.json"))
+	if err != nil || u.Output != 40002 || u.Fresh() != 40007 {
+		t.Errorf("%+v %v", u, err)
+	}
+}
+
 // Many messages: the ones that leave the open window are folded into the
 // total, which stays exact.
 func TestUsageFoldsOldMessages(t *testing.T) {

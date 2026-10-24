@@ -3,6 +3,7 @@ package codex
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -11,9 +12,9 @@ import (
 )
 
 // TestLiveThread runs one trivial thread against the real Codex daemon
-// (CSQUAD_CODEX_LIVE=1): start, state, peek, send, archive. It uses the
-// user's Codex login and configuration, starts the daemon when it is not
-// running, and deletes the thread at the end.
+// (CSQUAD_CODEX_LIVE=1): start, state, peek, send, usage, fork, archive. It
+// uses the user's Codex login and configuration, starts the daemon when it is
+// not running, and deletes its threads at the end.
 func TestLiveThread(t *testing.T) {
 	if os.Getenv("CSQUAD_CODEX_LIVE") != "1" {
 		t.Skip("set CSQUAD_CODEX_LIVE=1 to run against the real codex")
@@ -33,6 +34,7 @@ func TestLiveThread(t *testing.T) {
 	}
 	id := res.SessionID
 	t.Logf("thread %s", id)
+	threads := []string{id}
 	defer func() {
 		c, err := e.dial(context.Background())
 		if err != nil {
@@ -40,12 +42,16 @@ func TestLiveThread(t *testing.T) {
 			return
 		}
 		defer c.close()
-		_ = c.call(context.Background(), "thread/archive", map[string]any{"threadId": id}, nil)
-		if err := c.call(context.Background(), "thread/delete", map[string]any{"threadId": id}, nil); err != nil {
-			t.Errorf("cleanup: delete %s: %v", id, err)
+		// Forks first: a thread that a fork's history references cannot go.
+		for i := len(threads) - 1; i >= 0; i-- {
+			id := threads[i]
+			_ = c.call(context.Background(), "thread/archive", map[string]any{"threadId": id}, nil)
+			if err := c.call(context.Background(), "thread/delete", map[string]any{"threadId": id}, nil); err != nil {
+				t.Errorf("cleanup: delete %s: %v", id, err)
+			}
 		}
 	}()
-	waitFor := func(want string) {
+	waitOn := func(id, want string) {
 		t.Helper()
 		var seen []string
 		for i := 0; i < 120; i++ {
@@ -65,6 +71,7 @@ func TestLiveThread(t *testing.T) {
 		}
 		t.Fatalf("never %s: %v", want, seen)
 	}
+	waitFor := func(want string) { t.Helper(); waitOn(id, want) }
 	waitFor(engine.Idle)
 	msgs, err := e.Last(ctx, id, 4)
 	if err != nil {
@@ -114,6 +121,28 @@ func TestLiveThread(t *testing.T) {
 	if err != nil || !strings.Contains(strings.ToLower(engine.LastAssistant(msgs)), "ping") {
 		t.Fatalf("peek after send %+v %v", msgs, err)
 	}
+	// Usage, from the rollout's newest token_count event.
+	u, err := e.Usage(ctx, id, filepath.Join(t.TempDir(), "T999.read.json"))
+	t.Logf("usage %+v %v", u, err)
+	if err != nil || !u.Known || u.Fresh() <= 0 || u.ContextMax <= 0 || u.Activity.IsZero() {
+		t.Errorf("usage %+v %v", u, err)
+	}
+	// A fork inherits the conversation; its rules come in the first turn.
+	fork, err := e.Start(ctx, engine.StartSpec{ID: 998, Title: "csquad live fork", Cwd: dir, Args: args, Fork: id,
+		Rules:  "You are a forked test task. Answer tersely.",
+		Prompt: "Which single word did you reply with in your last answer? Reply with exactly that word and nothing else."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	threads = append(threads, fork.SessionID)
+	t.Logf("fork %s", fork.SessionID)
+	waitOn(fork.SessionID, engine.Idle)
+	msgs, err = e.Last(ctx, fork.SessionID, 0)
+	if err != nil || !strings.Contains(strings.ToLower(engine.LastAssistant(msgs)), "ping") {
+		t.Errorf("the fork does not know the conversation: %+v %v", msgs, err)
+	}
+	fu, err := e.Usage(ctx, fork.SessionID, filepath.Join(t.TempDir(), "T998.read.json"))
+	t.Logf("fork usage %+v %v", fu, err)
 	how, err = e.Remove(ctx, id, nil)
 	if err != nil {
 		t.Fatal(err)

@@ -362,7 +362,7 @@ func (a *App) prune(ctx context.Context, gone []int) {
 var (
 	taskFileRe  = regexp.MustCompile(`^T(\d+)\.(json|md)$`)
 	lockFileRe  = regexp.MustCompile(`^T(\d+)(-check-\d+)?\.lock$`)
-	cacheFileRe = regexp.MustCompile(`^T(\d+)\.(usage|read)\.json$`)
+	cacheFileRe = regexp.MustCompile(`^T(\d+)\.(usage|read|base)\.json$`)
 )
 
 // gone lists the tasks whose session the engine no longer lists.

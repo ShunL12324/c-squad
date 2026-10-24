@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,6 +15,11 @@ import (
 // anything starts.
 func TestLaunchFork(t *testing.T) {
 	h := testutil.NewHome(t)
+	// The dispatching session's transcript, with usage.
+	parent := `{"type":"assistant","message":{"id":"p1","usage":{"input_tokens":10,"cache_creation_input_tokens":90000,"cache_read_input_tokens":0,"output_tokens":5000}}}`
+	dir := filepath.Join(h.Claude, "projects", "-tmp-x")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, sid+".jsonl"), []byte(parent+"\n"), 0o644)
 	r := ok(t, csq(t, h, opts{stdin: "go on from here", env: mine()}, "launch", "--title", "forked", "--cwd", h.Root, "--fork"))
 	if !strings.Contains(r.stdout, "a fork of this session") {
 		t.Errorf("%s", r.stdout)
@@ -25,6 +32,23 @@ func TestLaunchFork(t *testing.T) {
 	if len(h.Sessions()) != 1 {
 		t.Errorf("the fork is a new session: %+v", h.Sessions())
 	}
+	// The fork's transcript carries the parent's history, usage included:
+	// that much is its base, not its work.
+	base := filepath.Join(h.Csquad, "cache", "T1.base.json")
+	if !exists(base) {
+		t.Fatal("no usage base recorded for the fork")
+	}
+	writeTranscript(t, h, "1", parent,
+		`{"type":"assistant","message":{"id":"f1","usage":{"input_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":95000,"output_tokens":700}}}`)
+	if out := ok(t, csq(t, h, opts{env: mine()}, "status")).stdout; !strings.Contains(out, "usage: 705 fresh") || !strings.Contains(out, "input 5 · cache write 0 · output 700  cache read 95.0k") {
+		t.Errorf("the fork counts its parent's usage:\n%s", out)
+	}
+	defer func() {
+		ok(t, csq(t, h, opts{env: mine()}, "cancel", "T1", "--discard"))
+		if exists(base) {
+			t.Error("the base file of a finished task is left")
+		}
+	}()
 	for _, c := range []struct {
 		env  []string
 		args []string

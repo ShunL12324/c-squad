@@ -86,7 +86,7 @@ func TestInstallAddsTheCodexHookOnlyWithCodex(t *testing.T) {
 		t.Errorf("%s", out)
 	}
 	b, _ := os.ReadFile(file)
-	if !strings.Contains(string(b), `"__csquad__": true`) || !strings.Contains(string(b), "hook --home "+e.h.Csquad+" codex-stop") || !strings.HasPrefix(string(b), "{\n  \"hooks\": {\n    \"Stop\": [\n      {\"hooks\": [{\"type\": \"command\", \"command\": \"say done\"}]},\n      {\"__csquad__\"") {
+	if !strings.Contains(string(b), `"__csquad__": true`) || !strings.Contains(string(b), "hook --home "+shell(e.h.Csquad)+" codex-stop") || !strings.HasPrefix(string(b), "{\n  \"hooks\": {\n    \"Stop\": [\n      {\"hooks\": [{\"type\": \"command\", \"command\": \"say done\"}]},\n      {\"__csquad__\"") {
 		t.Errorf("hooks.json:\n%s", b)
 	}
 	if out := e.update(); strings.Contains(out, "Codex: Stop hook") {

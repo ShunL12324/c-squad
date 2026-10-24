@@ -555,9 +555,15 @@ type step struct {
 func waitFor(t *testing.T, h *testutil.Home, env []string, script []step, args ...string) result {
 	t.Helper()
 	done := make(chan result, 1)
+	calls := h.Calls()
 	go func() {
 		done <- csq(t, h, opts{env: append(append(mine(), fast...), env...)}, append([]string{"wait"}, args...)...)
 	}()
+	// The script's times count from wait's first poll, however slowly the
+	// process starts (a Windows virus scan of a fresh binary).
+	for deadline := time.Now().Add(10 * time.Second); len(script) > 0 && h.Calls() == calls && time.Now().Before(deadline); {
+		time.Sleep(5 * time.Millisecond)
+	}
 	start := time.Now()
 	for _, s := range script {
 		time.Sleep(time.Until(start.Add(s.after)))

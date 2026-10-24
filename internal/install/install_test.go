@@ -79,6 +79,9 @@ func (e *env) command() string {
 	return StatuslineCommand(BinaryPath(e.h.Csquad), runtime.GOOS == "windows")
 }
 
+// shell is a path as rendered into skills and commands.
+func shell(p string) string { return assets.ShellPath(p, runtime.GOOS == "windows") }
+
 func exists(p string) bool { _, err := os.Lstat(p); return err == nil }
 
 // snapshot lists every file under dirs with its content.
@@ -114,11 +117,12 @@ func TestInstallIntoEmptyDir(t *testing.T) {
 	if got := e.read(filepath.Join(e.h.Csquad, "statusline.json")); !strings.Contains(got, `"present": false`) {
 		t.Errorf("statusline.json %s", got)
 	}
-	if st, err := os.Stat(BinaryPath(e.h.Csquad)); err != nil || st.Mode().Perm()&0o100 == 0 {
+	// Windows has no executable bit: the .exe name is what makes it one.
+	if st, err := os.Stat(BinaryPath(e.h.Csquad)); err != nil || !st.Mode().IsRegular() || runtime.GOOS != "windows" && st.Mode().Perm()&0o100 == 0 {
 		t.Errorf("binary not installed executable: %v", err)
 	}
 	skill := e.read(filepath.Join(e.h.Claude, "skills", "create-task", "SKILL.md"))
-	if strings.Contains(skill, "{{CSQUAD}}") || !strings.Contains(skill, BinaryPath(e.h.Csquad)+" launch --title") {
+	if strings.Contains(skill, "{{CSQUAD}}") || !strings.Contains(skill, shell(BinaryPath(e.h.Csquad))+" launch --title") {
 		t.Errorf("skill not rendered with the binary's path")
 	}
 	Status(e.o)
@@ -137,7 +141,7 @@ func TestMultiFileSkills(t *testing.T) {
 	ref := filepath.Join(e.h.Claude, "skills", "create-task", "reference.md")
 	codexRef := filepath.Join(e.h.Home, ".agents", "skills", "create-task", "reference.md")
 	for _, f := range []string{ref, codexRef} {
-		if text := e.read(f); strings.Contains(text, "{{CSQUAD}}") || !strings.Contains(text, BinaryPath(e.h.Csquad)+" retry T12") || strings.Contains(text, "<!--") {
+		if text := e.read(f); strings.Contains(text, "{{CSQUAD}}") || !strings.Contains(text, shell(BinaryPath(e.h.Csquad))+" retry T12") || strings.Contains(text, "<!--") {
 			t.Errorf("%s not rendered for its host:\n%s", f, text)
 		}
 	}
@@ -313,8 +317,9 @@ func TestPathsWithSpaces(t *testing.T) {
 	if !strings.Contains(e.read(filepath.Join(e.h.Claude, "skills", "task-status", "SKILL.md")), quoted+" status") {
 		t.Error("skill path not quoted")
 	}
-	if !strings.Contains(e.read(e.settings), quoted+" statusline") {
-		t.Error("wrapper not quoted")
+	var s struct{ StatusLine struct{ Command string } }
+	if json.Unmarshal([]byte(e.read(e.settings)), &s); s.StatusLine.Command != quoted+" statusline" {
+		t.Errorf("wrapper not quoted: %s", s.StatusLine.Command)
 	}
 	e.uninstall()
 	if exists(bin) {
@@ -413,9 +418,9 @@ func TestSymlinkedSettingsStaysALink(t *testing.T) {
 	real := filepath.Join(dots, "settings.json")
 	original := "{\n    \"theme\": \"dark\",\n    \"statusLine\": {\"type\": \"command\", \"command\": \"echo mine\"}\n}\n"
 	os.WriteFile(real, []byte(original), 0o644)
-	os.Symlink(real, filepath.Join(dots, "hop.json"))
+	testutil.Symlink(t, real, filepath.Join(dots, "hop.json"))
 	rel, _ := filepath.Rel(e.h.Claude, filepath.Join(dots, "hop.json"))
-	os.Symlink(rel, e.settings) // relative, chained
+	testutil.Symlink(t, rel, e.settings) // relative, chained
 	e.install()
 	if !isLink(e.settings) || !isLink(filepath.Join(dots, "hop.json")) || !strings.Contains(e.read(real), e.command()) {
 		t.Error("links replaced or target not edited")
@@ -435,7 +440,7 @@ func TestDanglingSettingsLink(t *testing.T) {
 	dots := filepath.Join(e.h.Root, "dotfiles")
 	os.MkdirAll(dots, 0o755)
 	os.MkdirAll(e.h.Claude, 0o755)
-	os.Symlink(filepath.Join(dots, "settings.json"), e.settings)
+	testutil.Symlink(t, filepath.Join(dots, "settings.json"), e.settings)
 	e.install()
 	if !isLink(e.settings) || !strings.Contains(e.read(filepath.Join(dots, "settings.json")), e.command()) {
 		t.Error("not written through")
@@ -448,7 +453,7 @@ func TestDanglingSettingsLink(t *testing.T) {
 	e = setup(t)
 	os.MkdirAll(e.h.Claude, 0o755)
 	target := filepath.Join(e.h.Root, "nowhere", "settings.json")
-	os.Symlink(target, e.settings)
+	testutil.Symlink(t, target, e.settings)
 	err := Install(e.o, false)
 	if err == nil || !strings.Contains(err.Error(), "symlink") || !strings.Contains(err.Error(), "nothing was changed") || exists(filepath.Join(e.h.Root, "nowhere")) || exists(e.h.Csquad) {
 		t.Errorf("%v", err)
@@ -461,7 +466,7 @@ func TestSymlinkedDirectories(t *testing.T) {
 	os.MkdirAll(filepath.Join(shared, "their-skill"), 0o755)
 	os.WriteFile(filepath.Join(shared, "their-skill", "SKILL.md"), []byte("theirs"), 0o644)
 	os.MkdirAll(e.h.Claude, 0o755)
-	os.Symlink(shared, filepath.Join(e.h.Claude, "skills"))
+	testutil.Symlink(t, shared, filepath.Join(e.h.Claude, "skills"))
 	e.install()
 	if !isLink(filepath.Join(e.h.Claude, "skills")) || !exists(filepath.Join(shared, "create-task", "SKILL.md")) {
 		t.Error("not written through the skills link")
@@ -474,7 +479,7 @@ func TestSymlinkedDirectories(t *testing.T) {
 	// A dangling directory link is refused.
 	e = setup(t)
 	os.MkdirAll(e.h.Claude, 0o755)
-	os.Symlink(filepath.Join(e.h.Root, "gone"), filepath.Join(e.h.Claude, "skills"))
+	testutil.Symlink(t, filepath.Join(e.h.Root, "gone"), filepath.Join(e.h.Claude, "skills"))
 	if err := Install(e.o, false); err == nil || !strings.Contains(err.Error(), "dangling symlink") || exists(filepath.Join(e.h.Root, "gone")) {
 		t.Errorf("%v", err)
 	}
@@ -483,7 +488,7 @@ func TestSymlinkedDirectories(t *testing.T) {
 	elsewhere := filepath.Join(e.h.Root, "elsewhere.md")
 	os.WriteFile(elsewhere, []byte("mine"), 0o644)
 	os.MkdirAll(filepath.Join(e.h.Claude, "skills", "create-task"), 0o755)
-	os.Symlink(elsewhere, filepath.Join(e.h.Claude, "skills", "create-task", "SKILL.md"))
+	testutil.Symlink(t, elsewhere, filepath.Join(e.h.Claude, "skills", "create-task", "SKILL.md"))
 	if err := Install(e.o, false); err == nil || !strings.Contains(err.Error(), "is a symlink") || e.read(elsewhere) != "mine" || exists(e.settings) {
 		t.Errorf("%v", err)
 	}

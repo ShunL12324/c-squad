@@ -10,11 +10,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/ShunL12324/c-squad/assets"
 	"github.com/ShunL12324/c-squad/internal/flock"
 	"github.com/ShunL12324/c-squad/internal/store"
 	"github.com/ShunL12324/c-squad/internal/testutil"
@@ -279,7 +281,13 @@ func TestConcurrentAdvanceRunsTheEffectOnce(t *testing.T) {
 func TestCheckEnvironmentIsAllowlisted(t *testing.T) {
 	h, repo := flowRepo(t)
 	out := filepath.Join(h.Root, "env.txt")
-	n := launchIn(t, h, repo, "fix", "--check", "cmd:env > "+out+"; pwd >> "+out)
+	// On Windows the check runs in Git Bash: the path takes forward slashes,
+	// and pwd -W prints the directory as Windows names it.
+	pwd, sh := "pwd", out
+	if runtime.GOOS == "windows" {
+		pwd, sh = "pwd -W", filepath.ToSlash(out)
+	}
+	n := launchIn(t, h, repo, "fix", "--check", "cmd:env > "+sh+"; "+pwd+" >> "+sh)
 	wt := work(t, h, repo, n, map[string]string{"b.txt": "b\n"})
 	advance(t, h, "ANTHROPIC_AUTH_TOKEN=sk-secret", "SOME_VAR=x")
 	waitPhase(t, h, n, store.Ready)
@@ -288,7 +296,7 @@ func TestCheckEnvironmentIsAllowlisted(t *testing.T) {
 	if strings.Contains(env, "sk-secret") || strings.Contains(env, "SOME_VAR") || !strings.Contains(env, "PATH=") || !strings.Contains(env, "HOME="+h.Home) {
 		t.Errorf("environment:\n%s", env)
 	}
-	if !strings.HasSuffix(strings.TrimSpace(env), wt) {
+	if !strings.HasSuffix(strings.TrimSpace(env), filepath.ToSlash(wt)) {
 		t.Errorf("not run in the worktree:\n%s", env)
 	}
 }
@@ -664,7 +672,7 @@ func TestClaudeStopHookAdvancesTheTask(t *testing.T) {
 		json.Unmarshal(b, &m)
 		cmd = m.Hooks.Stop[len(m.Hooks.Stop)-1].Hooks[0].Command
 	}
-	if !strings.HasSuffix(cmd, " hook --home "+h.Csquad+" claude-stop") {
+	if !strings.HasSuffix(cmd, " hook --home "+assets.ShellPath(h.Csquad, runtime.GOOS == "windows")+" claude-stop") {
 		t.Errorf("hook command %q", cmd)
 	}
 	work(t, h, repo, n, map[string]string{"b.txt": "b\n"})

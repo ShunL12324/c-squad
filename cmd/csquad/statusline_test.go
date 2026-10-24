@@ -169,8 +169,11 @@ func TestUsageInTheStatusLineAndStatus(t *testing.T) {
 	}
 
 	out := ok(t, csq(t, h, opts{env: mine()}, "status")).stdout
+	// The seconds since the refresh: 0, or more where processes start slowly.
+	if !regexp.MustCompile(`usage: 51\.7k fresh · \+0 since the last refresh \(\d+ s\) · last activity `).MatchString(out) {
+		t.Errorf("no usage line in\n%s", out)
+	}
 	for _, want := range []string{
-		"usage: 51.7k fresh · +0 since the last refresh (0 s) · last activity ",
 		"       input 4 · cache write 51.1k · output 622  cache read 50.5k (not counted)",
 		"       context 25% (50k of 200k) · last 20 s ▁█",
 	} {

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ShunL12324/c-squad/internal/testutil"
 )
 
 func (e *env) agents(name string) string {
@@ -30,7 +32,7 @@ func TestCodexSkillsOnlyWhenCodexHomeExists(t *testing.T) {
 	}
 	for _, name := range []string{"create-task", "finish-task", "message-task", "task-status", "watch-task"} {
 		text := e.read(e.agents(name))
-		if !strings.Contains(text, BinaryPath(e.h.Csquad)) || !strings.Contains(text, "outside Codex's sandbox") || strings.Contains(text, "<!--") {
+		if !strings.Contains(text, shell(BinaryPath(e.h.Csquad))) || !strings.Contains(text, "outside Codex's sandbox") || strings.Contains(text, "<!--") {
 			t.Errorf("codex %s:\n%s", name, text)
 		}
 		if claude := e.read(filepath.Join(e.h.Claude, "skills", name, "SKILL.md")); strings.Contains(claude, "Codex's sandbox") {
@@ -94,7 +96,7 @@ func TestCodexSymlinkedSkillIsRefused(t *testing.T) {
 	target := filepath.Join(e.h.Root, "elsewhere.md")
 	os.WriteFile(target, []byte("x"), 0o644)
 	os.MkdirAll(filepath.Dir(e.agents("create-task")), 0o755)
-	os.Symlink(target, e.agents("create-task"))
+	testutil.Symlink(t, target, e.agents("create-task"))
 	if err := Install(e.o, false); err == nil || !strings.Contains(err.Error(), "is a symlink") {
 		t.Fatalf("%v", err)
 	}

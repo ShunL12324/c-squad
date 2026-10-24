@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/ShunL12324/c-squad/internal/testutil"
 )
 
 // MaybeFakeCodex runs the fake codex and exits when the binary was started
@@ -65,7 +67,7 @@ func LinkFake(t testing.TB, bin string) {
 	if err := os.MkdirAll(bin, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(exe, filepath.Join(bin, name)); err != nil {
+	if err := testutil.LinkExe(exe, filepath.Join(bin, name)); err != nil {
 		t.Fatal(err)
 	}
 }

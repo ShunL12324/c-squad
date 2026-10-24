@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ShunL12324/c-squad/internal/testutil"
 	"github.com/coder/websocket"
 )
 
@@ -74,6 +75,8 @@ type Server struct {
 // `codex app-server daemon start` links it.
 func New(t testing.TB, home string, linked bool) *Server {
 	t.Helper()
+	// The fake daemon start links the control socket.
+	testutil.RequireSymlinks(t)
 	dir, err := os.MkdirTemp("", "cx")
 	if err != nil {
 		t.Fatal(err)

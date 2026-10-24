@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -30,7 +31,7 @@ func TestCodexReviewerThread(t *testing.T) {
 		return reviewer != ""
 	})
 	start, turn := srv.Last("thread/start"), srv.Last("turn/start")
-	if start["sandbox"] != "read-only" || start["approvalPolicy"] != "never" || start["model"] != "gpt-r" || start["developerInstructions"] != nil || start["cwd"] != repo+"/.claude/worktrees/t1-fix" {
+	if start["sandbox"] != "read-only" || start["approvalPolicy"] != "never" || start["model"] != "gpt-r" || start["developerInstructions"] != nil || start["cwd"] != filepath.Join(repo, ".claude", "worktrees", "t1-fix") {
 		t.Errorf("thread/start %v", start)
 	}
 	var schema any

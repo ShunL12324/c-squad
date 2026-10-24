@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -19,6 +20,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -263,6 +266,16 @@ func NewHome(t testing.TB) *Home {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if runtime.GOOS == "windows" {
+		// A detached csquad the test started may still be running: Windows
+		// deletes its open files only once it exits. Runs before the
+		// TempDir's own cleanup.
+		t.Cleanup(func() {
+			for deadline := time.Now().Add(15 * time.Second); os.RemoveAll(root) != nil && time.Now().Before(deadline); {
+				time.Sleep(100 * time.Millisecond)
+			}
+		})
+	}
 	h := &Home{Root: root, Home: filepath.Join(root, "home"), Csquad: filepath.Join(root, "home", ".csquad"),
 		Claude: filepath.Join(root, "home", ".claude"), Bin: filepath.Join(root, "bin"), State: filepath.Join(root, "sessions.json"), testingTB: t}
 	for _, d := range []string{h.Home, h.Bin} {
@@ -278,11 +291,89 @@ func NewHome(t testing.TB) *Home {
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
-	if err := os.Symlink(exe, filepath.Join(h.Bin, name)); err != nil {
+	if err := LinkExe(exe, filepath.Join(h.Bin, name)); err != nil {
 		t.Fatal(err)
 	}
 	h.SetSessions(nil)
 	return h
+}
+
+// LinkExe puts exe at dest under another name: a symlink, or on Windows
+// without the symlink privilege (no Developer Mode, not elevated) a hard link
+// to a copy of exe. Not to exe itself: no name of a running program's file
+// can be deleted, and the test binary runs past the test's cleanup.
+func LinkExe(exe, dest string) error {
+	err := os.Symlink(exe, dest)
+	if err == nil || runtime.GOOS != "windows" {
+		return err
+	}
+	src, err := exeCopy(exe)
+	if err != nil {
+		return err
+	}
+	return os.Link(src, dest)
+}
+
+var exeCopies sync.Map // exe → its copy
+
+// exeCopy copies exe once per process, into exe's own directory: `go test`
+// removes that directory with the binary.
+func exeCopy(exe string) (string, error) {
+	if c, ok := exeCopies.Load(exe); ok {
+		return c.(string), nil
+	}
+	in, err := os.Open(exe)
+	if err != nil {
+		return "", err
+	}
+	defer in.Close()
+	out, err := os.CreateTemp(filepath.Dir(exe), "fake-*.exe")
+	if err != nil {
+		return "", err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(out.Name())
+		return "", err
+	}
+	if err := out.Close(); err != nil {
+		return "", err
+	}
+	if c, loaded := exeCopies.LoadOrStore(exe, out.Name()); loaded {
+		os.Remove(out.Name())
+		return c.(string), nil
+	}
+	return out.Name(), nil
+}
+
+// Symlink makes a symlink for a test about symlinks; see RequireSymlinks.
+func Symlink(t testing.TB, target, link string) {
+	t.Helper()
+	err := os.Symlink(target, link)
+	if err != nil && noPrivilege(err) {
+		t.Skipf("no symlink privilege (enable Developer Mode): %v", err)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// RequireSymlinks skips a test that needs symlinks on Windows when the
+// process may not create them (no Developer Mode, not elevated). CI runs
+// elevated and covers these tests there.
+func RequireSymlinks(t testing.TB) {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		return
+	}
+	dir := t.TempDir()
+	if err := os.Symlink(dir, filepath.Join(dir, "probe")); err != nil && noPrivilege(err) {
+		t.Skipf("no symlink privilege (enable Developer Mode): %v", err)
+	}
+}
+
+func noPrivilege(err error) bool {
+	return runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(1314)) // ERROR_PRIVILEGE_NOT_HELD
 }
 
 var providerVar = regexp.MustCompile(`^(ANTHROPIC_|CLAUDE_CODE_|CODEX_|CLAUDECODE|CLAUDE_CONFIG_DIR=|CSQUAD_|HOME=|USERPROFILE=|PATH=|NO_COLOR=|COLUMNS=|TMPDIR=)`)

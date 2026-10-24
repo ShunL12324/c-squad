@@ -272,9 +272,10 @@ chips there.
 - For Codex tasks: codex-cli with the app-server daemon (verified with
   0.163.0)
 - Linux, macOS or Windows (amd64, arm64). On Windows, Claude Code runs status
-  line commands through Git Bash, so csquad does too for your original status
-  line (without Git it falls back to `cmd.exe`); a native `claude.exe` or the
-  npm `claude.cmd` both work. Windows builds and vets but has not been run yet.
+  line and hook commands through Git Bash, or PowerShell without Git, so
+  csquad does too for your original status line; the paths it writes work in
+  both (below `~` when your profile path has a space). A native `claude.exe`
+  or the npm `claude.cmd` both work. The tests run on Windows in CI.
 
 ## Development
 

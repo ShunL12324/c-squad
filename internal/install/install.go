@@ -68,6 +68,9 @@ type Manifest struct {
 	Binary    string            `json:"binary"`
 	Files     map[string]string `json:"files"`        // claude-dir relative path → sha256
 	Settings  string            `json:"settingsHash"` // sha256 of settings.json as csquad last wrote it
+	// Command is the status line command install wrote: on Windows it may
+	// name the binary below ~, which depends on the environment.
+	Command string `json:"statusLineCommand,omitempty"`
 	// Codex: what install wrote below AgentsDir, when $CODEX_HOME existed.
 	AgentsDir  string            `json:"agentsDir,omitempty"`
 	CodexFiles map[string]string `json:"codexFiles,omitempty"` // agents-dir relative path → sha256
@@ -128,9 +131,10 @@ func LoadSaved(home string) (Saved, bool) {
 	return s, ok
 }
 
-// StatuslineCommand is the wrapper command written into settings.json.
-func StatuslineCommand(binary string, win bool) string {
-	return assets.ShellPath(binary, win) + " statusline"
+// StatuslineCommand is the wrapper command written into settings.json;
+// home is the directory ~ names (see assets.ProgramPath).
+func StatuslineCommand(binary string, win bool, home string) string {
+	return assets.ProgramPath(binary, win, home) + " statusline"
 }
 
 var (
@@ -224,7 +228,7 @@ func (o Options) skillFiles(host string) map[string][]byte {
 	triggers := Triggers(filepath.Join(o.Home, "models.md"))
 	out := map[string][]byte{}
 	for name, text := range assets.SkillFilesFor(host) {
-		text = assets.Render(text, binary, win)
+		text = assets.Render(text, binary, win, o.Env.TildeHome())
 		if name == "create-task/SKILL.md" && triggers != "" {
 			text = extendDescription(text, triggers)
 		}
@@ -274,6 +278,7 @@ func Install(o Options, update bool) error {
 		return err
 	}
 	m.Settings = hash
+	m.Command = StatuslineCommand(BinaryPath(o.Home), runtime.GOOS == "windows", o.Env.TildeHome())
 	if err := o.installCodexHook(&m, old); err != nil {
 		return err
 	}
@@ -352,7 +357,7 @@ func (o Options) wrapStatusLine(lastHash string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	command := StatuslineCommand(BinaryPath(o.Home), runtime.GOOS == "windows")
+	command := StatuslineCommand(BinaryPath(o.Home), runtime.GOOS == "windows", o.Env.TildeHome())
 	if !exists {
 		d, _ = parseDocument([]byte("{}"))
 	}
@@ -555,7 +560,11 @@ func (o Options) restoreStatusLine(m Manifest) error {
 	var current struct {
 		Command string `json:"command"`
 	}
-	if !exists || !d.value("statusLine", &current) || current.Command != StatuslineCommand(m.Binary, runtime.GOOS == "windows") {
+	command := m.Command
+	if command == "" { // a manifest from before it was recorded
+		command = StatuslineCommand(m.Binary, runtime.GOOS == "windows", o.Env.TildeHome())
+	}
+	if !exists || !d.value("statusLine", &current) || current.Command != command {
 		if exists {
 			o.log("Status line: settings.json no longer points at the csquad wrapper; left as it is")
 		}

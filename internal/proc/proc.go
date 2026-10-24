@@ -242,15 +242,45 @@ func joinIf(dir, name string) string {
 	return filepath.Join(dir, name)
 }
 
+// PowerShell finds PowerShell 7, else Windows PowerShell.
+func PowerShell(env Env) string {
+	candidates := []string{joinIf(env.get("ProgramFiles", true), filepath.Join("PowerShell", "7", "pwsh.exe")), LookPath("pwsh", env, true),
+		joinIf(env.get("SystemRoot", true), filepath.Join("System32", "WindowsPowerShell", "v1.0", "powershell.exe")), LookPath("powershell", env, true)}
+	for _, c := range candidates {
+		if c == "" {
+			continue
+		}
+		if st, err := os.Stat(c); err == nil && st.Mode().IsRegular() {
+			return c
+		}
+	}
+	return ""
+}
+
+// TildeHome is the directory a leading ~ names both in Git Bash ($HOME, else
+// the user's profile) and in PowerShell (the profile): USERPROFILE, unless
+// HOME names another directory. "" when they differ.
+func (e Env) TildeHome() string {
+	profile, home := e.get("USERPROFILE", true), e.get("HOME", true)
+	norm := func(p string) string { return strings.TrimRight(strings.ReplaceAll(p, `\`, "/"), "/") }
+	if profile == "" || home != "" && !strings.EqualFold(norm(home), norm(profile)) {
+		return ""
+	}
+	return profile
+}
+
 // Shell returns how to run a shell command the way Claude Code runs status
-// line commands: sh on Linux and macOS, Git Bash on Windows (cmd.exe without
-// Git).
+// line commands: sh on Linux and macOS, Git Bash on Windows, PowerShell
+// without Git (cmd.exe as a last resort).
 func Shell(command string, env Env) Cmd {
 	if !Windows {
 		return Cmd{Path: "sh", Args: []string{"-c", command}}
 	}
 	if bash := GitBash(env); bash != "" {
 		return Cmd{Path: bash, Args: []string{"-c", command}}
+	}
+	if ps := PowerShell(env); ps != "" {
+		return Cmd{Path: ps, Args: []string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command}}
 	}
 	comspec := env.get("ComSpec", true)
 	if comspec == "" {

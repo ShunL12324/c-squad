@@ -76,11 +76,16 @@ func (e *env) read(p string) string {
 }
 
 func (e *env) command() string {
-	return StatuslineCommand(BinaryPath(e.h.Csquad), runtime.GOOS == "windows")
+	return StatuslineCommand(BinaryPath(e.h.Csquad), runtime.GOOS == "windows", e.o.Env.TildeHome())
 }
 
-// shell is a path as rendered into skills and commands.
+// shell is a path as rendered into commands as an argument.
 func shell(p string) string { return assets.ShellPath(p, runtime.GOOS == "windows") }
+
+// binary is the installed binary's path as rendered into skills and commands.
+func (e *env) binary() string {
+	return assets.ProgramPath(BinaryPath(e.o.Home), runtime.GOOS == "windows", e.o.Env.TildeHome())
+}
 
 func exists(p string) bool { _, err := os.Lstat(p); return err == nil }
 
@@ -122,7 +127,7 @@ func TestInstallIntoEmptyDir(t *testing.T) {
 		t.Errorf("binary not installed executable: %v", err)
 	}
 	skill := e.read(filepath.Join(e.h.Claude, "skills", "create-task", "SKILL.md"))
-	if strings.Contains(skill, "{{CSQUAD}}") || !strings.Contains(skill, shell(BinaryPath(e.h.Csquad))+" launch --title") {
+	if strings.Contains(skill, "{{CSQUAD}}") || !strings.Contains(skill, e.binary()+" launch --title") {
 		t.Errorf("skill not rendered with the binary's path")
 	}
 	Status(e.o)
@@ -141,7 +146,7 @@ func TestMultiFileSkills(t *testing.T) {
 	ref := filepath.Join(e.h.Claude, "skills", "create-task", "reference.md")
 	codexRef := filepath.Join(e.h.Home, ".agents", "skills", "create-task", "reference.md")
 	for _, f := range []string{ref, codexRef} {
-		if text := e.read(f); strings.Contains(text, "{{CSQUAD}}") || !strings.Contains(text, shell(BinaryPath(e.h.Csquad))+" retry T12") || strings.Contains(text, "<!--") {
+		if text := e.read(f); strings.Contains(text, "{{CSQUAD}}") || !strings.Contains(text, e.binary()+" retry T12") || strings.Contains(text, "<!--") {
 			t.Errorf("%s not rendered for its host:\n%s", f, text)
 		}
 	}
@@ -324,6 +329,33 @@ func TestPathsWithSpaces(t *testing.T) {
 	e.uninstall()
 	if exists(bin) {
 		t.Error("binary left")
+	}
+}
+
+// A user's home with a space (C:\Users\First Last): on Windows the
+// binary is named below ~, which Git Bash and PowerShell both start, where a
+// quoted path fails in PowerShell.
+func TestHomeWithASpace(t *testing.T) {
+	e := setup(t)
+	home := filepath.Join(e.h.Root, "First Last")
+	e.o.Home = filepath.Join(home, ".csquad")
+	e.o.Env = e.h.Env("HOME="+home, "USERPROFILE="+home)
+	e.install()
+	want := "'" + BinaryPath(e.o.Home) + "'"
+	if runtime.GOOS == "windows" {
+		want = "~/.csquad/bin/csquad.exe"
+	}
+	var s struct{ StatusLine struct{ Command string } }
+	if json.Unmarshal([]byte(e.read(e.settings)), &s); s.StatusLine.Command != want+" statusline" {
+		t.Errorf("status line %q", s.StatusLine.Command)
+	}
+	if !strings.Contains(e.read(filepath.Join(e.h.Claude, "skills", "task-status", "SKILL.md")), want+" status") {
+		t.Error("skill path")
+	}
+	// Uninstall knows the wrapper it wrote, whatever the environment says now.
+	e.o.Env = e.h.Env("HOME="+filepath.Join(e.h.Root, "elsewhere"), "USERPROFILE="+home)
+	if out := e.uninstall(); strings.Contains(out, "left as it is") || exists(e.settings) {
+		t.Errorf("not restored: %s", out)
 	}
 }
 

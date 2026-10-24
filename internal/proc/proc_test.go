@@ -115,3 +115,38 @@ func TestGitBash(t *testing.T) {
 		t.Errorf("%q", got)
 	}
 }
+
+func TestPowerShell(t *testing.T) {
+	root := t.TempDir()
+	windowsPS := filepath.Join(root, "Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+	write(t, windowsPS, "")
+	env := Env{"SystemRoot=" + filepath.Join(root, "Windows"), "ProgramFiles=" + filepath.Join(root, "Program Files")}
+	if got := PowerShell(env); got != windowsPS {
+		t.Errorf("%q", got)
+	}
+	pwsh := filepath.Join(root, "Program Files", "PowerShell", "7", "pwsh.exe")
+	write(t, pwsh, "")
+	if got := PowerShell(env); got != pwsh {
+		t.Errorf("PowerShell 7 first: %q", got)
+	}
+	if got := PowerShell(Env{}); got != "" {
+		t.Errorf("%q", got)
+	}
+}
+
+func TestTildeHome(t *testing.T) {
+	for _, c := range []struct {
+		env  Env
+		want string
+	}{
+		{Env{`USERPROFILE=C:\Users\First Last`}, `C:\Users\First Last`},
+		{Env{`USERPROFILE=C:\Users\First Last`, `HOME=C:\Users\First Last`}, `C:\Users\First Last`},
+		{Env{`UserProfile=C:\Users\First Last`, `home=c:\users\first last\`}, `C:\Users\First Last`},
+		{Env{`USERPROFILE=C:\Users\First Last`, `HOME=D:\home`}, ""},
+		{Env{`HOME=/home/u`}, ""},
+	} {
+		if got := c.env.TildeHome(); got != c.want {
+			t.Errorf("%v: %q", c.env, got)
+		}
+	}
+}

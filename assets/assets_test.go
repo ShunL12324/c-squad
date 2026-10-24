@@ -90,8 +90,31 @@ func TestRenderQuotesThePath(t *testing.T) {
 		{`C:\Users\shun\.csquad\bin\csquad.exe`, true, "C:/Users/shun/.csquad/bin/csquad.exe status"},
 		{`C:\Users\First Last\.csquad\bin\csquad.exe`, true, `"C:/Users/First Last/.csquad/bin/csquad.exe" status`},
 	} {
-		if got := Render(text, c.bin, c.win); got != c.want {
+		if got := Render(text, c.bin, c.win, ""); got != c.want {
 			t.Errorf("Render(%q) = %q, want %q", c.bin, got, c.want)
+		}
+	}
+}
+
+// A Windows program path that needs quotes goes below ~ instead, where it
+// can: PowerShell cannot start a quoted program without &.
+func TestProgramPath(t *testing.T) {
+	for _, c := range []struct {
+		p, home string
+		win     bool
+		want    string
+	}{
+		{`C:\Users\First Last\.csquad\bin\csquad.exe`, `C:\Users\First Last`, true, "~/.csquad/bin/csquad.exe"},
+		{`C:\Users\First Last\.csquad\bin\csquad.exe`, `c:/users/first last/`, true, "~/.csquad/bin/csquad.exe"},
+		{`C:\Users\shun\.csquad\bin\csquad.exe`, `C:\Users\shun`, true, "C:/Users/shun/.csquad/bin/csquad.exe"},
+		{`C:\Users\First Last\my csquad\csquad.exe`, `C:\Users\First Last`, true, `"C:/Users/First Last/my csquad/csquad.exe"`},
+		{`D:\First Last\csquad.exe`, `C:\Users\First Last`, true, `"D:/First Last/csquad.exe"`},
+		{`C:\Users\First Lastname\csquad.exe`, `C:\Users\First Last`, true, `"C:/Users/First Lastname/csquad.exe"`},
+		{`C:\Users\First Last\.csquad\bin\csquad.exe`, "", true, `"C:/Users/First Last/.csquad/bin/csquad.exe"`},
+		{"/home/a b/.csquad/bin/csquad", "/home/a b", false, "'/home/a b/.csquad/bin/csquad'"},
+	} {
+		if got := ProgramPath(c.p, c.win, c.home); got != c.want {
+			t.Errorf("ProgramPath(%q, %q) = %q, want %q", c.p, c.home, got, c.want)
 		}
 	}
 }

@@ -136,7 +136,8 @@ func FlowRules() string {
 
 // ShellPath quotes a path for the shells a skill's command may run in. On
 // Windows the path uses forward slashes (every shell accepts them) and double
-// quotes, which bash, PowerShell and cmd.exe all understand.
+// quotes, which bash, PowerShell and cmd.exe all understand around an
+// argument; for the program itself see ProgramPath.
 func ShellPath(p string, win bool) string {
 	if win {
 		p = strings.ReplaceAll(p, `\`, "/")
@@ -151,7 +152,28 @@ func ShellPath(p string, win bool) string {
 	return "'" + strings.ReplaceAll(p, "'", `'\''`) + "'"
 }
 
-// Render fills in the binary's path, quoted for the shell.
-func Render(text, binary string, win bool) string {
-	return strings.ReplaceAll(text, Placeholder, ShellPath(binary, win))
+// ProgramPath is ShellPath for the program a command starts. PowerShell
+// (Claude Code's shell on Windows without Git Bash, and Codex's) starts a
+// quoted program only after `&`, which bash rejects; both expand a leading
+// ~. So on Windows a path that needs quotes is written ~/... when it lies
+// below home (the directory ~ names in both; "" for none) and the rest
+// needs none.
+func ProgramPath(p string, win bool, home string) string {
+	q := ShellPath(p, win)
+	if !win || home == "" || !strings.HasPrefix(q, `"`) {
+		return q
+	}
+	p, home = strings.ReplaceAll(p, `\`, "/"), strings.TrimRight(strings.ReplaceAll(home, `\`, "/"), "/")
+	if len(p) > len(home)+1 && strings.EqualFold(p[:len(home)], home) && p[len(home)] == '/' {
+		if t := "~" + p[len(home):]; ShellPath(t, win) == t {
+			return t
+		}
+	}
+	return q
+}
+
+// Render fills in the binary's path, quoted for the shell (see ProgramPath
+// for home).
+func Render(text, binary string, win bool, home string) string {
+	return strings.ReplaceAll(text, Placeholder, ProgramPath(binary, win, home))
 }

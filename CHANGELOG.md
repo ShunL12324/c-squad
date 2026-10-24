@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Windows: a detached csquad (a check, an advance) no longer opens a console
+  window for every git, shell or agent it starts; they share its hidden
+  console.
+- Windows: finishing, cancelling or landing a task removes its
+  `logs/T<n>.lock` (an open file cannot be deleted there).
+- Windows: install and update leave no `bin/csquad.exe.old` unless the old
+  binary was running.
+- Windows: when the binary's path needs quotes (a profile path with a space)
+  and lies below your profile, the status line, the Stop hook and the skills
+  name it as `~/.csquad/bin/csquad.exe`: PowerShell, which Claude Code uses
+  without Git Bash, cannot start a quoted program path.
+- Windows: without Git Bash, your original status line and `cmd:` checks run
+  in PowerShell, as Claude Code runs them, instead of `cmd.exe`.
+
 ## 3.0.0 - 2026-10-24
 
 ### Added

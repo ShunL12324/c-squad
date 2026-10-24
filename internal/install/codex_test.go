@@ -32,7 +32,7 @@ func TestCodexSkillsOnlyWhenCodexHomeExists(t *testing.T) {
 	}
 	for _, name := range []string{"create-task", "finish-task", "message-task", "task-status", "watch-task"} {
 		text := e.read(e.agents(name))
-		if !strings.Contains(text, shell(BinaryPath(e.h.Csquad))) || !strings.Contains(text, "outside Codex's sandbox") || strings.Contains(text, "<!--") {
+		if !strings.Contains(text, e.binary()) || !strings.Contains(text, "outside Codex's sandbox") || strings.Contains(text, "<!--") {
 			t.Errorf("codex %s:\n%s", name, text)
 		}
 		if claude := e.read(filepath.Join(e.h.Claude, "skills", name, "SKILL.md")); strings.Contains(claude, "Codex's sandbox") {

@@ -241,7 +241,7 @@ func (a *App) stopHook() string {
 	if err != nil {
 		return ""
 	}
-	return assets.ShellPath(exe, proc.Windows) + " hook --home " + assets.ShellPath(a.Home, proc.Windows) + " claude-stop"
+	return assets.ProgramPath(exe, proc.Windows, a.Env.TildeHome()) + " hook --home " + assets.ShellPath(a.Home, proc.Windows) + " claude-stop"
 }
 
 // startQueued starts the session of a task whose dependencies are done.

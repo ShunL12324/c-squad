@@ -166,7 +166,10 @@ func choosesProvider(s map[string]any) bool {
 //     baseRef;
 //   - the launching session's provider variables, all or nothing: when any of
 //     those settings choose a provider themselves, none are forwarded, so one
-//     provider's token never reaches another provider's base URL.
+//     provider's token never reaches another provider's base URL;
+//   - crossSessionInbound "accept", unless --settings chose a value: a task
+//     runs in bypass mode, where Claude Code otherwise holds every message
+//     sent to it (csquad send, the flow's fix rounds) for the user's approval.
 //
 // It also returns the forwarded keys, sorted.
 func (e *Engine) taskSettings(user map[string]any, inPlace bool, cwd string) (map[string]any, []string) {
@@ -193,6 +196,9 @@ func (e *Engine) taskSettings(user map[string]any, inPlace bool, cwd string) (ma
 			wt["baseRef"] = "head"
 			next["worktree"] = wt
 		}
+	}
+	if _, set := user["crossSessionInbound"]; !set {
+		next["crossSessionInbound"] = "accept"
 	}
 	var forwarded []string
 	chosen := choosesProvider(user)

@@ -4,6 +4,10 @@
 
 ### Changed
 
+- A Claude task accepts cross-session messages (`"crossSessionInbound":
+  "accept"` in its settings, unless `--settings` sets a value). A task runs in
+  bypass mode, where Claude Code otherwise held every `csquad send` message
+  and every fix round's findings until the user approved them in agent view.
 - The status line's usage cell shows numbers instead of a trail: working,
   checking, fixing and merging rows show the fresh total and the change
   since the last refresh (`326k  +4.1k`; `+0` faint; `+?` when the provider

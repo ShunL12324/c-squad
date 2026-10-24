@@ -21,9 +21,10 @@ import (
 // {"type":"auth","token":...} line, then one {"type":"user",...} line, then
 // close. Observed in Claude Code 2.1.294.
 //
-// csquad sends no sender envelope and asserts no permission mode, so Claude
-// Code's cross-session gate applies as it is: a session in bypass mode may
-// hold the message until the user approves it.
+// csquad sends no sender envelope and asserts no permission mode. A task's
+// settings accept cross-session messages (taskSettings), so Claude Code
+// delivers them at once; a task whose --settings chose otherwise may hold the
+// message until the user approves it in agent view.
 
 type sessionFile struct {
 	PID         int    `json:"pid"`
@@ -115,7 +116,7 @@ func (e *Engine) Send(ctx context.Context, id, text string) (string, error) {
 		if err := deliver(sock, e.peerToken(sock, pid), full, text); err != nil {
 			return "", fmt.Errorf("delivering to session %s: %v", id, err)
 		}
-		return "delivered to the inbox of session " + id + " (no receipt; a session in bypass mode may hold it for your approval in agent view)", nil
+		return "delivered to the inbox of session " + id + " (no receipt)", nil
 	}
 	if _, err := e.run(ctx, s.Cwd, "--bg", "--resume", full, "--", text); err != nil {
 		return "", fmt.Errorf("resuming session %s: %v", id, err)

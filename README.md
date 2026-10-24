@@ -262,8 +262,7 @@ Codex tasks as for Claude Code tasks.
 
 ```text
 you     Tell T2 to use log/slog.
-claude  I sent T2 the instruction to use log/slog. If T2 runs in bypass mode, it may be
-        held until you approve it in agent view.
+claude  I sent T2 the instruction to use log/slog.
 ```
 
 csquad delivers the message to the task's session. A session that has stopped starts again with
@@ -274,11 +273,12 @@ csquad send T2 "Use log/slog for the request logging, not a custom Logger interf
 ```
 
 ```text
-sent to T2 · structured request logging: delivered to the inbox of session 9efe5bda (no receipt; a session in bypass mode may hold it for your approval in agent view)
+sent to T2 · structured request logging: delivered to the inbox of session 9efe5bda (no receipt)
 ```
 
-Claude Code can hold a message to a task that runs in bypass-permissions mode. If the task does
-not change, open agent view (`claude agents`), select the task and approve the message.
+csquad sets `"crossSessionInbound": "accept"` in the settings of each task, so Claude Code
+delivers the message at once. If you set a different value with `-- --settings`, Claude Code
+can hold the message until you approve it in agent view.
 
 ### More requests
 
@@ -556,9 +556,11 @@ The task uses the provider variables of the session that created it. Start `clau
 that has these variables, then create the task again.
 
 **I sent a message, but the task did nothing.**
-Claude Code can hold a message to a task in bypass-permissions mode. Open agent view
-(`claude agents`), select the task and approve the message. Such a task shows `needs input`
-in `csquad status` and the status line, also when it was done.
+Claude Code holds a message for your approval when the task's settings do not accept
+cross-session messages. csquad accepts them by default; a `crossSessionInbound` value in your
+`-- --settings` changes that. Open agent view (`claude agents`), select the task and approve
+the message. Such a task shows `needs input` in `csquad status` and the status line, also when
+it was done.
 
 **A task shows `needs you · max rounds`.**
 The check failed in each round. Run `csquad status` to read the findings. Send a message with a

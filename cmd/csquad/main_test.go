@@ -95,6 +95,11 @@ func settingsOf(t *testing.T, argv []string) map[string]any {
 	if err := json.Unmarshal(b, &m); err != nil {
 		t.Fatal(err)
 	}
+	if m["crossSessionInbound"] == "accept" {
+		delete(m, "crossSessionInbound")
+	} else if _, set := m["crossSessionInbound"]; !set {
+		t.Errorf("no crossSessionInbound in %v", m)
+	}
 	return withoutStopHook(t, m)
 }
 
@@ -201,6 +206,20 @@ func TestLaunchIsolation(t *testing.T) {
 	if s := testutil.Arg(h.LastArgv(), "--append-system-prompt"); strings.TrimSpace(s) != "Your task ID is T4." {
 		t.Errorf("--no-worker-rules: %q", s)
 	}
+}
+
+// A task accepts cross-session messages unless its --settings chose a value:
+// in bypass mode Claude Code otherwise holds csquad send's messages.
+func TestTaskAcceptsCrossSessionMessages(t *testing.T) {
+	h := testutil.NewHome(t)
+	ok(t, launch(t, h, "a"))
+	var m map[string]any
+	b, _ := os.ReadFile(testutil.Arg(h.LastArgv(), "--settings"))
+	if json.Unmarshal(b, &m); m["crossSessionInbound"] != "accept" {
+		t.Errorf("settings %s", b)
+	}
+	ok(t, launch(t, h, "b", "--", "--settings", `{"crossSessionInbound":"ask"}`))
+	jsonEq(t, settingsOf(t, h.LastArgv()), `{"crossSessionInbound":"ask","worktree":{"baseRef":"head"}}`)
 }
 
 // Claude Code branches worktrees from origin's default branch unless

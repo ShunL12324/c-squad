@@ -87,17 +87,17 @@ const (
 	// line by two cells and cuts a longer row than COLUMNS-4 with "…"
 	// (Claude Code 2.1.295, a statusLine without padding, as install writes
 	// it).
-	Margin    = 4
-	columnGap = 3
-	maxRows   = 4
-	minLeader = 3  // dots after the longest title of a column
-	minTitle  = 12 // titles shrink to this before the usage cell steps down
-	minBadge  = 16 // an urgent badge is cut to this before the title gives more: "needs you · max…"
+	Margin      = 4
+	columnGap   = 3
+	fieldGap    = 2
+	maxRows     = 4
+	maxCols     = 4
+	minLeader   = 3  // a title this many cells shorter than the column's title field gets a dotted leader
+	minColTitle = 16 // a column is added only while every title keeps this many cells
+	minTitle    = 12 // titles shrink to this before the usage cell steps down
+	minBadge    = 16 // an urgent badge is cut to this before the title gives more: "needs you · max…"
+	reasonMax   = 24 // the reason of a needs-you badge
 )
-
-// columnsFrom are the terminal widths from which the ledger has 2, 3 and 4
-// columns.
-var columnsFrom = []int{124, 187, 250}
 
 // Age is the time since since, at most five columns: now, 42m, 1h05m, 12h.
 func Age(since, now time.Time) string {
@@ -200,7 +200,7 @@ type entry struct {
 	state string
 }
 
-func newEntry(t Task, reasonMax int) entry {
+func newEntry(t Task) entry {
 	st := styleOf(t.State)
 	state := t.Text
 	if state == "" {
@@ -217,27 +217,21 @@ func newEntry(t Task, reasonMax int) entry {
 
 func (e entry) label() string { return "T" + strconv.Itoa(e.t.ID) }
 
-// Layout lays out the ledger: one row per task, most urgent first, in one
-// to four columns by width, at most four rows (the last one "+N more" when
-// the tasks do not fit), no row wider than Claude Code shows (COLUMNS minus
-// Margin). It is a pure function of its arguments.
+// Layout lays out the ledger: one row per task, most urgent first, at most
+// four rows (the last one "+N more" when the tasks do not fit), no row wider
+// than Claude Code shows (COLUMNS minus Margin). Up to four tasks take one
+// column; more take ⌈n/4⌉ columns when they fit with every title keeping
+// minColTitle cells, else one column fewer. Each column is as wide as its
+// widest row. It is a pure function of its arguments.
 func Layout(tasks []Task, columns int, now time.Time, noColor bool) []string {
 	usable := columns - Margin
 	if len(tasks) == 0 || usable < 1 {
 		return nil
 	}
 	p := painter{noColor}
-	ncol := 1
-	for _, from := range columnsFrom {
-		if columns >= from {
-			ncol++
-		}
-	}
-	cellMax := (usable - columnGap*(ncol-1)) / ncol
-	reasonMax := min(24, max(8, cellMax/5))
 	entries := make([]entry, len(tasks))
 	for i, t := range tasks {
-		entries[i] = newEntry(t, reasonMax)
+		entries[i] = newEntry(t)
 	}
 	sort.SliceStable(entries, func(i, j int) bool {
 		if entries[i].st.rank != entries[j].st.rank {
@@ -245,24 +239,178 @@ func Layout(tasks []Task, columns int, now time.Time, noColor bool) []string {
 		}
 		return entries[i].t.ID < entries[j].t.ID
 	})
-	shown, rest := entries, []entry(nil)
-	if len(entries) > maxRows*ncol {
-		shown, rest = entries[:(maxRows-1)*ncol], entries[(maxRows-1)*ncol:]
+	n := len(entries)
+	for ncol := min(maxCols, (n+maxRows-1)/maxRows); ncol >= 1; ncol-- {
+		shown, rest := entries, []entry(nil)
+		if n > maxRows*ncol {
+			shown, rest = entries[:(maxRows-1)*ncol], entries[(maxRows-1)*ncol:]
+		}
+		rows := (len(shown) + ncol - 1) / ncol
+		var cols [][]entry
+		for i := 0; i < len(shown); i += rows {
+			cols = append(cols, shown[i:min(i+rows, len(shown))])
+		}
+		try := func(f fit) ([]fields, bool) {
+			ws := make([]fields, len(cols))
+			total := columnGap * (len(cols) - 1)
+			for i, c := range cols {
+				ws[i] = measure(c, f, now, p)
+				total += ws[i].row()
+			}
+			return ws, total <= usable
+		}
+		steps := fitSteps(shown, ncol > 1)
+		for k, f := range steps {
+			ws, ok := try(f)
+			if !ok && !(ncol == 1 && k == len(steps)-1) {
+				continue
+			}
+			// A badge wider than the state and usage fields leaves room
+			// for usage parts that the step down dropped.
+			for u := 2; ok && u > f.usage; u-- {
+				g := f
+				g.usage = u
+				if gws, gok := try(g); gok {
+					ws, f = gws, g
+					break
+				}
+			}
+			return render(cols, ws, rest, f, usable, now, p)
+		}
 	}
-	rows := (len(shown) + ncol - 1) / ncol
-	var cols [][]line
-	for i := 0; i < len(shown); i += rows {
-		cols = append(cols, column(shown[i:min(i+rows, len(shown))], cellMax, now, p))
+	return nil
+}
+
+// fit is how much of the rows a layout keeps: the widest title, the usage
+// cell (2: the total and the change, 1: the total, 0: none), the widest
+// urgent badge and the widest state.
+type fit struct{ title, usage, badge, state int }
+
+const whole = 1 << 20 // a fit field that cuts nothing
+
+// fitSteps are the fits to try, roomiest first. A layout of several columns
+// shortens titles, down to minColTitle, then cuts the badge reason, down to
+// minBadge. One column steps down: titles shrink to minTitle, then the
+// change goes, then the total, then the badge reason is cut down to
+// minBadge, then the title gives the rest, then states are cut. The age is
+// never cut.
+func fitSteps(es []entry, multi bool) []fit {
+	titleW, stateW := 0, 0
+	for _, e := range es {
+		titleW = max(titleW, width(e.title))
+		stateW = max(stateW, width(e.state))
+	}
+	var steps []fit
+	if multi {
+		keep := min(minColTitle, titleW)
+		for t := titleW; t >= keep; t-- {
+			steps = append(steps, fit{t, 2, whole, whole})
+		}
+		for b := stateW - 1; b >= minBadge; b-- {
+			steps = append(steps, fit{keep, 2, b, whole})
+		}
+		return steps
+	}
+	keep := min(minTitle, titleW)
+	for u := 2; u >= 0; u-- {
+		for t := titleW; t >= keep; t-- {
+			steps = append(steps, fit{t, u, whole, whole})
+		}
+	}
+	for b := stateW - 1; b >= minBadge; b-- {
+		steps = append(steps, fit{keep, 0, b, whole})
+	}
+	for t := keep; t >= 0; t-- {
+		steps = append(steps, fit{t, 0, minBadge, whole})
+	}
+	for s := stateW; s >= 0; s-- {
+		steps = append(steps, fit{0, 0, min(minBadge, s), s})
+	}
+	return steps
+}
+
+// fields are the widths of the aligned fields of a column, each as wide as
+// its widest value. block is the state and the usage cell, or an urgent
+// badge across both: a badge wider than both widens the block, after the
+// usage cell, so the age stays in its column.
+type fields struct {
+	id, title, state, total, change, age, block int
+	marks                                       bool
+}
+
+// usage is the width of the usage cell: the total, then a space and the
+// change part.
+func (w fields) usage() int {
+	if w.total == 0 {
+		return 0
+	}
+	if w.change > 0 {
+		return w.total + 1 + w.change
+	}
+	return w.total
+}
+
+// span is the usage cell with the gap before it.
+func (w fields) span() int {
+	if u := w.usage(); u > 0 {
+		return fieldGap + u
+	}
+	return 0
+}
+
+// row is the width of each row of the column.
+func (w fields) row() int {
+	n := 4 + w.id + 1 + w.title + fieldGap + w.block // rail glyph id title state
+	if w.marks {
+		n += 2
+	}
+	if w.age > 0 {
+		n += fieldGap + w.age
+	}
+	return n
+}
+
+func measure(es []entry, f fit, now time.Time, p painter) fields {
+	var w fields
+	badge := 0
+	for _, e := range es {
+		w.id = max(w.id, width(e.label()))
+		w.marks = w.marks || e.t.Mark != ""
+		w.title = max(w.title, min(f.title, width(e.title)))
+		if e.st.urgent {
+			badge = max(badge, width(truncate(e.state, f.badge)))
+		} else {
+			w.state = max(w.state, width(truncate(e.state, f.state)))
+		}
+		if f.usage >= 1 {
+			w.total = max(w.total, width(totalPart(e).text))
+		}
+		if f.usage >= 2 && showsChange(e) {
+			w.change = max(w.change, changeCells, width(changePart(e, now, p).text))
+		}
+		w.age = max(w.age, width(Age(e.t.Since, now)))
+	}
+	w.block = max(w.state+w.span(), badge)
+	return w
+}
+
+func render(cols [][]entry, ws []fields, rest []entry, f fit, usable int, now time.Time, p painter) []string {
+	cells := make([][]line, len(cols))
+	for i, c := range cols {
+		cells[i] = make([]line, len(c))
+		for r, e := range c {
+			cells[i][r] = cell(e, ws[i], f, now, p)
+		}
 	}
 	var lines []line
-	for r := 0; r < rows; r++ {
+	for r := range cells[0] {
 		var l line
-		for i, c := range cols {
+		for i, c := range cells {
 			if r >= len(c) {
 				continue
 			}
 			if i > 0 {
-				l = append(l, segment{strings.Repeat(" ", columnGap), ""})
+				l = append(l, spaces(columnGap+ws[i-1].row()-cells[i-1][r].width()))
 			}
 			l = append(l, c[r]...)
 		}
@@ -278,104 +426,57 @@ func Layout(tasks []Task, columns int, now time.Time, noColor bool) []string {
 	return out
 }
 
-// column lays out the cells of one column. Ids, states, usage and ages are
-// aligned within it; the title area is as wide as the column's longest title
-// plus a short leader, and no wider than the cell allows, so a short title in
-// a wide terminal does not trail dozens of dots. An urgent badge runs across
-// the usage cell. In a narrow cell titles shrink first, down to minTitle,
-// then the usage cell steps down, then the badge text is cut, down to
-// minBadge; then the title gives what is left and states are cut. The age
-// is never cut while the cell has room for the row without title and state.
-func column(entries []entry, cellMax int, now time.Time, p painter) []line {
-	idW, stateW, urgentW, titleW, changeW, marks, usage := 0, 0, 0, 0, 0, false, false
-	for _, e := range entries {
-		idW = max(idW, width(e.label()))
-		if e.st.urgent {
-			urgentW = max(urgentW, width(e.state))
-		} else {
-			stateW = max(stateW, width(e.state))
-		}
-		titleW = max(titleW, width(e.title))
-		marks = marks || e.t.Mark != ""
-		usage = usage || showsUsage(e)
-		changeW = max(changeW, width(changePart(e, now, p).text))
+func spaces(n int) segment { return segment{strings.Repeat(" ", max(0, n)), ""} }
+
+// cell is the row of one task in its column: rail, glyph, id, engine mark,
+// the title (with a dotted leader when it is minLeader or more cells
+// shorter than the title field), the state, the usage cell and the age,
+// each in its field, two cells apart. An urgent badge runs across the usage
+// cell.
+func cell(e entry, w fields, f fit, now time.Time, p painter) line {
+	st := e.st
+	rail := "▎"
+	if st.urgent && p.noColor {
+		rail = "▌"
 	}
-	base := 4 + idW + 1 + 2 + 1 + 5 // rail glyph id … state age
-	if marks {
-		base += 2
+	l := line{p.fg(st.rgb, rail), {" ", ""}, p.fg(st.rgb, st.glyph), {" ", ""}, {pad(e.label(), w.id), "1"}, {" ", ""}}
+	if w.marks {
+		mark := e.t.Mark
+		if mark == "" {
+			mark = " "
+		}
+		l = append(l, segment{mark, ""}, segment{" ", ""})
 	}
-	want := min(minTitle, titleW+1+minLeader) // the title area kept while the rest gives
-	// The usage cell's widths, widest first: the total and the change, then
-	// the total alone.
-	widths := []int{totalCells}
-	if changeW > 0 {
-		widths = []int{totalCells + 2 + changeW, totalCells}
+	title := truncate(e.title, w.title)
+	if gap := w.title - width(title); gap >= minLeader {
+		title += " " + strings.Repeat("·", gap-1)
+	} else {
+		title = pad(title, w.title)
 	}
-	usageW, span := 0, 0
-	if usage {
-		for _, w := range widths {
-			if cellMax-(base+max(stateW, urgentW-w-1)+w+1) >= want {
-				usageW, span = w, w+1
-				break
-			}
-		}
+	titleSgr := ""
+	if st.faint {
+		titleSgr = "2"
 	}
-	badgeW := urgentW
-	if over := base + max(stateW, badgeW-span) + span + want - cellMax; over > 0 {
-		badgeW = max(stateW+span, badgeW-over, min(badgeW, minBadge))
+	l = append(l, segment{title, titleSgr}, segment{"  ", ""})
+	if st.urgent {
+		badge := truncate(e.state, f.badge)
+		sgr := "1;38;2;20;20;20;48;2;" + st.rgb
+		if p.noColor {
+			sgr = "1;7"
+		}
+		l = append(l, segment{badge, sgr}, spaces(w.block-width(badge)))
+	} else {
+		text := truncate(e.state, f.state)
+		l = append(l, p.fg(st.rgb, text), spaces(w.state-width(text)))
+		if w.span() > 0 {
+			l = append(append(l, segment{"  ", ""}), usageCell(e, w, f.usage >= 2, now, p)...)
+		}
+		l = append(l, spaces(w.block-w.state-w.span()))
 	}
-	stateW = min(max(stateW, badgeW-span), max(0, cellMax-base-span))
-	badgeW = min(badgeW, stateW+span)
-	fixed := base + stateW + span
-	area := max(0, min(cellMax-fixed, titleW+1+minLeader))
-	out := make([]line, len(entries))
-	for i, e := range entries {
-		st := e.st
-		var title string
-		if w := width(e.title); w+2 <= area {
-			title = e.title + " " + strings.Repeat("·", area-w-1)
-		} else {
-			title = pad(truncate(e.title, area), area)
-		}
-		rail := "▎"
-		if st.urgent && p.noColor {
-			rail = "▌"
-		}
-		text := truncate(e.state, stateW)
-		if st.urgent {
-			text = truncate(e.state, badgeW)
-		}
-		state := p.fg(st.rgb, text)
-		if st.urgent {
-			state.sgr = "1;38;2;20;20;20;48;2;" + st.rgb
-			if p.noColor {
-				state.sgr = "1;7"
-			}
-		}
-		titleSgr := ""
-		if st.faint {
-			titleSgr = "2"
-		}
-		l := line{p.fg(st.rgb, rail), {" ", ""}, p.fg(st.rgb, st.glyph), {" ", ""}, {pad(e.label(), idW), "1"}, {" ", ""}}
-		if marks {
-			mark := e.t.Mark
-			if mark == "" {
-				mark = " "
-			}
-			l = append(l, segment{mark, ""}, segment{" ", ""})
-		}
-		l = append(l, segment{title, titleSgr}, segment{"  ", ""}, state)
-		if cell := usageCell(e, usageW, now, p); cell != nil {
-			l = append(l, segment{strings.Repeat(" ", stateW-width(text)+1), ""})
-			l = append(l, cell...)
-			l = append(l, segment{" ", ""})
-		} else {
-			l = append(l, segment{strings.Repeat(" ", stateW+span-width(text)+1), ""})
-		}
-		l = append(l, segment{padLeft(Age(e.t.Since, now), 5), "2"})
-		out[i] = l
+	if w.age > 0 {
+		l = append(l, segment{"  ", ""}, segment{padLeft(Age(e.t.Since, now), w.age), "2"})
 	}
-	return out
+	return l
 }
 
 // overflow is "+7 more" followed by the hidden tasks: by id when they fit,

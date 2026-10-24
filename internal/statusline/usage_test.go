@@ -2,8 +2,6 @@ package statusline
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -79,29 +77,10 @@ func TestGoldenUsage(t *testing.T) {
 		var b strings.Builder
 		for _, n := range []int{0, 1, 3, 6, 12} {
 			for _, c := range []int{50, 80, 120, 160, 240, 255} {
-				fmt.Fprintf(&b, "=== %d tasks, %d columns\n", n, c)
-				for _, l := range Layout(usageTasks()[:n], c, now, noColor) {
-					b.WriteString(strings.ReplaceAll(l, "\x1b", `\e`) + "\n")
-				}
+				goldenText(&b, fmt.Sprintf("%d tasks, %d columns", n, c), usageTasks()[:n], c, noColor)
 			}
 		}
-		name := "ledger-usage-color.golden"
-		if noColor {
-			name = "ledger-usage-nocolor.golden"
-		}
-		file := filepath.Join("testdata", name)
-		if *update {
-			if err := os.WriteFile(file, []byte(b.String()), 0o644); err != nil {
-				t.Fatal(err)
-			}
-		}
-		want, err := os.ReadFile(file)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if string(want) != b.String() {
-			t.Errorf("%s differs (go test -run TestGoldenUsage -update rewrites it):\n%s", file, b.String())
-		}
+		checkGolden(t, goldenName("ledger-usage", noColor), b.String())
 	}
 }
 
@@ -116,8 +95,8 @@ func TestUsageCells(t *testing.T) {
 		`checking 1/3 +326k +12m`,                  // one reading: no change yet
 		`done +1\.2M +1h05m`, `failed +61k +2h10m`, // totals
 		`idle +\? +5m`, `stopped +\? +4h00m`, // unknown totals
-		`waiting T4 +7m`,                 // no session, no cell
-		`needs you · merge confl… 1h35m`, // the badge runs across the cell
+		`waiting T4 +7m`,                    // no session, no cell
+		`needs you · merge conflict  1h35m`, // the badge runs across the cell
 	} {
 		if !regexp.MustCompile(want).MatchString(plain) {
 			t.Errorf("no %q in\n%s", want, plain)
@@ -134,7 +113,7 @@ func TestUsageCells(t *testing.T) {
 	}
 }
 
-// Below about 52 columns a cell steps down: the title shrinks first, then
+// Below 51 columns a cell steps down: the title shrinks first, then
 // the change goes, then the total.
 func TestUsageCellStepsDown(t *testing.T) {
 	tasks := []Task{{ID: 1, Title: "Port the store to modernc sqlite", State: Working, Since: now.Add(-42 * time.Minute),
@@ -147,10 +126,10 @@ func TestUsageCellStepsDown(t *testing.T) {
 		}
 		return strings.TrimSpace(m[1] + m[2])
 	}
-	if got := cell(60); got != "800k  +5.0k" {
+	if got := cell(60); got != "800k +5.0k" {
 		t.Errorf("60: %q", got)
 	}
-	last := len("800k  +5.0k")
+	last := len("800k +5.0k")
 	for c := 60; c >= 30; c-- {
 		n := len(cell(c))
 		if n > last {
@@ -158,19 +137,22 @@ func TestUsageCellStepsDown(t *testing.T) {
 		}
 		last = n
 	}
-	if got := cell(50); got != "800k  +5.0k" {
+	if got := cell(51); got != "800k +5.0k" {
+		t.Errorf("51: %q", got)
+	}
+	if got := cell(50); got != "800k" {
 		t.Errorf("50: %q", got)
 	}
-	if got := cell(49); got != "800k" {
-		t.Errorf("49: %q", got)
+	if got := cell(43); got != "800k" {
+		t.Errorf("43: %q", got)
 	}
 	if got := cell(42); got != "" {
 		t.Errorf("42: %q", got)
 	}
 	// A short title needs no more room: the whole cell stays.
 	tasks[0].Title = "fix"
-	if got := cell(45); got != "800k  +5.0k" {
-		t.Errorf("45, short title: %q", got)
+	if got := cell(42); got != "800k +5.0k" {
+		t.Errorf("42, short title: %q", got)
 	}
 }
 

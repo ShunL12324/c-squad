@@ -139,7 +139,11 @@ func (a *App) Status(ctx context.Context, all, asJSON bool) error {
 			if p := strings.TrimPrefix(flowPlan(t), "\n  then: "); p != "" {
 				a.printf("flow: %s\n", p)
 			}
-			a.printf("latest:\n%s\n\n", clip(latest, 1200))
+			if cut := clip(latest, 1200); cut != latest {
+				a.printf("latest:\n%s\n(cut: csquad peek %s -n 1 shows all of it)\n\n", cut, t.Label())
+			} else {
+				a.printf("latest:\n%s\n\n", latest)
+			}
 		}
 	}
 	if asJSON {
@@ -160,7 +164,9 @@ func (a *App) Status(ctx context.Context, all, asJSON bool) error {
 	return nil
 }
 
-// Peek shows a task's recent conversation without tool traffic.
+// Peek shows a task's recent conversation without tool traffic. The last
+// assistant message shows in full; older messages are cut at 3000
+// characters.
 func (a *App) Peek(ctx context.Context, label string, n int, all bool) error {
 	t, err := a.task(ctx, label, all, "peek")
 	if err != nil {
@@ -180,7 +186,13 @@ func (a *App) Peek(ctx context.Context, label string, n int, all bool) error {
 	if err != nil {
 		return err
 	}
-	for _, m := range msgs {
+	final := -1 // the last assistant message shows in full: it is the task's report
+	for i, m := range msgs {
+		if m.Role == "assistant" {
+			final = i
+		}
+	}
+	for i, m := range msgs {
 		if m.Role == "tools" {
 			var parts []string
 			for _, c := range m.Tools {
@@ -189,7 +201,11 @@ func (a *App) Peek(ctx context.Context, label string, n int, all bool) error {
 			a.printf("[tools] %s\n\n", strings.Join(parts, ", "))
 			continue
 		}
-		a.printf("[%s]\n%s\n\n", m.Role, clip(m.Text, 3000))
+		text := m.Text
+		if i != final {
+			text = clip(text, 3000)
+		}
+		a.printf("[%s]\n%s\n\n", m.Role, text)
 	}
 	return nil
 }

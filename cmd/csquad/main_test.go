@@ -556,6 +556,32 @@ func TestPeekFoldsToolsAndRefusesOtherSessions(t *testing.T) {
 	}
 }
 
+// The final report is never cut: peek -n 1 shows all of it. Older messages
+// are cut at 3000 characters; status cuts its latest message and says so.
+func TestPeekShowsTheFinalReportInFull(t *testing.T) {
+	h := testutil.NewHome(t)
+	n := launchAs(t, h, sid, "report")
+	older := strings.Repeat("o", 4000) + "OLDER-END"
+	final := "Done.\n" + strings.Repeat("Verified on Linux and Windows. ", 200) + "\nFINAL-END"
+	text := func(s string) string {
+		b, _ := json.Marshal(map[string]any{"type": "assistant", "message": map[string]any{"content": []map[string]string{{"type": "text", "text": s}}}})
+		return string(b)
+	}
+	writeTranscript(t, h, n, `{"type":"user","message":{"content":"go"}}`, text(older), `{"type":"user","message":{"content":"and?"}}`, text(final))
+	out := ok(t, csq(t, h, opts{env: mine()}, "peek", "T"+n, "-n", "1")).stdout
+	if !strings.Contains(out, "[assistant]\n"+final+"\n") {
+		t.Errorf("-n 1 cut the final report:\n%s", out)
+	}
+	out = ok(t, csq(t, h, opts{env: mine()}, "peek", "T"+n)).stdout
+	if !strings.Contains(out, final) || strings.Contains(out, "OLDER-END") || !strings.Contains(out, strings.Repeat("o", 2999)+"…") {
+		t.Errorf("peek: an older message is cut, the final one is not:\n%s", out)
+	}
+	out = ok(t, csq(t, h, opts{env: mine()}, "status")).stdout
+	if strings.Contains(out, "FINAL-END") || !strings.Contains(out, "(cut: csquad peek T"+n+" -n 1 shows all of it)") {
+		t.Errorf("status:\n%s", out)
+	}
+}
+
 func TestSendWakesAStoppedSession(t *testing.T) {
 	h := testutil.NewHome(t)
 	n := launchAs(t, h, sid, "mine")

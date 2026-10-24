@@ -383,7 +383,7 @@ tasks".
 | --- | --- |
 | `launch --title T [flags] [-- ENGINE_ARGS]` | Start a task. The prompt comes from stdin or `--prompt-file`. |
 | `status [--all] [--json]` | Show the tasks of this session: state, age, session, latest message. |
-| `peek T12 [-n 6]` | Show the last messages of a task, with tool calls folded. |
+| `peek T12 [-n 6]` | Show the last messages of a task, with tool calls folded. The last reply shows in full. |
 | `wait T12 [T13...] [--timeout MIN]` | Return when a task needs input, finishes, fails or is removed. |
 | `send T12 "text"` | Send a follow-up instruction. The text comes from stdin when omitted. |
 | `finish T12 [T13...] [--into BRANCH]` | Make sure that the work is merged and clean, then remove worktrees, branches and the session. |

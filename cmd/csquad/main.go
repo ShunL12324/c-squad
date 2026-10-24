@@ -70,7 +70,7 @@ var commands = []command{
 	},
 	{
 		name:  "peek",
-		usage: "peek T12 [-n 6] [--all]   the task's recent conversation, tools folded",
+		usage: "peek T12 [-n 6] [--all]   the task's recent conversation, tools folded, the last reply in full",
 		flags: []string{"-n|--n=", "--all"},
 		run: func(ctx context.Context, a *app.App, p *parsed) error {
 			if len(p.args) != 1 {

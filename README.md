@@ -81,11 +81,11 @@ One task at 80 columns:
   <img src="https://raw.githubusercontent.com/ShunL12324/c-squad/main/docs/images/ledger/ledger-1-task-80-light.svg" alt="The status line with one task. T4, readme demo recording, done, 290k tokens, 3m.">
 </picture>
 
-Nine tasks at 160 columns, in two columns. The last row lists the other tasks:
+Nine tasks at 160 columns, in three columns. All tasks show, with shorter titles:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ShunL12324/c-squad/main/docs/images/ledger/ledger-9-tasks-160-dark.svg">
-  <img src="https://raw.githubusercontent.com/ShunL12324/c-squad/main/docs/images/ledger/ledger-9-tasks-160-light.svg" alt="The status line with 9 tasks in two columns. The last row shows plus 3 more, T7, T8 and T5.">
+  <img src="https://raw.githubusercontent.com/ShunL12324/c-squad/main/docs/images/ledger/ledger-9-tasks-160-light.svg" alt="The status line with 9 tasks in three columns of up to 4 rows. All 9 tasks show. The titles are cut.">
 </picture>
 
 Nine tasks at 124 columns. The titles are cut:

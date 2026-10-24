@@ -73,11 +73,11 @@ csquad install
   <img src="https://raw.githubusercontent.com/ShunL12324/c-squad/main/docs/images/ledger/ledger-1-task-80-light.svg" alt="状态栏只有一个任务：T4 已完成。">
 </picture>
 
-160 列，九个任务分两栏，最后一行列出其余任务：
+160 列，九个任务分三栏，全部显示，标题较短：
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ShunL12324/c-squad/main/docs/images/ledger/ledger-9-tasks-160-dark.svg">
-  <img src="https://raw.githubusercontent.com/ShunL12324/c-squad/main/docs/images/ledger/ledger-9-tasks-160-light.svg" alt="状态栏分两栏显示 9 个任务，最后一行显示另外 3 个。">
+  <img src="https://raw.githubusercontent.com/ShunL12324/c-squad/main/docs/images/ledger/ledger-9-tasks-160-light.svg" alt="状态栏分三栏显示全部 9 个任务，每栏最多 4 行，标题被截短。">
 </picture>
 
 124 列，标题被截短：

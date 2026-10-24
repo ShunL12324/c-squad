@@ -128,8 +128,6 @@ csquad peek T1 -n 8           # the last 8 messages of the task, tool calls fold
 
 To get a report at any time, type `/task-status`.
 
-![Claude Code in a terminal. Below the prompt, the status line shows six tasks: needs input, ready, done, checking 1/3, working with a usage trail, and waiting T5.](docs/images/csquad-main.png)
-
 ### Finish and merge a task
 
 ```text
@@ -284,8 +282,6 @@ After `--`, a Codex task accepts `-m/--model`, `--effort`, `-s/--sandbox`,
 Codex tasks as for Claude Code tasks.
 
 ### Send a message to a task
-
-![Claude sends "use log/slog" to T2. The status line below shows T2 needs input, T7 needs you · max rounds, T1 ready, and "+4 more".](docs/images/status-line-80.png)
 
 ```text
 you     /message-task T2 use log/slog

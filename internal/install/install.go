@@ -71,6 +71,8 @@ type Manifest struct {
 	// Codex: what install wrote below AgentsDir, when $CODEX_HOME existed.
 	AgentsDir  string            `json:"agentsDir,omitempty"`
 	CodexFiles map[string]string `json:"codexFiles,omitempty"` // agents-dir relative path → sha256
+	// CodexHooks is the text install inserted into Codex's hooks.json.
+	CodexHooks string `json:"codexHooks,omitempty"`
 }
 
 // Saved is the user's own status line, kept in $CSQUAD_HOME/statusline.json.
@@ -268,6 +270,9 @@ func Install(o Options, update bool) error {
 		return err
 	}
 	m.Settings = hash
+	if err := o.installCodexHook(&m, old); err != nil {
+		return err
+	}
 	if err := writeJSON(o.manifestFile(), m); err != nil {
 		return err
 	}
@@ -501,6 +506,7 @@ func Uninstall(o Options) error {
 	for rel, hash := range m.Files {
 		o.removeManaged(rel, hash)
 	}
+	o.uninstallCodexHook(m)
 	rmdirIfEmpty(filepath.Join(o.ClaudeDir, "skills"))
 	o.uninstallCodex(m)
 	for _, f := range []string{o.manifestFile(), o.savedFile(), o.backupFile()} {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ShunL12324/c-squad/internal/engine"
+	"github.com/ShunL12324/c-squad/internal/flow"
 	"github.com/ShunL12324/c-squad/internal/store"
 )
 
@@ -24,6 +25,29 @@ var report = map[string]string{
 	engine.Stopped:    "stopped",
 	engine.Gone:       "removed",
 	"finished":        "finished",
+	"ready":           "ready",
+	"needs_you":       "needs you",
+}
+
+// flowState is what wait watches for a task csquad's flow drives: its
+// phase, with the session's own state only where the user can act on it.
+// An idle worker between the flow's steps is still working.
+func flowState(t store.Task, live string) string {
+	switch t.Phase {
+	case store.Ready:
+		return "ready"
+	case store.NeedsYou:
+		return "needs_you"
+	case store.Failed:
+		return engine.Failed
+	case store.Waiting, store.Checking:
+		return engine.Working
+	}
+	switch live {
+	case engine.NeedsInput, engine.Failed, engine.Gone, engine.Stopped:
+		return live
+	}
+	return engine.Working
 }
 
 func (a *App) envMs(name string, fallback time.Duration) time.Duration {
@@ -31,6 +55,13 @@ func (a *App) envMs(name string, fallback time.Duration) time.Duration {
 		return time.Duration(v) * time.Millisecond
 	}
 	return fallback
+}
+
+func noteOf(t store.Task) string {
+	if t.Phase == store.NeedsYou && t.Note != "" {
+		return " · " + t.Note
+	}
+	return ""
 }
 
 func span(minutes float64) string {
@@ -92,6 +123,7 @@ func (a *App) Wait(ctx context.Context, labels []string, timeoutMin float64, all
 		return err
 	}
 	for {
+		a.AdvanceAll(ctx, nil)
 		var current []store.Task
 		for _, w := range ws {
 			if t, err := db.Get(ctx, w.t.ID); err == nil {
@@ -114,9 +146,12 @@ func (a *App) Wait(ctx context.Context, labels []string, timeoutMin float64, all
 					continue
 				}
 				state := live[w.t.ID].State
-				if store.Finished(w.t.Phase) {
+				switch {
+				case store.Finished(w.t.Phase):
 					state = "finished"
-				} else if w.t.SessionID == "" {
+				case flow.Orchestrated(w.t) || w.t.Phase == store.Waiting:
+					state = flowState(w.t, state)
+				case w.t.SessionID == "":
 					state = "starting"
 				}
 				if !w.inited {
@@ -126,7 +161,7 @@ func (a *App) Wait(ctx context.Context, labels []string, timeoutMin float64, all
 						events = append(events, struct {
 							id   int
 							text string
-						}{w.t.ID, fmt.Sprintf("%s · already %s", w.t.Name(), text)})
+						}{w.t.ID, fmt.Sprintf("%s · already %s%s", w.t.Name(), text, noteOf(w.t))})
 					}
 					continue
 				}
@@ -148,7 +183,7 @@ func (a *App) Wait(ctx context.Context, labels []string, timeoutMin float64, all
 					events = append(events, struct {
 						id   int
 						text string
-					}{w.t.ID, fmt.Sprintf("%s · %s", w.t.Name(), text)})
+					}{w.t.ID, fmt.Sprintf("%s · %s%s", w.t.Name(), text, noteOf(w.t))})
 				}
 			}
 			if len(events) > 0 && stopAt.IsZero() {

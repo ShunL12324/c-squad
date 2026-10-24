@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -105,6 +106,9 @@ func (e *Engine) Start(ctx context.Context, spec engine.StartSpec) (engine.Start
 	turn := map[string]any{"threadId": id, "input": textInput(spec.Prompt), "clientUserMessageId": messageID()}
 	if o.Effort != "" {
 		turn["effort"] = o.Effort
+	}
+	if len(spec.Schema) > 0 {
+		turn["outputSchema"] = json.RawMessage(spec.Schema) // a reviewer's verdict
 	}
 	if err := c.call(ctx, "turn/start", turn, nil); err != nil {
 		return undo(err)

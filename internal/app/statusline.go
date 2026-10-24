@@ -64,6 +64,7 @@ func (a *App) statusQuery(ctx context.Context, in statusline.Input) ([]statuslin
 		return nil, err
 	}
 	a.prune(ctx, gone(tasks, live))
+	a.maybeAdvance(ctx, tasks, live)
 	marks := len(engine.Names()) > 1
 	var out []statusline.Observed
 	for _, t := range tasks {
@@ -73,8 +74,12 @@ func (a *App) statusQuery(ctx context.Context, in statusline.Input) ([]statuslin
 		if key == engine.Gone || key == "starting" {
 			key = "stopped"
 		}
+		text := v.Text
+		if key == "needs_you" {
+			text = "" // the ledger adds the reason from the note
+		}
 		o := statusline.Observed{
-			Task:      statusline.Task{ID: t.ID, Title: t.Title, State: key, Text: v.Text, Note: t.Note},
+			Task:      statusline.Task{ID: t.ID, Title: t.Title, State: key, Text: text, Note: t.Note},
 			SessionID: t.SessionID,
 			StartedAt: l.StartedAt,
 		}

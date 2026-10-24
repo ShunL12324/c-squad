@@ -23,15 +23,18 @@ only when the user explicitly asks about all or other tasks.
 
 `status` lists the tasks launched by this session (`--all`: every task) with
 their state (needs input, failed, done, idle, working, stopped, gone), age,
-session, directory and latest message. `peek` shows the last messages without
-tool calls.
+session, directory and latest message. Tasks with a check, a merge or an
+order show csquad's flow instead: `waiting T3`, `checking 1/3`,
+`fixing 2/3`, `merging`, `ready` (the check passed), `needs you` with a
+`note:` line saying why (`csquad retry T12` resumes it). `peek` shows the
+last messages without tool calls.
 
 Report in this order, briefly:
 
-1. **Needs input**: the question the task is waiting on (peek it if the latest
-   message does not make it clear), so the user can answer it (in agent view
-   for a Claude task, `codex resume THREAD` for a Codex task, or through
-   message-task).
+1. **Needs input** or **needs you**: the question the task is waiting on
+   (peek it if the latest message does not make it clear), so the user can
+   answer it (in agent view for a Claude task, `codex resume THREAD` for a
+   Codex task, or through message-task); for needs you, the note.
 2. **Failed**: what went wrong.
 3. **Done or idle**: the result in a line or two (branch, verification,
    anything left unresolved), and that it is ready to merge and finish.

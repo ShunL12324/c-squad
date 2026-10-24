@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-//go:embed worker.md worker-codex.md skills
+//go:embed worker.md worker-codex.md flow.md skills
 var files embed.FS
 
 // Placeholder is replaced by the absolute path of the installed binary.
@@ -95,6 +95,13 @@ func WorkerRulesFor(engine string, inPlace bool) string {
 func rules(file string, inPlace bool) string {
 	b, _ := files.ReadFile(file)
 	return filter(string(b), map[string]bool{"in-place": !inPlace, "worktree": inPlace})
+}
+
+// FlowRules is what a task with a check or a merge adds to the worker
+// rules: the messages csquad sends are the user's instructions.
+func FlowRules() string {
+	b, _ := files.ReadFile("flow.md")
+	return string(b)
 }
 
 // ShellPath quotes a path for the shells a skill's command may run in. On

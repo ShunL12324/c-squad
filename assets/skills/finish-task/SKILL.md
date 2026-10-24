@@ -14,8 +14,12 @@ Only finish tasks this session launched (`{{CSQUAD}} status` lists them).
 Touch another session's task only if the user names it explicitly (then pass
 `--all`).
 
+A task launched with `--merge` is merged and cleaned up by csquad itself and
+leaves the list; one whose check passed shows `ready` and is finished like any
+other.
+
 Which tasks: the ones the user names. If they name none ("finish", "merge
-them", "wrap up"), finish every task of this session that is done or idle, one
+them", "wrap up"), finish every task of this session that is done, idle or ready, one
 after another, without asking which. Skip tasks that are still working or need
 input, and list them at the end. If one task hits a blocker (conflict, failing
 tests, unmerged or uncommitted work), stop on that task, report it, and carry

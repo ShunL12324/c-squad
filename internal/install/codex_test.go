@@ -40,7 +40,8 @@ func TestCodexSkillsOnlyWhenCodexHomeExists(t *testing.T) {
 	if strings.Contains(e.read(e.agents("message-task")), "SendMessage") {
 		t.Error("Codex message-task names SendMessage")
 	}
-	if e.read(filepath.Join(codex, "config.toml")) != "model = \"x\"\n" || e.read(filepath.Join(codex, "hooks.json")) != `{"hooks":{}}` {
+	// Only csquad's Stop group is added to hooks.json (codexhooks_test.go).
+	if e.read(filepath.Join(codex, "config.toml")) != "model = \"x\"\n" || e.read(filepath.Join(codex, "hooks.json")) != `{"hooks":{"Stop": [`+CodexHookGroup(BinaryPath(e.h.Csquad), e.h.Csquad)+`]}}` {
 		t.Error("a Codex file was changed")
 	}
 	Status(e.o)

@@ -130,7 +130,7 @@ func TestSchemaHasEveryColumnAndRefusesNewer(t *testing.T) {
 		cols = append(cols, c)
 	}
 	rows.Close()
-	want := []string{"id", "title", "cwd", "engine", "model", "engine_args", "session_id", "parent_session", "in_place", "prompt", "after", "check_spec", "max_rounds", "round", "merge_into", "phase", "last_check", "note", "created_at", "updated_at", "worker_rules", "outcome"}
+	want := []string{"id", "title", "cwd", "engine", "model", "engine_args", "session_id", "parent_session", "in_place", "prompt", "after", "check_spec", "max_rounds", "round", "merge_into", "phase", "last_check", "note", "created_at", "updated_at", "worker_rules", "outcome", "step"}
 	if len(cols) != len(want) {
 		t.Fatalf("columns %v", cols)
 	}

@@ -60,6 +60,30 @@ appended to its system prompt: work autonomously, use an isolated worktree and
 branch, clean up after itself, commit, and end with a short result. Workers never
 report back on their own, and nothing merges until you ask.
 
+### Order, checks and merging
+
+Only when you ask for them, a task gets a flow of its own:
+
+```text
+you     T2 after T1. Let codex review T1, at most 3 rounds, and merge it when it passes.
+```
+
+- `--after T1,T3`: queued until those tasks are done (merged, or finished);
+  it then starts with what they left (merged branch, final message).
+- `--check codex|claude[:MODEL]|cmd:COMMAND` and `--max N` (default 3): when
+  the worker stops, a fresh read-only reviewer (or the command, in the task's
+  worktree) checks the work; failed findings go back to the worker, up to N
+  rounds.
+- `--merge [BRANCH]`: csquad rebases the branch onto the target (or asks the
+  worker to, on a conflict), fast-forwards the target, verifies it with
+  `git merge-base --is-ancestor`, cleans up and releases the queued tasks.
+
+The status line shows `waiting T1`, `checking 1/3`, `fixing 2/3`, `merging`,
+`ready`, or `needs you · reason` when a task stopped for you;
+`csquad retry T12` resumes it where it stopped. Every phase change is a line
+in `~/.csquad/logs/events.jsonl`. There is no service: each `csquad` command,
+the tasks' Stop hooks and the status line move the flow along.
+
 ## The skills
 
 Just ask; Claude picks the skill from what you say.

@@ -45,6 +45,10 @@ as few tokens as possible:
   result, from the task's last message (`peek T12 -n 1`). Then ask whether to
   finish it, unless the user authorized finishing (below). Never finish or
   merge otherwise.
+- **ready** (its check passed) or **finished** (csquad merged it): one or two
+  sentences on the result, as for done; a finished task needs no finishing.
+- **needs you · reason**: relay the reason; `{{CSQUAD}} retry T12` resumes it
+  once the user decides.
 - **failed**, **stopped**, **removed**: one sentence on why.
 - **still working after …**: say so and ask whether to keep watching.
 

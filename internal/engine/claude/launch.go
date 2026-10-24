@@ -222,6 +222,60 @@ func (e *Engine) taskSettings(user map[string]any, inPlace bool, cwd string) (ma
 	return next, forwarded
 }
 
+// Queue prepares a task that starts later, in a detached csquad process
+// whose environment carries none of the launching session's provider
+// variables: the settings are merged now (forwarded variables included) into
+// settings/T12.json (0600), and the returned arguments name that file.
+func (e *Engine) Queue(id int, args []string, inPlace bool, cwd string) ([]string, []string, error) {
+	extra := append([]string(nil), args...)
+	var user map[string]any
+	i, value, inline, err := findSettings(extra)
+	if err != nil {
+		return nil, nil, err
+	}
+	if i >= 0 {
+		if user, err = readSettings(value); err != nil {
+			return nil, nil, err
+		}
+		n := 2
+		if inline {
+			n = 1
+		}
+		extra = append(extra[:i], extra[i+n:]...)
+	}
+	settings, forwarded := e.taskSettings(user, inPlace, cwd)
+	sfile := SettingsFile(e.cfg.Home, id)
+	if err := writePrivate(sfile, settings); err != nil {
+		return nil, nil, err
+	}
+	var notes []string
+	if len(forwarded) > 0 {
+		notes = append(notes, fmt.Sprintf("T%d will use this session's provider settings (%s), stored in %s (mode 600) while the task exists.", id, strings.Join(forwarded, ", "), sfile))
+	}
+	return append(extra, "--settings", sfile), notes, nil
+}
+
+// WithStopHook adds a Stop hook group running command to settings, after
+// the Stop groups the user's settings already have (lists are joined).
+func WithStopHook(settings map[string]any, command string) map[string]any {
+	next := map[string]any{}
+	for k, v := range settings {
+		next[k] = v
+	}
+	hooks := map[string]any{}
+	for k, v := range objectOf(settings, "hooks") {
+		hooks[k] = v
+	}
+	var stop []any
+	if list, ok := hooks["Stop"].([]any); ok {
+		stop = append(stop, list...)
+	}
+	stop = append(stop, map[string]any{"hooks": []any{map[string]any{"type": "command", "command": command, "timeout": 30}}})
+	hooks["Stop"] = stop
+	next["hooks"] = hooks
+	return next
+}
+
 // MaxInlinePrompt: one argv entry is limited to 128 KB on Linux
 // (MAX_ARG_STRLEN), all of argv to ARG_MAX on macOS and the whole command
 // line to 32 K characters on Windows; claude cannot read the positional
@@ -269,6 +323,9 @@ func (e *Engine) Start(ctx context.Context, spec engine.StartSpec) (engine.Start
 		extra = append(extra[:i], extra[i+n:]...)
 	}
 	settings, forwarded := e.taskSettings(user, spec.InPlace, spec.Cwd)
+	if spec.StopHook != "" {
+		settings = WithStopHook(settings, spec.StopHook)
+	}
 	sfile := SettingsFile(e.cfg.Home, spec.ID)
 	if err := writePrivate(sfile, settings); err != nil {
 		return res, err
@@ -312,7 +369,11 @@ func (e *Engine) Start(ctx context.Context, spec engine.StartSpec) (engine.Start
 	out, err := e.run(ctx, spec.Cwd, argv...)
 	m := backgrounded.FindStringSubmatch(out)
 	if err != nil || m == nil {
-		os.Remove(sfile)
+		if i >= 0 && value == sfile {
+			_ = writePrivate(sfile, user) // a queued task's settings, kept for its retry
+		} else {
+			os.Remove(sfile)
+		}
 		if pfile != "" {
 			os.Remove(pfile)
 		}

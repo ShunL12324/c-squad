@@ -92,6 +92,31 @@ func settingsOf(t *testing.T, argv []string) map[string]any {
 	if err := json.Unmarshal(b, &m); err != nil {
 		t.Fatal(err)
 	}
+	return withoutStopHook(t, m)
+}
+
+// withoutStopHook checks that csquad's Stop hook is the last Stop group of
+// a task's settings and returns the settings without it.
+func withoutStopHook(t *testing.T, m map[string]any) map[string]any {
+	t.Helper()
+	hooks, _ := m["hooks"].(map[string]any)
+	stop, _ := hooks["Stop"].([]any)
+	if len(stop) == 0 {
+		t.Errorf("no Stop hook in %v", m)
+		return m
+	}
+	last, _ := json.Marshal(stop[len(stop)-1])
+	if !regexp.MustCompile(`^\{"hooks":\[\{"command":"[^"]+ hook --home [^"]+ claude-stop","timeout":30,"type":"command"\}\]\}$`).Match(last) {
+		t.Errorf("the last Stop group is not csquad's: %s", last)
+	}
+	if stop = stop[:len(stop)-1]; len(stop) > 0 {
+		hooks["Stop"] = stop
+	} else {
+		delete(hooks, "Stop")
+	}
+	if len(hooks) == 0 {
+		delete(m, "hooks")
+	}
 	return m
 }
 
@@ -141,8 +166,8 @@ func TestLaunchArgv(t *testing.T) {
 			t.Errorf("%s: %+v", bad, r)
 		}
 	}
-	r = launch(t, h, "x", "--after", "T1")
-	if r.code != 1 || !strings.Contains(r.stderr, "not available in this build") {
+	r = launch(t, h, "x", "--after", "T99")
+	if r.code != 1 || !strings.Contains(r.stderr, "--after: T99 is not a csquad task") {
 		t.Errorf("--after: %+v", r)
 	}
 }
@@ -343,7 +368,9 @@ func TestConcurrentLaunchesGetDistinctNumbers(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-	sort.Slice(nums, func(i, j int) bool { return len(nums[i]) < len(nums[j]) || len(nums[i]) == len(nums[j]) && nums[i] < nums[j] })
+	sort.Slice(nums, func(i, j int) bool {
+		return len(nums[i]) < len(nums[j]) || len(nums[i]) == len(nums[j]) && nums[i] < nums[j]
+	})
 	if strings.Join(nums, ",") != "2,3,4,5,6,7,8,9,10,11" {
 		t.Errorf("numbers %v", nums)
 	}
@@ -499,7 +526,9 @@ type step struct {
 func waitFor(t *testing.T, h *testutil.Home, env []string, script []step, args ...string) result {
 	t.Helper()
 	done := make(chan result, 1)
-	go func() { done <- csq(t, h, opts{env: append(append(mine(), fast...), env...)}, append([]string{"wait"}, args...)...) }()
+	go func() {
+		done <- csq(t, h, opts{env: append(append(mine(), fast...), env...)}, append([]string{"wait"}, args...)...)
+	}()
 	start := time.Now()
 	for _, s := range script {
 		time.Sleep(time.Until(start.Add(s.after)))

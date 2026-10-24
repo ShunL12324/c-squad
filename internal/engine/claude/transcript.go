@@ -67,6 +67,7 @@ type entry struct {
 	Type        string `json:"type"`
 	IsSidechain bool   `json:"isSidechain"`
 	IsMeta      bool   `json:"isMeta"`
+	Timestamp   string `json:"timestamp"`
 	Message     struct {
 		Content json.RawMessage `json:"content"`
 	} `json:"message"`
@@ -89,6 +90,7 @@ func Messages(r io.Reader) []engine.Message {
 		if len(line) > 0 {
 			var e entry
 			if json.Unmarshal(line, &e) == nil && (e.Type == "user" || e.Type == "assistant") && !e.IsSidechain && !e.IsMeta {
+				at, _ := time.Parse(time.RFC3339Nano, e.Timestamp)
 				var blocks []block
 				var s string
 				if json.Unmarshal(e.Message.Content, &s) == nil {
@@ -114,6 +116,7 @@ func Messages(r io.Reader) []engine.Message {
 						if !found {
 							m.Tools = append(m.Tools, engine.ToolCount{Name: b.Name, Count: 1})
 						}
+						m.At = at
 					case "text":
 						text := strings.TrimSpace(reminder.ReplaceAllString(b.Text, ""))
 						// Harness wrappers such as <command-name> or <task-notification>.
@@ -121,7 +124,7 @@ func Messages(r io.Reader) []engine.Message {
 							continue
 						}
 						tools = -1
-						out = append(out, engine.Message{Role: e.Type, Text: text})
+						out = append(out, engine.Message{Role: e.Type, Text: text, At: at})
 					}
 				}
 			}

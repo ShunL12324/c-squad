@@ -60,6 +60,30 @@ It assigns the next task number, starts the session in `--cwd` (default: the
 current directory) with the worker rules added to its instructions, and
 prints `launched T12 · title · session ID · dir`. Tell the user the task IDs.
 
+Order, checks and merging, only when the user asks for them:
+
+- "T2 after T1", "start it when T3 and T4 are done": `--after T1` or
+  `--after T3,T4` (existing tasks only). The task is queued
+  (`queued T2 · ...`) and starts once all of them are done (merged, or
+  finished with finish-task); its prompt then gets what they left (merged
+  branch, final message). A task that is only ready does not release it.
+- "let codex review it", "have claude check it", "at most 3 rounds":
+  `--check codex`, `--check claude` (a model after a colon:
+  `--check claude:opus`), `--max 3` (the default). A fresh read-only
+  reviewer checks the work each time the worker stops; its findings go back
+  to the worker until it passes or the rounds run out. "run the tests on
+  it": `--check 'cmd:go test ./...'` (exit 0 passes; runs in the task's
+  worktree).
+- "merge when it passes", "merge it when done": `--merge` (into the branch
+  checked out in the main checkout) or `--merge BRANCH`. csquad rebases the
+  branch, fast-forwards the target and cleans up; on a conflict it asks the
+  worker to rebase first. Not with `--isolation none`.
+
+Never add `--after`, `--check` or `--merge` on your own: a task the user
+dispatched in one sentence runs without them. A task that stops for the
+user shows `needs you · reason`; `{{CSQUAD}} retry T12` resumes it where it
+stopped once the user has looked.
+
 Writing a task:
 
 - The worker sees only its prompt, never this conversation. Make it

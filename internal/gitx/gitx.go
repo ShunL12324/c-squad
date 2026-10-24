@@ -150,6 +150,25 @@ func (g Git) DeleteBranch(repo, branch string) error {
 	return err
 }
 
+// DeleteMerged deletes a branch merged into target. git branch -d judges
+// "merged" against HEAD, so for a target that is not checked out the ref is
+// deleted only while it still points at the commit verified merged.
+func (g Git) DeleteMerged(repo, branch, target string) error {
+	err := g.DeleteBranch(repo, branch)
+	if err == nil || target == "" {
+		return err
+	}
+	sha, rerr := g.Run(repo, "rev-parse", "--verify", "-q", "refs/heads/"+branch)
+	if rerr != nil {
+		return err
+	}
+	if ok, aerr := g.IsAncestor(repo, sha, "refs/heads/"+target); aerr != nil || !ok {
+		return err
+	}
+	_, err = g.Run(repo, "update-ref", "-d", "refs/heads/"+branch, sha)
+	return err
+}
+
 // Refs are what a task made, by csquad's naming: worktrees named t12-slug,
 // branches worktree-t12-slug and task/t12-slug.
 type Refs struct {

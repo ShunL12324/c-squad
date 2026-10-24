@@ -45,19 +45,25 @@ func rank(key string) int {
 }
 
 type statusEntry struct {
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	Engine    string `json:"engine"`
-	Model     string `json:"model,omitempty"`
-	Phase     string `json:"phase"`
-	State     string `json:"state"`
-	Session   string `json:"session"`
-	Cwd       string `json:"cwd"`
-	InPlace   bool   `json:"inPlace,omitempty"`
-	Parent    string `json:"parentSession,omitempty"`
-	StartedAt string `json:"startedAt"`
-	Latest    string `json:"latest"`
-	Attach    string `json:"attach,omitempty"`
+	ID        string   `json:"id"`
+	Title     string   `json:"title"`
+	Engine    string   `json:"engine"`
+	Model     string   `json:"model,omitempty"`
+	Phase     string   `json:"phase"`
+	State     string   `json:"state"`
+	Session   string   `json:"session"`
+	Cwd       string   `json:"cwd"`
+	InPlace   bool     `json:"inPlace,omitempty"`
+	Parent    string   `json:"parentSession,omitempty"`
+	StartedAt string   `json:"startedAt"`
+	Latest    string   `json:"latest"`
+	Attach    string   `json:"attach,omitempty"`
+	Note      string   `json:"note,omitempty"`
+	After     []string `json:"after,omitempty"`
+	Check     string   `json:"check,omitempty"`
+	Round     int      `json:"round,omitempty"`
+	MaxRounds int      `json:"maxRounds,omitempty"`
+	MergeInto string   `json:"mergeInto,omitempty"`
 }
 
 // Status lists this session's tasks (all: every task) with their state, age,
@@ -102,6 +108,16 @@ func (a *App) Status(ctx context.Context, all, asJSON bool) error {
 		if eng, err := a.Engine(t.Engine); err == nil && t.SessionID != "" {
 			e.Attach = strings.Join(eng.Takeover(t.SessionID), " ")
 		}
+		for _, id := range t.After {
+			e.After = append(e.After, fmt.Sprintf("T%d", id))
+		}
+		if t.Phase == store.NeedsYou || t.Phase == store.Failed {
+			e.Note = t.Note
+		}
+		if t.CheckSpec != "" {
+			e.Check, e.Round, e.MaxRounds = t.CheckSpec, t.Round, t.MaxRounds
+		}
+		e.MergeInto = t.MergeInto
 		entries = append(entries, e)
 		if !asJSON {
 			if latest == "" {
@@ -109,6 +125,12 @@ func (a *App) Status(ctx context.Context, all, asJSON bool) error {
 			}
 			a.printf("## %s · %s\n", t.Label(), t.Title)
 			a.printf("state: %s · started %s ago · session %s · %s\n", views[t.ID].Text, ago(a.Now().Sub(started)), t.SessionID, a.shortDir(t.Cwd))
+			if e.Note != "" {
+				a.printf("note: %s\n", e.Note)
+			}
+			if p := strings.TrimPrefix(flowPlan(t), "\n  then: "); p != "" {
+				a.printf("flow: %s\n", p)
+			}
 			a.printf("latest:\n%s\n\n", clip(latest, 1200))
 		}
 	}

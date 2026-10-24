@@ -40,6 +40,12 @@ type StartSpec struct {
 	Rules   string   // worker rules; "" with --no-worker-rules
 	InPlace bool     // --isolation none
 	Args    []string // engine arguments after `--`, as CheckArgs returned them
+	// StopHook is a command line run when a turn of the session ends
+	// (csquad hook ... claude-stop); engines with a global hook ignore it.
+	StopHook string
+	// Schema is a JSON schema the final answer must follow (a reviewer's
+	// verdict); engines that cannot enforce one ignore it.
+	Schema []byte
 }
 
 // Name is the session name of a task: "T12 · title".
@@ -57,6 +63,7 @@ type Message struct {
 	Role  string // user | assistant | tools
 	Text  string
 	Tools []ToolCount
+	At    time.Time // when it was written; zero when the engine does not say
 }
 
 // ToolCount is how often one tool ran in a run of tool calls.

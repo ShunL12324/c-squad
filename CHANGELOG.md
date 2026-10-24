@@ -1,6 +1,18 @@
 # Changelog
 
-## Unreleased (3.0, milestone 1)
+## Unreleased (3.0, milestones 1 and 3)
+
+### Added
+
+- Orchestration (#41, M3): `launch --after T3,T4` (queued until they are
+  done; the prompt gets what they left), `--check codex|claude[:MODEL]|cmd:COMMAND`
+  with `--max N` fix rounds, `--merge [BRANCH]` (csquad rebases, fast-forwards
+  the target, verifies and cleans up; a conflict goes to the worker first).
+  New phases `waiting checking fixing merging ready needs_you failed`,
+  `csquad retry`, the internal `hook claude-stop|codex-stop`, `check` and
+  `advance`, a Stop hook in every Claude task's settings, a Codex Stop hook
+  group in `~/.codex/hooks.json` when Codex is installed, and
+  `~/.csquad/logs/events.jsonl` (one line per phase change).
 
 ### Changed
 

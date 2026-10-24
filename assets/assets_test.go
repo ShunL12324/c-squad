@@ -14,7 +14,7 @@ func TestSkillsHaveValidFrontmatterAndUnbrokenInlineCode(t *testing.T) {
 		t.Fatalf("skills: %v", SkillNames())
 	}
 	files := map[string]string{"worker.md": WorkerRules(false) + WorkerRules(true),
-		"worker-codex.md": WorkerRulesFor("codex", false) + WorkerRulesFor("codex", true)}
+		"worker-codex.md": WorkerRulesFor("codex", false) + WorkerRulesFor("codex", true), "flow.md": FlowRules()}
 	skills := map[string]string{}
 	for _, host := range Hosts {
 		for name, text := range SkillsFor(host) {

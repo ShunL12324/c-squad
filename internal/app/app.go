@@ -63,6 +63,15 @@ func New(env proc.Env, stdin io.Reader, stdout, stderr io.Writer) *App {
 	return a
 }
 
+// SetHome points the App at another $CSQUAD_HOME (hook --home: the
+// session's environment need not carry CSQUAD_HOME).
+func (a *App) SetHome(home string) {
+	a.Close()
+	a.db = nil
+	a.Home, _ = filepath.Abs(home)
+	a.Env = a.Env.With("CSQUAD_HOME", a.Home)
+}
+
 // Close releases the database.
 func (a *App) Close() {
 	if a.db != nil {
@@ -240,9 +249,18 @@ func view(t store.Task, l engine.Live, observed bool) View {
 			ids = append(ids, "T"+strconv.Itoa(id))
 		}
 		return View{"waiting", strings.TrimSpace("waiting " + strings.Join(ids, ","))}
-	case store.Checking, store.Fixing:
+	case store.Fixing, store.Merging:
+		// The worker was messaged; a question it asks back is for the user.
+		if observed && l.State == engine.NeedsInput {
+			return View{l.State, stateText(l.State)}
+		}
+		if t.Phase == store.Merging {
+			return View{t.Phase, t.Phase}
+		}
 		return View{t.Phase, fmt.Sprintf("%s %d/%d", t.Phase, max(1, t.Round), t.MaxRounds)}
-	case store.Merging, store.Ready, store.Done, store.Failed, store.Cancelled:
+	case store.Checking:
+		return View{t.Phase, fmt.Sprintf("%s %d/%d", t.Phase, max(1, t.Round), t.MaxRounds)}
+	case store.Ready, store.Done, store.Failed, store.Cancelled:
 		return View{t.Phase, t.Phase}
 	case store.NeedsYou:
 		return View{"needs_you", "needs you"}

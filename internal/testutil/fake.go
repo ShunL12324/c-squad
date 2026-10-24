@@ -11,7 +11,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -100,12 +102,45 @@ func has(args []string, flag string) bool {
 	return false
 }
 
+// fakeRoot is the temporary root of the fake's Home: the parent of the bin
+// directory its `claude` link is in. csquad's detached processes run with
+// an allowlisted environment, without FAKE_STATE.
+func fakeRoot() string {
+	p := os.Args[0]
+	if !filepath.IsAbs(p) {
+		if lp, err := exec.LookPath(p); err == nil {
+			p = lp
+		}
+	}
+	return filepath.Dir(filepath.Dir(p))
+}
+
 func fakeClaude(args []string) int {
 	state := os.Getenv("FAKE_STATE")
+	if state == "" {
+		state = filepath.Join(fakeRoot(), "sessions.json")
+	}
 	if len(args) == 0 {
 		return 1
 	}
 	switch {
+	case args[0] == "-p":
+		// A reviewer: claude -p ... with the prompt on stdin. It answers
+		// with review.json next to the state file, else a pass.
+		record(state, args)
+		prompt, _ := io.ReadAll(os.Stdin)
+		f, _ := os.OpenFile(state+".prompts", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		if f != nil {
+			b, _ := json.Marshal(string(prompt))
+			f.Write(append(b, '\n'))
+			f.Close()
+		}
+		if b, err := os.ReadFile(filepath.Join(filepath.Dir(state), "review.json")); err == nil {
+			os.Stdout.Write(b)
+			return 0
+		}
+		fmt.Println(`{"type":"result","is_error":false,"result":"ok","structured_output":{"verdict":"pass","summary":"fine","findings":[]}}`)
+		return 0
 	case args[0] == "--version":
 		v := os.Getenv("FAKE_VERSION")
 		if v == "" {
@@ -302,6 +337,24 @@ func (h *Home) LastArgv() []string {
 		return nil
 	}
 	return all[len(all)-1]
+}
+
+// ReviewPrompts are the prompts the fake reviewer (claude -p) was given.
+func (h *Home) ReviewPrompts() []string {
+	b, _ := os.ReadFile(h.State + ".prompts")
+	var out []string
+	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+		var p string
+		if json.Unmarshal([]byte(line), &p) == nil {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// SetReview makes the fake reviewer print out (claude -p's JSON result).
+func (h *Home) SetReview(out string) {
+	os.WriteFile(filepath.Join(filepath.Dir(h.State), "review.json"), []byte(out), 0o644)
 }
 
 // ResetArgv forgets the recorded argvs.

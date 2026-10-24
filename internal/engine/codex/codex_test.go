@@ -109,6 +109,17 @@ func TestStartSendsThreadOptionsRulesNameAndPrompt(t *testing.T) {
 	if _, ok := f.srv.Last("turn/start")["effort"]; ok {
 		t.Error("effort without --effort")
 	}
+	if _, ok := f.srv.Last("turn/start")["outputSchema"]; ok {
+		t.Error("outputSchema without a schema")
+	}
+	// A reviewer's turn carries the verdict schema.
+	if _, err := f.eng.Start(ctx(t), engine.StartSpec{ID: 9, Title: "check 1", Cwd: "/r", Prompt: "review", Args: []string{"-s", "read-only", "-a", "never"},
+		Schema: []byte(`{"type":"object"}`)}); err != nil {
+		t.Fatal(err)
+	}
+	if s := f.srv.Last("turn/start")["outputSchema"]; !reflect.DeepEqual(s, map[string]any{"type": "object"}) {
+		t.Errorf("outputSchema %v", s)
+	}
 }
 
 func TestStartArchivesAThreadItCouldNotStart(t *testing.T) {

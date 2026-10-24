@@ -99,9 +99,7 @@ func (o Options) installCodex(p codexPlan, m *Manifest, old Manifest) error {
 		return err
 	}
 	m.AgentsDir, m.CodexFiles = p.dir, hashes
-	// M3: the Codex Stop hook (one group marked "__csquad__": true in
-	// $CODEX_HOME/hooks.json, edited as text, never config.toml) is
-	// installed here and recorded in the manifest.
+	// The Stop hook in $CODEX_HOME/hooks.json: installCodexHook.
 	o.log("Codex: skills in %s (run csquad outside Codex's sandbox)", filepath.Join(p.dir, "skills"))
 	return nil
 }
@@ -120,7 +118,6 @@ func (o Options) uninstallCodex(m Manifest) {
 		return
 	}
 	o.removeCodex(m.AgentsDir, m.CodexFiles)
-	// M3: remove csquad's group from $CODEX_HOME/hooks.json here.
 }
 
 // statusCodex prints the Codex part of an installation.

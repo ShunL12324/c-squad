@@ -11,6 +11,8 @@ import (
 
 	"github.com/ShunL12324/c-squad/internal/engine"
 	"github.com/ShunL12324/c-squad/internal/engine/claude"
+	"github.com/ShunL12324/c-squad/internal/flock"
+	"github.com/ShunL12324/c-squad/internal/flow"
 	"github.com/ShunL12324/c-squad/internal/gitx"
 	"github.com/ShunL12324/c-squad/internal/store"
 )
@@ -130,7 +132,7 @@ func (a *App) clean(p plan, force bool) ([]string, []string, error) {
 		if force {
 			_, err = g.Run(p.repo, "branch", "-D", b)
 		} else {
-			err = g.DeleteBranch(p.repo, b)
+			err = g.DeleteMerged(p.repo, b, p.target)
 		}
 		if err != nil {
 			return removed, done, err
@@ -151,6 +153,8 @@ func (a *App) Finish(ctx context.Context, labels []string, into string, all bool
 			failed++
 		}
 	}
+	// Tasks queued after the finished ones may start now.
+	a.AdvanceAll(ctx, nil)
 	if failed > 0 {
 		return errSilent
 	}
@@ -173,8 +177,22 @@ func (a *App) finishOne(ctx context.Context, label, into string, all bool) error
 		return fmt.Errorf("%s is already finished", t.Label())
 	case store.Cancelled:
 		return fmt.Errorf("%s was cancelled", t.Label())
-	case store.Waiting:
+	}
+	if t.Phase == store.Waiting || t.SessionID == "" {
 		return fmt.Errorf("%s has not started (finishing it would release the tasks queued after it); cancel it instead", t.Label())
+	}
+	// Claim it: the task lock, then the row as observed (a stale snapshot
+	// or a cancel meanwhile fails the compare-and-set at the end).
+	lock, err := flock.Try(a.TaskLock(t.ID))
+	if err != nil {
+		return fmt.Errorf("%s is busy (csquad is starting or merging it); try again in a moment", t.Label())
+	}
+	defer lock.Release()
+	if t, err = a.task(ctx, label, true, "finish"); err != nil {
+		return err
+	}
+	if store.Finished(t.Phase) {
+		return fmt.Errorf("%s is already %s", t.Label(), t.Phase)
 	}
 	eng, err := a.Engine(t.Engine)
 	if err != nil {
@@ -216,9 +234,11 @@ func (a *App) finishOne(ctx context.Context, label, into string, all bool) error
 	next := t
 	next.Phase, next.Outcome = store.Done, string(outcome)
 	db, _ := a.Store()
-	if _, err := db.Transition(ctx, t, next); err != nil {
+	stored, err := db.Transition(ctx, t, next)
+	if err != nil {
 		return fmt.Errorf("%s: %v", t.Label(), err)
 	}
+	flow.Event(a.Home, t, stored, "finished")
 	a.removeFiles(t.ID)
 	merged := ""
 	if len(p.branches) > 0 {
@@ -244,6 +264,11 @@ func (a *App) Cancel(ctx context.Context, label string, discard, all bool) error
 	if store.Finished(t.Phase) {
 		return fmt.Errorf("%s is already %s", t.Label(), t.Phase)
 	}
+	lock, err := flock.Try(a.TaskLock(t.ID))
+	if err != nil {
+		return fmt.Errorf("%s is busy (csquad is starting or merging it); try again in a moment", t.Label())
+	}
+	defer lock.Release()
 	db, err := a.Store()
 	if err != nil {
 		return err
@@ -266,6 +291,13 @@ func (a *App) Cancel(ctx context.Context, label string, discard, all bool) error
 			} else {
 				done = append(done, "stopped session "+t.SessionID)
 			}
+		}
+		// Re-read after the interrupt: the task may have moved meanwhile.
+		if t, err = db.Get(ctx, t.ID); err != nil {
+			return err
+		}
+		if store.Finished(t.Phase) {
+			return fmt.Errorf("%s is already %s", t.Label(), t.Phase)
 		}
 		p, err := a.inspect(t, "", l)
 		if err != nil {
@@ -290,22 +322,32 @@ func (a *App) Cancel(ctx context.Context, label string, discard, all bool) error
 		}
 	}
 	next := t
-	next.Phase, next.Note = store.Cancelled, "cancelled"
-	if _, err := db.Transition(ctx, t, next); err != nil {
+	next.Phase, next.Step, next.Note = store.Cancelled, "", "cancelled"
+	stored, err := db.Transition(ctx, t, next)
+	if err != nil {
 		return fmt.Errorf("%s: %v", t.Label(), err)
 	}
+	flow.Event(a.Home, t, stored, "cancelled")
 	a.removeFiles(t.ID)
 	a.printf("cancelled %s · %s\n", t.Name(), orNone(done))
 	if keep != "" {
 		a.printf("  %s\n", keep)
 	}
+	lock.Release()
+	// Tasks queued after it stop for the user.
+	a.AdvanceAll(ctx, nil)
 	return nil
 }
 
-// removeFiles deletes a finished task's settings and prompt files.
+// removeFiles deletes a finished task's settings, prompt and lock files.
 func (a *App) removeFiles(id int) {
 	os.Remove(claude.SettingsFile(a.Home, id))
 	os.Remove(claude.PromptFile(a.Home, id))
+	os.Remove(a.TaskLock(id))
+	locks, _ := filepath.Glob(filepath.Join(a.logsDir(), fmt.Sprintf("T%d-check-*.lock", id)))
+	for _, l := range locks {
+		os.Remove(l)
+	}
 }
 
 func orNone(list []string) string {

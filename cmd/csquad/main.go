@@ -35,33 +35,27 @@ func (p *parsed) has(name string) bool { _, ok := p.values[name]; return ok || p
 
 var errUsage = errors.New("usage")
 
-// orchestration is M3: the store and the table already hold its place.
-var errLater = errors.New("comes with csquad's orchestration (dependencies, checks, merge) and is not available in this build")
-
-func later(name string) func(context.Context, *app.App, *parsed) error {
-	return func(context.Context, *app.App, *parsed) error {
-		return fmt.Errorf("%s %w", name, errLater)
-	}
-}
-
 var commands = []command{
 	{
 		name:  "launch",
-		usage: "launch --title T [--cwd DIR] [--engine claude|codex] [--model M] [--isolation none] [--prompt-file F [--rm-prompt]] [--no-worker-rules] [-- ENGINE_ARGS...]  (prompt on stdin)",
+		usage: "launch --title T [--cwd DIR] [--engine claude|codex] [--model M] [--isolation none] [--after T3,T4] [--check codex|claude[:MODEL]|cmd:COMMAND] [--max 3] [--merge [BRANCH]] [--prompt-file F [--rm-prompt]] [--no-worker-rules] [-- ENGINE_ARGS...]  (prompt on stdin)",
 		flags: []string{"--title=", "--cwd=", "--engine=", "--model=", "--isolation=", "--prompt-file=", "--rm-prompt", "--no-worker-rules", "--after=", "--check=", "--max=", "--merge?"},
 		run: func(ctx context.Context, a *app.App, p *parsed) error {
-			for _, f := range []string{"after", "check", "max", "merge"} {
-				if p.has(f) {
-					return fmt.Errorf("--%s %w", f, errLater)
-				}
-			}
 			if len(p.args) > 0 {
 				return fmt.Errorf("unexpected argument %q (the prompt comes on stdin or with --prompt-file)", p.args[0])
+			}
+			max := 0
+			if v, ok := p.values["max"]; ok {
+				var err error
+				if max, err = strconv.Atoi(v); err != nil || max <= 0 {
+					return fmt.Errorf("--max expects a positive number of rounds")
+				}
 			}
 			return a.Launch(ctx, app.LaunchArgs{
 				Title: p.values["title"], Cwd: p.values["cwd"], Engine: p.values["engine"], Model: p.values["model"],
 				Isolation: p.values["isolation"], PromptFile: p.values["prompt-file"], RmPrompt: p.bools["rm-prompt"],
 				NoWorkerRules: p.bools["no-worker-rules"], EngineArgs: p.rest,
+				After: p.values["after"], Check: p.values["check"], Max: max, Merge: p.has("merge"), MergeInto: p.values["merge"],
 			})
 		},
 	},
@@ -144,10 +138,49 @@ var commands = []command{
 			return a.Cancel(ctx, p.args[0], p.bools["discard"], p.bools["all"])
 		},
 	},
-	{name: "retry", usage: "retry T12   (orchestration; not in this build)", run: later("retry")},
-	{name: "hook", usage: "hook claude-stop   (internal; orchestration)", flags: []string{"--home="}, run: later("hook")},
-	{name: "check", usage: "check T12   (internal; orchestration)", run: later("check")},
-	{name: "advance", usage: "advance [--stopped T12]   (internal; orchestration)", flags: []string{"--stopped="}, run: later("advance")},
+	{
+		name:  "retry",
+		usage: "retry T12 [--all]   resume a task that needs you where it stopped (waiting, one more round, the check, the merge)",
+		flags: []string{"--all"},
+		run: func(ctx context.Context, a *app.App, p *parsed) error {
+			if len(p.args) != 1 {
+				return errUsage
+			}
+			return a.Retry(ctx, p.args[0], p.bools["all"])
+		},
+	},
+	{
+		name:  "hook",
+		usage: "hook [--home DIR] claude-stop|codex-stop   (internal: Stop hook entry points, the hook's JSON on stdin)",
+		flags: []string{"--home="},
+		run: func(ctx context.Context, a *app.App, p *parsed) error {
+			if len(p.args) != 1 {
+				return errUsage
+			}
+			if h := p.values["home"]; h != "" {
+				a.SetHome(h)
+			}
+			return a.Hook(ctx, p.args[0])
+		},
+	},
+	{
+		name:  "check",
+		usage: "check T12   (internal: run one check, spawned detached)",
+		run: func(ctx context.Context, a *app.App, p *parsed) error {
+			if len(p.args) != 1 {
+				return errUsage
+			}
+			return a.Check(ctx, p.args[0])
+		},
+	},
+	{
+		name:  "advance",
+		usage: "advance [--stopped T12]   (internal: move the tasks along; spawned by the hooks and the status line)",
+		flags: []string{"--stopped="},
+		run: func(ctx context.Context, a *app.App, p *parsed) error {
+			return a.Advance(ctx, p.values["stopped"])
+		},
+	},
 	{
 		name:  "statusline",
 		usage: "statusline   the status line command (reads Claude Code's JSON on stdin)",
@@ -180,6 +213,10 @@ var commands = []command{
 		},
 	},
 }
+
+// advancing are the commands that move the flow first. The hook and the
+// status line are fast paths; advance and check move it themselves.
+var advancing = map[string]bool{"launch": true, "status": true, "peek": true, "wait": true, "send": true, "finish": true, "cancel": true, "retry": true}
 
 func find(name string) *command {
 	for i := range commands {
@@ -251,7 +288,7 @@ func parse(c *command, argv []string) (*parsed, error) {
 }
 
 func help(w io.Writer) {
-	fmt.Fprintf(w, "csquad %s - background coding tasks (T1, T2, ...) for Claude Code\n\nUsage: csquad <command>\n\n", app.Version)
+	fmt.Fprintf(w, "csquad %s - background coding tasks (T1, T2, ...): dependencies, checks and merges\n\nUsage: csquad <command>\n\n", app.Version)
 	for _, c := range commands {
 		fmt.Fprintf(w, "  %s\n", c.usage)
 	}
@@ -282,7 +319,11 @@ func run(argv []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	defer a.Close()
 	p, err := parse(c, argv[1:])
 	if err == nil {
-		err = c.run(context.Background(), a, p)
+		ctx := context.Background()
+		if advancing[c.name] {
+			a.AdvanceAll(ctx, nil)
+		}
+		err = c.run(ctx, a, p)
 	}
 	switch {
 	case err == nil:

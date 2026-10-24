@@ -131,7 +131,7 @@ function statusline(columns, input) {
 
 // ---- the task ledger (issue #44) -------------------------------------------
 
-const { ledger, ledgerAge } = require(tasksJs);
+const { ledger, ledgerAge } = require(path.join(__dirname, '..', 'payload', 'csquad', 'tasks.js'));
 const NOW = Date.parse('2026-10-24T12:00:00Z');
 const L = (num, title, state, minutesAgo = 5) => ({ num, label: `T${num}`, title, state, since: NOW - minutesAgo * 60000 });
 const twelve = () => [

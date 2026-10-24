@@ -1,137 +1,351 @@
-<p align="center">
-  <img src="docs/assets/banner.png" alt="csquad: a squad of background tasks for Claude Code" width="100%">
-</p>
+# csquad
 
-<p align="center">
+<p>
   <a href="https://www.npmjs.com/package/csquad"><img src="https://img.shields.io/npm/v/csquad?color=78e8af&label=npm" alt="npm version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/npm/l/csquad?color=78e8af" alt="MIT license"></a>
 </p>
 
-**Hand work to a squad of background [Claude Code](https://claude.com/claude-code) sessions, and watch them from your status line.**
+csquad lets you send coding tasks from your [Claude Code](https://claude.com/claude-code) or
+Codex conversation to background sessions. Each task gets a name (`T1`, `T2`, …), its own git
+worktree and a row in the Claude Code status line. You keep the conversation, and the tasks
+work in parallel.
 
-You keep talking to one normal `claude` session. Ask for a few tasks and each
-becomes its own background session, `T1 · title`, `T2 · title`, ..., working in
-its own git worktree while you carry on. One static binary, no daemon.
+![Claude Code in a terminal. Below the prompt, the status line shows six tasks: needs input, ready, done, checking 1/3, working with a usage trail, and waiting T5.](docs/images/csquad-main.png)
+
+csquad is one binary with no service of its own. It installs five skills that Claude uses when
+you ask for tasks, and it adds the task rows to your own status line.
+
+- [Quick start](#quick-start)
+- [Examples](#examples)
+- [Read the status line](#read-the-status-line)
+- [Command reference](#command-reference)
+- [Configuration](#configuration)
+- [Update and uninstall](#update-and-uninstall)
+- [Troubleshooting and FAQ](#troubleshooting-and-faq)
 
 ## Quick start
 
+### Requirements
+
+- Claude Code with background sessions (`claude --bg`, `claude agents`). Use version 2.1.260 or
+  newer. With an older version, `csquad finish` can leave the session of a finished task.
+- Codex, if you want Codex tasks or Codex reviews. csquad is tested with codex-cli 0.163.0.
+  csquad works without Codex.
+- Node.js, for `npx` and `npm` only. csquad itself does not use Node.js.
+- git. Each task works in a git worktree of your repository.
+- Linux, macOS or Windows, on amd64 or arm64.
+
+### Install
+
+1. Run the installer:
+
+   ```sh
+   npx csquad@latest install
+   ```
+
+   Or install the package globally, then run the installer:
+
+   ```sh
+   npm i -g csquad
+   csquad install
+   ```
+
+2. Check the installation:
+
+   ```sh
+   ~/.csquad/bin/csquad status-install
+   ```
+
+3. Start `claude` in a git repository, or restart it if it runs.
+4. Ask Claude for a task, for example: "Create a task to add retry to the HTTP client."
+
+The installer copies the binary to `~/.csquad/bin/csquad`. The skills and the status line use
+this copy. The installer does not change your `PATH`. To type `csquad` in a shell, add
+`~/.csquad/bin` to your `PATH`.
+
+The installer also does these steps:
+
+- It installs the skills into `~/.claude/skills`.
+- It wraps your status line. Your own status line stays first, and the task rows come below it.
+- If `~/.codex` exists, it installs the skills into `~/.agents/skills` for Codex too.
+
+To build from source, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Examples
+
+Each example shows what you type in Claude Code, what Claude replies, and the csquad command that
+Claude runs. You can also run the commands yourself in a shell.
+
+The commands read the prompt from stdin. In PowerShell, pipe a here-string (`@' … '@`) into
+`csquad launch`.
+
+### Create a task
+
+```text
+you     Create a task to add retry to the HTTP client.
+claude  Launched T1 · add http client retry. It works in the background.
+```
+
+The task is a background Claude Code session with the name `T1 · add http client retry`. It
+creates its own worktree and branch, does the work, commits, and stops. It does not report back
+by itself. Its row shows in your status line.
+
 ```sh
-npx csquad@latest install
+csquad launch --title "add http client retry" <<'PROMPT'
+Add retry with exponential backoff to the Client in client.go.
+Retry GET requests on network errors, 429 and 5xx. Add tests and run go test ./...
+PROMPT
 ```
 
-csquad 3 is a single Go binary; npm only delivers it. The `csquad` package
-pulls in the binary for your platform through an optional dependency (such as
-`@shunl12324/csquad-linux-x64`; nothing is downloaded by an install script),
-and `install` copies it to `~/.csquad/bin/csquad`, so the skills and the status
-line never run from the npx cache. Node.js is needed for `npx` only.
+```text
+launched T1 · add http client retry · session 93da1028 · ~/demo/httpclient
+```
 
-From source instead (Go 1.26+, no C toolchain needed):
+### Watch a task
+
+The status line always shows the task. Ask Claude to watch it only if you want a message when it
+changes.
+
+```text
+you     Watch T1 and tell me when it is done.
+claude  Watching T1. I will tell you when it finishes or needs input.
+        ...
+claude  T1 is done: retries with backoff are on branch worktree-t1-http-client-retry,
+        and go test passes. Do you want me to merge and finish it?
+```
+
+Claude runs `csquad wait` in the background. The command checks the task every 10 seconds and
+uses no tokens. It returns when a task needs input, finishes, fails or is removed, or after 4 hours.
 
 ```sh
-git clone https://github.com/ShunL12324/c-squad.git && cd c-squad
-CGO_ENABLED=0 go build -o csquad ./cmd/csquad
-./csquad install
+csquad wait T1                # returns with one line per task, e.g. "T1 · add http client retry · done"
+csquad status                 # this session's tasks: state, age, session, latest message
+csquad peek T1 -n 8           # the last 8 messages of the task, tool calls folded
 ```
 
-Then, in any `claude` session:
+To ask for a report at any time, ask "How are my tasks going?".
 
-> Dispatch 3 tasks: fix the login redirect, add tests for the parser, update the docs.
-
-That's it.
-
-## How it works
+### Finish and merge a task
 
 ```text
-you     Dispatch 3 tasks: fix the login redirect, add tests for the parser, update the docs.
-claude  launched T1 · fix login redirect, T2 · add parser tests, T3 · update the docs.
-        They run in the background; check agent view or the status line.
+you     Merge T1.
+claude  Merged worktree-t1-http-client-retry into main, and go test passes.
+        T1 is finished: its worktree, branch and session are removed.
 ```
 
-Your status line now lists the tasks, most urgent first:
+Claude merges the task's branch into the branch of your main checkout. Then it runs
+`csquad finish`. This command removes the task only when the work is safe:
+
+1. It makes sure that each branch of the task is merged into the target branch.
+2. It makes sure that the worktree has no uncommitted changes.
+3. It removes the worktree, the merged branches and the session.
+
+If a check fails, `csquad finish` stops and tells you what is not merged. It never deletes
+unmerged work.
+
+```sh
+git merge worktree-t1-http-client-retry
+csquad finish T1
+```
 
 ```text
-▎ ◆ T2 add parser tests ··························  needs input        18m
-▎ ✓ T1 fix login redirect ························  done        326k 1h05m
-▎ ● T3 update the docs ···························  working ▇▆·▇▆▅▃▆    7m
+finished T1 · add http client retry · merged into main: worktree-t1-http-client-retry · removed worktree ~/demo/httpclient/.claude/worktrees/t1-http-client-retry, branch worktree-t1-http-client-retry, removed session 93da1028
+```
+
+Say "finish everything that is done" to finish all tasks of this session that are done, idle or
+ready.
+
+### Run two tasks in parallel
+
+```text
+you     Create two tasks: add a request timeout option, and fix the auth header leak on redirect.
+claude  Launched T2 · add request timeout option and T3 · fix auth header on redirect.
+```
+
+Each task has its own session, worktree and branch, so the tasks do not change the same files on
+disk. Claude puts work on the same code into one task.
+
+```sh
+csquad launch --title "add request timeout option" <<'PROMPT'
+Add a Timeout option to the Client in client.go. Add a test and run go test ./...
+PROMPT
+csquad launch --title "fix auth header on redirect" <<'PROMPT'
+Drop the Authorization header when a redirect goes to another host. Add a test.
+PROMPT
+```
+
+### Start a task after another task
+
+```text
+you     Create a task to document the retry options, after T1.
+claude  Queued T4 · document retry options. It starts when T1 is done.
+```
+
+The status line shows `waiting T1`. T4 starts when T1 is merged and finished. Its prompt then
+gets the merged branch and the last message of T1. A task that is only `ready` does not start T4.
+
+```sh
+csquad launch --title "document retry options" --after T1 <<'PROMPT'
+Document the retry options in README.md: what is retried, the defaults, and an example.
+PROMPT
 ```
 
 ```text
-you     How are my tasks going?
-claude  T2 needs input: "Should the parser reject empty files or return []?" Answer it in
-        agent view, or tell me and I'll pass it on. T1 is done: fixed the redirect loop on
-        /login, tests pass, branch worktree-t1-fix-login-redirect. T3 is still working.
-you     Tell T2 to return an empty list. Then merge T1.
-claude  Sent to T2. T1 merged into main; its session, worktree and branch are removed.
+queued T4 · document retry options · after T1 · ~/demo/httpclient
 ```
 
-Each task is a plain `claude --bg` session with a small set of worker rules
-appended to its system prompt: work autonomously, use an isolated worktree and
-branch, clean up after itself, commit, and end with a short result. Workers never
-report back on their own, and nothing merges until you ask.
-
-### Order, checks and merging
-
-Only when you ask for them, a task gets a flow of its own:
+### Let Codex review a task, then merge it
 
 ```text
-you     T2 after T1. Let codex review T1, at most 3 rounds, and merge it when it passes.
+you     Create a task to add a circuit breaker. Let codex review it, at most 3 rounds,
+        and merge it when it passes.
+claude  Launched T5 · add circuit breaker. Codex checks it when it stops, at most 3 rounds,
+        and csquad merges it into main when the check passes.
 ```
 
-- `--after T1,T3`: queued until those tasks are done (merged, or finished);
-  it then starts with what they left (merged branch, final message).
-- `--check codex|claude[:MODEL]|cmd:COMMAND` and `--max N` (default 3): when
-  the worker stops, a fresh read-only reviewer (or the command, in the task's
-  worktree) checks the work; failed findings go back to the worker, up to N
-  rounds.
-- `--merge [BRANCH]`: csquad rebases the branch onto the target (or asks the
-  worker to, on a conflict), fast-forwards the target, verifies it with
-  `git merge-base --is-ancestor`, cleans up and releases the queued tasks.
+This is the full flow:
 
-The status line shows `waiting T1`, `checking 1/3`, `fixing 2/3`, `merging`,
-`ready`, or `needs you · reason` when a task stopped for you;
-`csquad retry T12` resumes it where it stopped. Every phase change is a line
-in `~/.csquad/logs/events.jsonl`. There is no service: each `csquad` command,
-the tasks' Stop hooks and the status line move the flow along.
+1. The task works and stops.
+2. csquad starts a new read-only Codex reviewer. The status line shows `checking 1/3`.
+3. If the review fails, csquad sends the findings to the task. The status line shows `fixing 2/3`.
+4. If the review passes, the task rebases its branch onto `main`. The status line shows `merging`.
+5. csquad fast-forwards `main`, makes sure that the merge is complete, and removes the task.
 
-## The skills
+If the last round fails, or the merge has a conflict, the task stops with `needs you · reason`.
 
-Just ask; Claude picks the skill from what you say.
+```sh
+csquad launch --title "add circuit breaker" --check codex --max 3 --merge <<'PROMPT'
+Add a circuit breaker to the Client: stop retries after N consecutive failures
+for a cool-down period. Add tests and run go test ./...
+PROMPT
+```
 
-| Skill | What it does | Say something like |
+```text
+launched T5 · add circuit breaker · session 2876bd02 · ~/demo/httpclient
+  then: check codex, at most 3 rounds · merge into main
+```
+
+Other checks:
+
+- `--check claude` or `--check claude:sonnet`: a Claude Code reviewer, with an optional model.
+- `--check codex:MODEL`: a Codex reviewer with a model.
+- `--check 'cmd:go test ./...'`: a command in the task's worktree. Exit status 0 passes.
+- Without `--merge`, a task that passes its check shows `ready`. Merge it as in
+  [Finish and merge a task](#finish-and-merge-a-task).
+
+### Run a task in Codex
+
+```text
+you     Run it in codex: add structured request logging with log/slog.
+claude  Launched T6 · add request logging (Codex). Open it with codex resume <thread>.
+```
+
+The task is a Codex thread with the name `T6 · add request logging`. It runs on Codex's
+app-server. csquad starts the app-server if it does not run. The thread creates its worktree
+`<repo>-wt/t6-slug` on the branch `task/t6-slug`. The status line marks Codex tasks with `⬡` and
+Claude Code tasks with `✻`.
+
+```sh
+csquad launch --title "add request logging" --engine codex -- --effort high <<'PROMPT'
+Add structured request logging to the Client with log/slog. Add tests.
+PROMPT
+```
+
+After `--`, a Codex task accepts `-m/--model`, `--effort`, `-s/--sandbox`,
+`-a/--ask-for-approval` and `-c/--config KEY=VALUE`. The defaults are `danger-full-access` and
+`never`. The commands `status`, `peek`, `send`, `wait`, `finish`, `cancel` and `retry` work for
+Codex tasks as for Claude Code tasks.
+
+### Send a message to a task
+
+![Claude sends "use log/slog" to T2. The status line below shows T2 needs input, T7 needs you · max rounds, T1 ready, and "+4 more".](docs/images/status-line-80.png)
+
+```text
+you     Tell T2 to use log/slog.
+claude  I sent T2 the instruction to use log/slog. If T2 runs in bypass mode, it may be
+        held until you approve it in agent view.
+```
+
+csquad delivers the message to the task's session. A session that has stopped starts again with
+the message. A Codex task gets the message in its current turn, or in a new turn.
+
+```sh
+csquad send T2 "Use log/slog for the request logging, not a custom Logger interface."
+```
+
+```text
+sent to T2 · structured request logging: delivered to the inbox of session 9efe5bda (no receipt; a session in bypass mode may hold it for your approval in agent view)
+```
+
+Claude Code can hold a message to a task that runs in bypass-permissions mode. If the task does
+not change, open agent view (`claude agents`), select the task and approve the message.
+
+### More requests
+
+| You say | Claude adds | Effect |
 | --- | --- | --- |
-| `create-task` | Starts one background session per task, numbered `T1`, `T2`, ... | "Create a task to retry on SQLite busy errors." "Queue three tasks: ..." |
-| `task-status` | Reports state and latest message of each task: needs input, failed, done, working | "How are my tasks going?" "Which tasks need input?" |
-| `message-task` | Sends follow-up instructions to a task with `csquad send`, for any engine | "Tell T3 to also handle the empty-input case." |
-| `watch-task` | Opt-in: runs a background command that checks the named tasks every 10 s and tells you when one needs input, finishes, fails or disappears. Never runs unless you ask | "Watch T3." "Tell me when T2 is done." "Stop watching." |
-| `finish-task` | Merges a done task, then removes its session, worktree and branch, only after checking the work is merged | "Merge and clean up T2 and T4." "Finish everything that is done." |
+| "Use opus with high effort for this one." | `-- --model opus --effort high` | Arguments after `--` go to `claude --bg` unchanged. |
+| "Edit my checkout in place, so I can see it live." | `--isolation none` | The task edits your checkout. It makes no branch and does not commit. |
+| "Fork this into a task, with what we discussed." | `--fork` | The task starts as a fork of this conversation. |
+| "Run it in ~/work/api." | `--cwd ~/work/api` | The task runs in that directory. |
 
-## The status line
+## Read the status line
 
-Your own status line stays exactly as it is; csquad prints it first, then one row
-per task: its state, id and title, its token usage, and how long it has been in
-that state.
+![The status line: needs input, ready and done on the left; checking 1/3, working and waiting T5 on the right.](docs/images/status-line.png)
 
-| State | Meaning |
+Each task has one row. A row has these parts, from left to right:
+
+1. A colored bar and a glyph for the state.
+2. The task ID and the engine mark: `✻` for Claude Code, `⬡` for Codex.
+3. The title, with a dotted leader.
+4. The state.
+5. The usage: a trail, a total, or nothing.
+6. The time since the task entered its state.
+
+The most urgent tasks come first.
+
+| Glyph | State | Meaning | What to do |
+| --- | --- | --- | --- |
+| `◆` | `needs input` | The task asks you a question. | Answer in agent view, or tell Claude the answer. |
+| `◆` | `needs you · reason` | csquad stopped the flow of the task. | Read the reason, then run `csquad retry T7`. |
+| `✗` | `failed` | The session failed. | Read it with `csquad peek T7`. |
+| `✓` | `done` | The task finished its work. | Merge and finish it. |
+| `✓` | `ready` | The task passed its check. | Merge and finish it. |
+| `⇡` | `merging` | csquad merges the branch of the task. | Wait. |
+| `◑` | `fixing 2/3` | The check failed. The task fixes the findings in round 2 of 3. | Wait. |
+| `◐` | `checking 1/3` | The check runs, round 1 of 3. | Wait. |
+| `●` | `working` | The task works. | Wait. |
+| `◇` | `idle` | The task ended its turn and waits. | Read it, then send a message or finish it. |
+| `◌` | `waiting T5` | The task waits for T5. It has no session yet. | Finish T5. |
+| `■` | `stopped` | The session stopped before the end. | Send a message to start it again, or cancel it. |
+
+### The "needs you" badge
+
+The states `needs input` and `needs you` show as an amber badge. `needs you` gives the first part
+of the reason, for example `needs you · max rounds` or `needs you · merge conflict`. Run
+`csquad status` to see the full reason. Run `csquad retry T7` to continue where the task stopped:
+
+- `max rounds`: the task gets one more fix round.
+- `no verdict`: the check runs again.
+- `merge conflict`, `merge stopped`: the merge runs again.
+- `dependency gone`: the task waits again.
+
+### The usage trail
+
+A task that is `working`, `fixing` or `merging` shows a trail of its last 8 refreshes, about 80
+seconds. The newest cell is on the right. Each cell shows the new tokens since the refresh before:
+
+| Cell | Meaning |
 | --- | --- |
-| `◆ needs input` | the task is waiting on an answer; reply in agent view |
-| `✗ failed` | the session failed |
-| `✓ done` | finished; ask Claude to merge it |
-| `● working` | still running |
-| `◇ idle` | finished its turn and waiting |
-| `■ stopped` | stopped before finishing |
+| `▁` to `█` | New tokens, on a log scale: `▁` is less than 500, `█` is 32k or more. |
+| `·` | No change. |
+| `▪` | The session changed, but its provider reports no token counts. |
+| `····· 3m` | No activity for 2 minutes or more. The time shows in amber. The state does not change. |
 
-The usage cell answers "is it moving, and how hard". A working task (also
-fixing or merging) shows a trail of its last 8 refreshes (about 80 s): one cell
-per refresh, newest on the right, on a log scale from `▁` (under 500 tokens)
-to `█` (32k or more); `·` means nothing changed, `▪` that the session changed
-but its gateway reports no token counts. After 2 minutes without activity the
-trail turns into dots and the idle time in amber (`····· 3m`); that is only a
-look, the task's state does not change. Other tasks show their total, faint
-(`326k`, `1.2M`, `?` when unknown). Fresh work counts input, cache writes and
-output; cache reads are never counted. A Claude task's numbers come from its
-transcript, a Codex task's from its rollout file; the status line keeps 9
-readings per task in `~/.csquad/cache`. `csquad status` shows the full block
-for each working task:
+Other tasks show their total, faint: `326k`, `1.2M`, or `?` when the total is not known. The total
+counts input, cache writes and output. It does not count cache reads.
+
+`csquad status` shows the full usage of each working task:
 
 ```text
 ## T365 · cancel smoke
@@ -141,146 +355,234 @@ usage: 51.8k fresh · +0 since the last refresh (0 s) · last activity 13s ago
        context 26% (51k of 200k) · last 20 s █·
 ```
 
-Wide terminals show two to four tasks side by side (from 124, 187 and 250
-columns; each cell is at least 60 wide). Below about 52 columns a cell drops
-its usage trail step by step after the title has shrunk. At most four rows are used; when more tasks run, the last row lists
-the rest as `+N more`. `NO_COLOR` turns colours off and keeps bold, faint and
-reverse video.
+### Width and number of rows
 
-The rows show only the tasks launched by the **current session**. `/clear`
-starts a new session, so earlier tasks drop off the line but keep running; the
-full list is always in agent view (`claude agents`), or ask Claude to
-"show all tasks".
+- The status line uses one column of tasks below 124 terminal columns. It uses 2 columns from 124,
+  3 from 187 and 4 from 250.
+- It uses at most 4 rows. When more tasks exist, the last row shows `+N more` with the glyph and
+  ID of each other task.
+- In a narrow terminal, the title gets shorter first. Then the usage trail gets shorter.
+- `NO_COLOR` removes the colors. The glyphs, bold, faint and reverse video stay.
 
-`install` wraps your existing `statusLine` instead of replacing it: the original
-command is saved to `~/.csquad/statusline.json` and run at render time with the
-same input. Other `settings.json` keys, ordering and indentation are untouched.
-`uninstall` restores the original `statusLine` byte for byte (or removes the key
-if you had none). A project-level `.claude/settings.json` that sets `statusLine`
-overrides the wrapper in that project; `install` and `status` warn about it.
+### Which tasks show
 
-## Install, update, uninstall
+The status line shows only the tasks that the current conversation created. `/clear` starts a new
+conversation, so earlier tasks go from the status line, but they continue to run. To see all
+tasks, open agent view (`claude agents`), run `csquad status --all`, or ask Claude to "show all
+tasks".
 
-```sh
-npx csquad@latest install   # copy the binary to ~/.csquad/bin, install the skills, wrap the status line
-npx csquad@latest update    # the same, for an existing installation
-csquad update               # the installed copy of an npm install runs npx csquad@latest update
-csquad uninstall            # restore the status line, remove what install wrote
-csquad status-install       # what is installed and whether the status line is wrapped
-```
+## Command reference
 
-`install` does not change your `PATH`: `csquad` above is
-`~/.csquad/bin/csquad` (add `~/.csquad/bin` to `PATH` to type it short), or
-`npx csquad@latest` in its place. `npx csquad@3 install` stays on 3.x. With
-optional dependencies turned off (`--omit=optional`) npm installs no binary,
-and the `csquad` command says so. A build from source updates by running
-`update` from the newer build.
+`csquad COMMAND --help` shows the usage of one command. `T12` is a task ID. Most commands accept
+`--all` for a task of another session.
 
-The skills go to `$CLAUDE_CONFIG_DIR/skills` (default `~/.claude`), everything
-else to `$CSQUAD_HOME` (default `~/.csquad`):
+| Command | Description |
+| --- | --- |
+| `launch --title T [flags] [-- ENGINE_ARGS]` | Start a task. The prompt comes from stdin or `--prompt-file`. |
+| `status [--all] [--json]` | Show the tasks of this session: state, age, session, latest message. |
+| `peek T12 [-n 6]` | Show the last messages of a task, with tool calls folded. |
+| `wait T12 [T13...] [--timeout MIN]` | Return when a task needs input, finishes, fails or is removed. |
+| `send T12 "text"` | Send a follow-up instruction. The text comes from stdin when omitted. |
+| `finish T12 [T13...] [--into BRANCH]` | Make sure that the work is merged and clean, then remove worktrees, branches and the session. |
+| `cancel T12 [--discard]` | Stop a task and remove it from the list. Unmerged work stays unless `--discard`. |
+| `retry T12` | Continue a task that needs you, where it stopped. |
+| `statusline` | The status line command. It reads the JSON of Claude Code on stdin. |
+| `install` | Install the binary to `~/.csquad/bin`, the skills, and the status line wrapper. |
+| `update` | Do the same for an existing installation. |
+| `uninstall` | Restore the status line and remove what `install` wrote. Keeps `csquad.db` and `models.md`. |
+| `status-install` | Show what is installed. |
+| `version`, `help` | Show the version or the usage. |
 
-```text
-bin/csquad        the binary the skills and the status line run (absolute path)
-csquad.db         the task ledger (SQLite, one table)
-models.md         your model routing, optional, never written by csquad
-statusline.json   your original status line
-settings/T12.json a task's session settings while it runs (mode 600)
-prompts/T12.md    a prompt too large for the command line
-cache/            the status line's last output and each task's usage readings
-logs/             check logs, events.jsonl, advance.log (rotated past 1 MiB)
-```
+The commands `hook`, `check` and `advance` are internal. The Stop hooks and the status line use
+them.
 
-Install and update are idempotent. A skill can be several files (create-task is
-a short `SKILL.md` plus a `reference.md` it reads when needed); if you edited
-one, the next run saves your version as `.bak` next to it and says so. Uninstall keeps
-`csquad.db` and `models.md`; running task sessions are not affected.
+Flags of `launch`:
 
-A csquad 1.x installation (`~/.claude/csquad/`) is not migrated: install stops
-and asks you to run `npx csquad@1 uninstall` first, which restores your own
-status line.
+| Flag | Description |
+| --- | --- |
+| `--title T` | The task title. The ID comes first: `T12 · title`. Required. |
+| `--cwd DIR` | Run the task in DIR. The default is the current directory. |
+| `--engine claude\|codex` | The engine. The default is `claude`. |
+| `--model M` | The model of the task. |
+| `--after T3,T4` | Wait until these tasks are done, then start. |
+| `--check SPEC` | Check the work when the task stops: `codex[:MODEL]`, `claude[:MODEL]` or `cmd:COMMAND`. |
+| `--max N` | The maximum number of check rounds. The default is 3. |
+| `--merge [BRANCH]` | Merge the work when it is done and checked. The default is the branch of the main checkout. |
+| `--isolation none` | Edit the working directory in place. No worktree, no branch, no commit. |
+| `--fork` | Start as a fork of the current conversation. Not with `--after`. |
+| `--prompt-file F [--rm-prompt]` | Read the prompt from F. `--rm-prompt` deletes F after it is read. |
+| `--no-worker-rules` | Leave out the worker rules, for a prompt that has its own rules. |
+| `-- ENGINE_ARGS` | Arguments for the engine: `claude --bg` options, or Codex thread options. |
 
 ## Configuration
 
-Model routing lives in `~/.csquad/models.md`, a short file you own: which
-engine, model or arguments for which kind of work. create-task reads it before
-every launch, so keep it a short lookup table and name model aliases
-explicitly (without one the engine's default model runs). Its `## When to use create-task` section (extra trigger phrases)
-is appended to the installed skill's description by install and update.
+### Model routing: `~/.csquad/models.md`
 
-For one task, ask Claude for any `claude` option ("use opus with high effort
-for this one"): create-task passes everything after `--` in
-`csquad launch … -- --model opus --effort high` to `claude --bg` unchanged,
-overriding csquad's defaults (`--permission-mode bypassPermissions`).
+You own this file, and csquad never writes it. Claude reads it before each launch. Use it to tell
+Claude which engine, model and arguments to use for which kind of work. Keep it short, and name
+each model explicitly. Without a model, the task uses the default model of the engine.
 
-Tasks normally work in their own worktree. Ask for one that edits your checkout
-in place ("edit the main checkout so I can see it live") and create-task adds
-`--isolation none`: Claude Code lets that task edit its working directory, and
-it leaves its changes uncommitted for you.
+```markdown
+# Model routing
 
-A task uses the same provider as the session that launched it. Claude Code's
-background service does not see your shell environment, so `ANTHROPIC_*`,
-`CLAUDE_CODE_USE_*`, `CLAUDE_CODE_OAUTH_TOKEN` and `CLAUDE_CODE_SUBAGENT_MODEL`
-from the launching session go into the task's settings file
-(`~/.csquad/settings/T12.json`, mode 600, removed once the task is finished or
-gone), never onto the command line or into your own `settings.json`. They are
-forwarded all or nothing: when the task's `--settings`, your settings or the
-project's choose a provider themselves, none are.
+- Small fixes, docs, tests: claude, `-- --model haiku`
+- Features and refactors: claude, `-- --model opus --effort high`
+- Reviews: `--check codex`
 
-A task's worktree branches from your local HEAD (`worktree.baseRef: "head"`),
-so it sees commits you have not pushed yet. Set `worktree.baseRef` yourself
-(in your settings, the project's, or after `--`) to choose otherwise.
+## When to use create-task
 
-To hand over the conversation you are in ("fork this into a task, with what we
-just discussed"), create-task adds `--fork`: the task starts as a fork of your
-session and inherits its conversation (Claude Code:
-`claude --bg --resume SESSION_ID --fork-session`; Codex: `thread/fork`). It
-stays in the engine of the session you dispatch from, and its first turn reads
-the whole inherited context again. Its usage counts from the fork on: the
-parent's usage, which the fork's transcript or rollout carries over, is
-recorded at launch and left out.
-
-If a launch fails because the workspace is not trusted, open `claude` in that
-directory once and accept the trust prompt.
-
-## Codex
-
-"Run it in codex" makes create-task add `--engine codex`: the task is then a
-Codex thread named `T12 · title` on Codex's shared app-server daemon (csquad
-starts it with `codex app-server daemon start` when it is not running).
-`codex resume THREAD` opens it; `csquad status`, `peek`, `send`, `wait`,
-`finish` and `cancel` work as for Claude tasks. The thread runs with the
-worker rules as developer instructions, `danger-full-access` and approval
-`never` by default; it creates its own worktree,
-`<repo>-wt/t12-slug` on `task/t12-slug`, which `finish` finds by that name.
-After `--` a Codex task takes thread options: `-m/--model`, `--effort`,
-`-s/--sandbox`, `-a/--ask-for-approval` and `-c/--config KEY=VALUE`.
-
-Codex sessions can dispatch too: when `$CODEX_HOME` (default `~/.codex`)
-exists, install also puts the skills into `~/.agents/skills`, and tasks
-launched from a Codex thread belong to it (`CODEX_THREAD_ID`). Codex must run
-`csquad` outside its sandbox. Install also adds one Stop hook group, marked
-`"__csquad__": true`, to `~/.codex/hooks.json` (approve it once with `/hooks`
-in Codex); uninstall removes exactly the text it inserted. Codex has no status line, so there are no task
-chips there.
-
-## Requirements
-
-- Claude Code with background sessions (`claude --bg`, `claude agents`);
-  2.1.260 or newer for `claude rm --discard-unpushed`, which `csquad finish`
-  uses for a worktree it verified merged (`install` and `status-install` warn
-  on older versions)
-- For Codex tasks: codex-cli with the app-server daemon (verified with
-  0.163.0)
-- Linux, macOS or Windows (amd64, arm64). On Windows, Claude Code runs status
-  line and hook commands through Git Bash, or PowerShell without Git, so
-  csquad does too for your original status line; the paths it writes work in
-  both (below `~` when your profile path has a space). A native `claude.exe`
-  or the npm `claude.cmd` both work. The tests run on Windows in CI.
-
-## Development
-
-```sh
-go vet ./... && go test ./...   # temporary homes and a fake `claude`, never the real ones
+Also use it when I say "farm this out" or "background this".
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). MIT licensed.
+`install` and `update` add the section `## When to use create-task` to the description of the
+create-task skill. Use it for your own trigger phrases. Run `csquad update` after you change it.
+
+### Environment variables
+
+| Variable | Default | Use |
+| --- | --- | --- |
+| `CSQUAD_HOME` | `~/.csquad` | The binary, the task database `csquad.db`, `models.md`, logs and cache. |
+| `CLAUDE_CONFIG_DIR` | `~/.claude` | The Claude Code configuration. The skills go into its `skills` directory. |
+| `CODEX_HOME` | `~/.codex` | The Codex configuration. If it exists, `install` also sets up Codex. |
+| `NO_COLOR` | not set | Any value removes the colors from the status line. |
+
+Claude Code's background service does not see your shell environment. So `csquad launch` copies
+these variables from the current session into the settings of the task:
+
+- `ANTHROPIC_*`
+- `CLAUDE_CODE_USE_*`
+- `CLAUDE_CODE_OAUTH_TOKEN`
+- `CLAUDE_CODE_SUBAGENT_MODEL`
+
+The task then uses the same provider as your session. csquad writes them to
+`~/.csquad/settings/T12.json` (mode 600), never to the command line. It deletes the file when the
+task is finished. If the settings of the task, your settings or the project settings choose a
+provider, csquad copies none of these variables.
+
+### Worktrees
+
+A Claude Code task creates its worktree from your local `HEAD`, so it sees commits that you did not
+push. csquad sets `worktree.baseRef` to `"head"` for this. To change it, set `worktree.baseRef` in
+your settings, in the project settings, or after `--`.
+
+### Files
+
+```text
+~/.csquad/
+  bin/csquad         the binary that the skills and the status line run
+  csquad.db          the task database (SQLite)
+  models.md          your model routing (optional, never written by csquad)
+  statusline.json    your original status line
+  settings/T12.json  the session settings of a task while it exists (mode 600)
+  prompts/T12.md     a prompt that is too long for the command line
+  cache/             the last status line output and the usage readings
+  logs/              check logs, events.jsonl (one line per phase change), advance.log
+~/.claude/skills/    create-task, task-status, message-task, watch-task, finish-task
+```
+
+### The status line wrapper
+
+`install` keeps your own status line. It saves the command in `~/.csquad/statusline.json` and runs
+it first, with the same input. It changes no other key in `settings.json`. `uninstall` restores the
+original `statusLine` exactly, or removes the key if you had none.
+
+### Codex
+
+When `$CODEX_HOME` exists, `install` also does these steps:
+
+- It installs the skills into `~/.agents/skills`, so a Codex session can create tasks.
+- It adds one Stop hook group to `~/.codex/hooks.json`, marked `"__csquad__": true`.
+
+Approve the hook once with `/hooks` in Codex. Codex must run `csquad` outside its sandbox. Codex
+has no status line, so Codex sessions show no task rows. Use `csquad status` or ask "How are my
+tasks going?".
+
+## Update and uninstall
+
+### Update
+
+Run one of these commands:
+
+```sh
+npx csquad@latest update
+~/.csquad/bin/csquad update     # after an npm installation, this runs npx csquad@latest update
+```
+
+`npx csquad@3 install` stays on version 3.x. `install` and `update` are idempotent. If you edited
+a skill, `update` saves your version as a `.bak` file next to it and tells you.
+
+### Uninstall
+
+```sh
+~/.csquad/bin/csquad uninstall
+```
+
+`uninstall` restores your status line and removes the skills, the binary and the Codex hook.
+It keeps `~/.csquad/csquad.db` and `~/.csquad/models.md`. Running tasks continue to run.
+
+### Move from csquad 1.x
+
+csquad 3 does not migrate a 1.x installation (`~/.claude/csquad/`).
+
+1. Remove 1.x. This restores your own status line:
+
+   ```sh
+   npx csquad@1 uninstall
+   ```
+
+2. Install csquad 3:
+
+   ```sh
+   npx csquad@latest install
+   ```
+
+If you run `install` first, it stops, changes nothing, and asks you to remove 1.x.
+
+## Troubleshooting and FAQ
+
+**The status line shows no task rows.**
+Run `~/.csquad/bin/csquad status-install`. If `.claude/settings.json` in the project sets its own
+`statusLine`, that status line replaces the wrapper in that project. Also, the rows show only the
+tasks of the current conversation. After `/clear`, run `csquad status --all`.
+
+**A launch fails because the workspace is not trusted.**
+Open `claude` in that directory once and accept the trust prompt. Then ask again.
+
+**A task fails with "Login expired" or uses the wrong provider.**
+The task uses the provider variables of the session that created it. Start `claude` from a shell
+that has these variables, then create the task again.
+
+**I sent a message, but the task did nothing.**
+Claude Code can hold a message to a task in bypass-permissions mode. Open agent view
+(`claude agents`), select the task and approve the message.
+
+**A task shows `needs you · max rounds`.**
+The check failed in each round. Run `csquad status` to read the findings. Send a message with a
+hint, then run `csquad retry T7` for one more round. Or cancel the task.
+
+**`csquad finish` refuses to remove a task.**
+The output names the branch that is not merged, or the worktree that has uncommitted changes.
+Merge or commit the work, then run `csquad finish` again. To delete the work, run
+`csquad cancel T7 --discard`.
+
+**How many tasks can run at the same time?**
+csquad sets no limit. Each task uses its own session and tokens, so you decide how many to run.
+
+**Does a task merge by itself?**
+No. A task merges only with `--merge`, that is, when you ask for it ("merge it when it passes").
+Otherwise you ask Claude to merge it.
+
+**Where is the history of a task?**
+`~/.csquad/logs/events.jsonl` has one line for each phase change. `csquad peek T12` shows the
+conversation of the task.
+
+**`npm i -g csquad` installed no binary.**
+npm installs the binary as an optional dependency, for example `@shunl12324/csquad-linux-x64`.
+With optional dependencies turned off (`--omit=optional`), npm installs no binary, and the
+`csquad` command tells you. Install again with optional dependencies.
+
+## Contributing
+
+To build csquad, run the tests or make a release, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+MIT licensed. See [LICENSE](LICENSE).

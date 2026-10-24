@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (3.0, milestones 1 to 4)
+## 3.0.0 - 2026-10-24
 
 ### Added
 

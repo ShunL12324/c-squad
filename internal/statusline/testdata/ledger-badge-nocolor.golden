@@ -1,36 +1,40 @@
 === 80 columns
-▌ ◆ \e[1mT2 \e[0m ✻ 修复 Windows 下 shim 测试不稳定 ···  \e[1;7mneeds input\e[0m            \e[2m  18m\e[0m
-▌ ◆ \e[1mT9 \e[0m ✻ Install migration from 1.x ········  \e[1;7mneeds you · max rounds\e[0m \e[2m1h35m\e[0m
-▎ ✗ \e[1mT10\e[0m ✻ Peek transcript paging ············  failed            \e[2m 61k\e[0m \e[2m2h10m\e[0m
+▌ ◆ \e[1mT2 \e[0m ✻ 修复 Windows 下 shim 测试不稳定  \e[1;7mneeds input\e[0m             \e[2m  18m\e[0m
+▌ ◆ \e[1mT9 \e[0m ✻ Install migration from 1.x ····  \e[1;7mneeds you · max rounds\e[0m  \e[2m1h35m\e[0m
+▎ ✗ \e[1mT10\e[0m ✻ Peek transcript paging ········  failed  \e[2m61k\e[0m             \e[2m2h10m\e[0m
   \e[1m+4\e[0m\e[2m more  \e[0m✓ T3  ● T1  ● T4  ◐ T6
 === 123 columns
-▌ ◆ \e[1mT2 \e[0m ✻ 修复 Windows 下 shim 测试不稳定 ···  \e[1;7mneeds input\e[0m            \e[2m  18m\e[0m
-▌ ◆ \e[1mT9 \e[0m ✻ Install migration from 1.x ········  \e[1;7mneeds you · max rounds\e[0m \e[2m1h35m\e[0m
-▎ ✗ \e[1mT10\e[0m ✻ Peek transcript paging ············  failed            \e[2m 61k\e[0m \e[2m2h10m\e[0m
-  \e[1m+4\e[0m\e[2m more  \e[0m✓ T3  ● T1  ● T4  ◐ T6
+▌ ◆ \e[1mT2 \e[0m ✻ 修复 Windows 下…  \e[1;7mneeds input\e[0m             \e[2m  18m\e[0m   ▎ ● \e[1mT1\e[0m ✻ Port the store …  working       800k +5.0k    \e[2m42m\e[0m
+▌ ◆ \e[1mT9 \e[0m ✻ Install migrati…  \e[1;7mneeds you · max rounds\e[0m  \e[2m1h35m\e[0m   ▎ ● \e[1mT4\e[0m ⬡ Codex app-serve…  working       120k +10k     \e[2m 7m\e[0m
+▎ ✗ \e[1mT10\e[0m ✻ Peek transcript…  failed   \e[2m61k\e[0m            \e[2m2h10m\e[0m   ▎ ◐ \e[1mT6\e[0m ⬡ Retry SQLITE_BU…  checking 1/3  326k          \e[2m12m\e[0m
+▎ ✓ \e[1mT3 \e[0m ✻ Add --json to c…  done    \e[2m1.2M\e[0m            \e[2m1h05m\e[0m
 === 124 columns
-▌ ◆ \e[1mT2 \e[0m ✻ 修复 Windows 下 s…  \e[1;7mneeds input\e[0m            \e[2m  18m\e[0m   ▎ ● \e[1mT1\e[0m ✻ Port the store t…  working      800k  +5.0k \e[2m  42m\e[0m
-▌ ◆ \e[1mT9 \e[0m ✻ Install migration…  \e[1;7mneeds you · max rounds\e[0m \e[2m1h35m\e[0m   ▎ ● \e[1mT4\e[0m ⬡ Codex app-server…  working      120k   +10k \e[2m   7m\e[0m
-▎ ✗ \e[1mT10\e[0m ✻ Peek transcript p…  failed            \e[2m 61k\e[0m \e[2m2h10m\e[0m   ▎ ◐ \e[1mT6\e[0m ⬡ Retry SQLITE_BUS…  checking 1/3 326k        \e[2m  12m\e[0m
-▎ ✓ \e[1mT3 \e[0m ✻ Add --json to csq…  done              \e[2m1.2M\e[0m \e[2m1h05m\e[0m
+▌ ◆ \e[1mT2 \e[0m ✻ 修复 Windows 下 …  \e[1;7mneeds input\e[0m             \e[2m  18m\e[0m   ▎ ● \e[1mT1\e[0m ✻ Port the store t…  working       800k +5.0k    \e[2m42m\e[0m
+▌ ◆ \e[1mT9 \e[0m ✻ Install migratio…  \e[1;7mneeds you · max rounds\e[0m  \e[2m1h35m\e[0m   ▎ ● \e[1mT4\e[0m ⬡ Codex app-server…  working       120k +10k     \e[2m 7m\e[0m
+▎ ✗ \e[1mT10\e[0m ✻ Peek transcript …  failed   \e[2m61k\e[0m            \e[2m2h10m\e[0m   ▎ ◐ \e[1mT6\e[0m ⬡ Retry SQLITE_BUS…  checking 1/3  326k          \e[2m12m\e[0m
+▎ ✓ \e[1mT3 \e[0m ✻ Add --json to cs…  done    \e[2m1.2M\e[0m            \e[2m1h05m\e[0m
 === 140 columns
-▌ ◆ \e[1mT2 \e[0m ✻ 修复 Windows 下 shim 测试…  \e[1;7mneeds input\e[0m            \e[2m  18m\e[0m   ▎ ● \e[1mT1\e[0m ✻ Port the store to modern…  working      800k  +5.0k \e[2m  42m\e[0m
-▌ ◆ \e[1mT9 \e[0m ✻ Install migration from 1.x  \e[1;7mneeds you · max rounds\e[0m \e[2m1h35m\e[0m   ▎ ● \e[1mT4\e[0m ⬡ Codex app-server reconne…  working      120k   +10k \e[2m   7m\e[0m
-▎ ✗ \e[1mT10\e[0m ✻ Peek transcript paging ···  failed            \e[2m 61k\e[0m \e[2m2h10m\e[0m   ▎ ◐ \e[1mT6\e[0m ⬡ Retry SQLITE_BUSY in Tra…  checking 1/3 326k        \e[2m  12m\e[0m
-▎ ✓ \e[1mT3 \e[0m ✻ Add --json to csquad stat…  done              \e[2m1.2M\e[0m \e[2m1h05m\e[0m
+▌ ◆ \e[1mT2 \e[0m ✻ 修复 Windows 下 shim 测…   \e[1;7mneeds input\e[0m             \e[2m  18m\e[0m   ▎ ● \e[1mT1\e[0m ✻ Port the store to modern…  working       800k +5.0k    \e[2m42m\e[0m
+▌ ◆ \e[1mT9 \e[0m ✻ Install migration from 1…  \e[1;7mneeds you · max rounds\e[0m  \e[2m1h35m\e[0m   ▎ ● \e[1mT4\e[0m ⬡ Codex app-server reconne…  working       120k +10k     \e[2m 7m\e[0m
+▎ ✗ \e[1mT10\e[0m ✻ Peek transcript paging ··  failed   \e[2m61k\e[0m            \e[2m2h10m\e[0m   ▎ ◐ \e[1mT6\e[0m ⬡ Retry SQLITE_BUSY in Tra…  checking 1/3  326k          \e[2m12m\e[0m
+▎ ✓ \e[1mT3 \e[0m ✻ Add --json to csquad sta…  done    \e[2m1.2M\e[0m            \e[2m1h05m\e[0m
 === 186 columns
-▌ ◆ \e[1mT2 \e[0m ✻ 修复 Windows 下 shim 测试不稳定 ···  \e[1;7mneeds input\e[0m            \e[2m  18m\e[0m   ▎ ● \e[1mT1\e[0m ✻ Port the store to modernc sqlite ···  working      800k  +5.0k \e[2m  42m\e[0m
-▌ ◆ \e[1mT9 \e[0m ✻ Install migration from 1.x ········  \e[1;7mneeds you · max rounds\e[0m \e[2m1h35m\e[0m   ▎ ● \e[1mT4\e[0m ⬡ Codex app-server reconnect ·········  working      120k   +10k \e[2m   7m\e[0m
-▎ ✗ \e[1mT10\e[0m ✻ Peek transcript paging ············  failed            \e[2m 61k\e[0m \e[2m2h10m\e[0m   ▎ ◐ \e[1mT6\e[0m ⬡ Retry SQLITE_BUSY in Transition ····  checking 1/3 326k        \e[2m  12m\e[0m
-▎ ✓ \e[1mT3 \e[0m ✻ Add --json to csquad status ·······  done              \e[2m1.2M\e[0m \e[2m1h05m\e[0m
+▌ ◆ \e[1mT2 \e[0m ✻ 修复 Windows 下 shim 测试不稳定  \e[1;7mneeds input\e[0m             \e[2m  18m\e[0m   ▎ ● \e[1mT1\e[0m ✻ Port the store to modernc sqlite  working       800k +5.0k    \e[2m42m\e[0m
+▌ ◆ \e[1mT9 \e[0m ✻ Install migration from 1.x ····  \e[1;7mneeds you · max rounds\e[0m  \e[2m1h35m\e[0m   ▎ ● \e[1mT4\e[0m ⬡ Codex app-server reconnect ·····  working       120k +10k     \e[2m 7m\e[0m
+▎ ✗ \e[1mT10\e[0m ✻ Peek transcript paging ········  failed   \e[2m61k\e[0m            \e[2m2h10m\e[0m   ▎ ◐ \e[1mT6\e[0m ⬡ Retry SQLITE_BUSY in Transition   checking 1/3  326k          \e[2m12m\e[0m
+▎ ✓ \e[1mT3 \e[0m ✻ Add --json to csquad status ···  done    \e[2m1.2M\e[0m            \e[2m1h05m\e[0m
 === 187 columns
-▌ ◆ \e[1mT2 \e[0m ✻ 修复 Windows 下 sh…  \e[1;7mneeds input\e[0m            \e[2m  18m\e[0m   ▎ ✓ \e[1mT3\e[0m ✻ Add --json to csquad s…  done    \e[2m1.2M\e[0m        \e[2m1h05m\e[0m   ▎ ◐ \e[1mT6\e[0m ⬡ Retry SQLITE_BUSY in Tra…  checking 1/3 326k \e[2m  12m\e[0m
-▌ ◆ \e[1mT9 \e[0m ✻ Install migration …  \e[1;7mneeds you · max rounds\e[0m \e[2m1h35m\e[0m   ▎ ● \e[1mT1\e[0m ✻ Port the store to mode…  working 800k  +5.0k \e[2m  42m\e[0m
-▎ ✗ \e[1mT10\e[0m ✻ Peek transcript pa…  failed            \e[2m 61k\e[0m \e[2m2h10m\e[0m   ▎ ● \e[1mT4\e[0m ⬡ Codex app-server recon…  working 120k   +10k \e[2m   7m\e[0m
+▌ ◆ \e[1mT2 \e[0m ✻ 修复 Windows 下 shim 测试不稳定  \e[1;7mneeds input\e[0m             \e[2m  18m\e[0m   ▎ ● \e[1mT1\e[0m ✻ Port the store to modernc sqlite  working       800k +5.0k    \e[2m42m\e[0m
+▌ ◆ \e[1mT9 \e[0m ✻ Install migration from 1.x ····  \e[1;7mneeds you · max rounds\e[0m  \e[2m1h35m\e[0m   ▎ ● \e[1mT4\e[0m ⬡ Codex app-server reconnect ·····  working       120k +10k     \e[2m 7m\e[0m
+▎ ✗ \e[1mT10\e[0m ✻ Peek transcript paging ········  failed   \e[2m61k\e[0m            \e[2m2h10m\e[0m   ▎ ◐ \e[1mT6\e[0m ⬡ Retry SQLITE_BUSY in Transition   checking 1/3  326k          \e[2m12m\e[0m
+▎ ✓ \e[1mT3 \e[0m ✻ Add --json to csquad status ···  done    \e[2m1.2M\e[0m            \e[2m1h05m\e[0m
 === 249 columns
-▌ ◆ \e[1mT2 \e[0m ✻ 修复 Windows 下 shim 测试不稳定 ···  \e[1;7mneeds input\e[0m            \e[2m  18m\e[0m   ▎ ✓ \e[1mT3\e[0m ✻ Add --json to csquad status ········  done    \e[2m1.2M\e[0m        \e[2m1h05m\e[0m   ▎ ◐ \e[1mT6\e[0m ⬡ Retry SQLITE_BUSY in Transition ···  checking 1/3 326k \e[2m  12m\e[0m
-▌ ◆ \e[1mT9 \e[0m ✻ Install migration from 1.x ········  \e[1;7mneeds you · max rounds\e[0m \e[2m1h35m\e[0m   ▎ ● \e[1mT1\e[0m ✻ Port the store to modernc sqlite ···  working 800k  +5.0k \e[2m  42m\e[0m
-▎ ✗ \e[1mT10\e[0m ✻ Peek transcript paging ············  failed            \e[2m 61k\e[0m \e[2m2h10m\e[0m   ▎ ● \e[1mT4\e[0m ⬡ Codex app-server reconnect ·········  working 120k   +10k \e[2m   7m\e[0m
+▌ ◆ \e[1mT2 \e[0m ✻ 修复 Windows 下 shim 测试不稳定  \e[1;7mneeds input\e[0m             \e[2m  18m\e[0m   ▎ ● \e[1mT1\e[0m ✻ Port the store to modernc sqlite  working       800k +5.0k    \e[2m42m\e[0m
+▌ ◆ \e[1mT9 \e[0m ✻ Install migration from 1.x ····  \e[1;7mneeds you · max rounds\e[0m  \e[2m1h35m\e[0m   ▎ ● \e[1mT4\e[0m ⬡ Codex app-server reconnect ·····  working       120k +10k     \e[2m 7m\e[0m
+▎ ✗ \e[1mT10\e[0m ✻ Peek transcript paging ········  failed   \e[2m61k\e[0m            \e[2m2h10m\e[0m   ▎ ◐ \e[1mT6\e[0m ⬡ Retry SQLITE_BUSY in Transition   checking 1/3  326k          \e[2m12m\e[0m
+▎ ✓ \e[1mT3 \e[0m ✻ Add --json to csquad status ···  done    \e[2m1.2M\e[0m            \e[2m1h05m\e[0m
 === 250 columns
-▌ ◆ \e[1mT2\e[0m ✻ 修复 Windows 下 shi…  \e[1;7mneeds input\e[0m            \e[2m  18m\e[0m   ▎ ✗ \e[1mT10\e[0m ✻ Peek transcript paging ·······  failed \e[2m 61k\e[0m \e[2m2h10m\e[0m   ▎ ● \e[1mT1\e[0m ✻ Port the store to mode…  working 800k  +5.0k \e[2m  42m\e[0m   ▎ ◐ \e[1mT6\e[0m ⬡ Retry SQLITE_BUSY in Tra…  checking 1/3 326k \e[2m  12m\e[0m
-▌ ◆ \e[1mT9\e[0m ✻ Install migration f…  \e[1;7mneeds you · max rounds\e[0m \e[2m1h35m\e[0m   ▎ ✓ \e[1mT3 \e[0m ✻ Add --json to csquad status ··  done   \e[2m1.2M\e[0m \e[2m1h05m\e[0m   ▎ ● \e[1mT4\e[0m ⬡ Codex app-server recon…  working 120k   +10k \e[2m   7m\e[0m
+▌ ◆ \e[1mT2 \e[0m ✻ 修复 Windows 下 shim 测试不稳定  \e[1;7mneeds input\e[0m             \e[2m  18m\e[0m   ▎ ● \e[1mT1\e[0m ✻ Port the store to modernc sqlite  working       800k +5.0k    \e[2m42m\e[0m
+▌ ◆ \e[1mT9 \e[0m ✻ Install migration from 1.x ····  \e[1;7mneeds you · max rounds\e[0m  \e[2m1h35m\e[0m   ▎ ● \e[1mT4\e[0m ⬡ Codex app-server reconnect ·····  working       120k +10k     \e[2m 7m\e[0m
+▎ ✗ \e[1mT10\e[0m ✻ Peek transcript paging ········  failed   \e[2m61k\e[0m            \e[2m2h10m\e[0m   ▎ ◐ \e[1mT6\e[0m ⬡ Retry SQLITE_BUSY in Transition   checking 1/3  326k          \e[2m12m\e[0m
+▎ ✓ \e[1mT3 \e[0m ✻ Add --json to csquad status ···  done    \e[2m1.2M\e[0m            \e[2m1h05m\e[0m

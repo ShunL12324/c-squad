@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -14,7 +13,7 @@ import (
 // tokens (input + cache writes + output) per refresh and keeps the last
 // MaxSamples of them per task in the cache directory. Rows whose worker is
 // at it show the total and the change between the last two readings
-// (`326k  +4.1k`); other rows show their total.
+// (`326k +4.1k`); other rows show their total.
 
 const (
 	MaxSamples = 2               // readings kept per task: the change since the last refresh
@@ -161,8 +160,30 @@ func showsUsage(e entry) bool {
 	return e.t.Usage != nil && !e.st.urgent && e.t.State != Waiting
 }
 
-// totalCells is the width of a total: Tokens is at most four cells.
-const totalCells = 4
+// changeCells is the least width of the change part on rows that show one:
+// +4.1k, +0, +? and idle 3m fit, so a stall does not move the row (idle
+// 12m takes one cell more).
+const changeCells = 7
+
+// showsChange: the row shows a change part after its total, once it has two
+// readings.
+func showsChange(e entry) bool { return showsUsage(e) && workingState(e.t.State) }
+
+// totalPart is the total of a row: faint unless the worker is at it, ? when
+// it is not known; empty when the row shows no usage cell.
+func totalPart(e entry) segment {
+	if !showsUsage(e) {
+		return segment{}
+	}
+	text := "?"
+	if e.t.Usage.Known {
+		text = Tokens(e.t.Usage.Total)
+	}
+	if workingState(e.t.State) {
+		return segment{text, ""}
+	}
+	return segment{text, "2"}
+}
 
 // changePart is what follows the total of a working row: the change since
 // the last refresh (+4.1k in the state's colour, +0 faint, +? for a change
@@ -188,27 +209,22 @@ func changePart(e entry, now time.Time, p painter) segment {
 	return p.fg(e.st.rgb, ChangeText(n))
 }
 
-// usageCell is the usage cell of an entry, w cells wide: the total, right-
-// aligned in totalCells (faint unless the worker is at it), then, when w has
-// room for more, two spaces and the change part right-aligned in the rest;
-// nil when the row shows none.
-func usageCell(e entry, w int, now time.Time, p painter) line {
-	if w < totalCells || !showsUsage(e) {
-		return nil
+// usageCell is the usage cell of a row in a column of field widths w: the
+// total right-aligned in its field, then, when the column has a change
+// field, a space and the change part (when change is set) left-aligned in
+// it; blank when the row shows none.
+func usageCell(e entry, w fields, change bool, now time.Time, p painter) line {
+	total := totalPart(e)
+	if total.text == "" {
+		return line{spaces(w.usage())}
 	}
-	u := e.t.Usage
-	total := "?"
-	if u.Known {
-		total = Tokens(u.Total)
-	}
-	sgr := "2"
-	if workingState(e.t.State) {
-		sgr = ""
-	}
-	l := line{{padLeft(total, totalCells), sgr}}
-	if w == totalCells {
+	l := line{spaces(w.total - width(total.text)), total}
+	if w.change == 0 {
 		return l
 	}
-	part := changePart(e, now, p)
-	return append(l, segment{strings.Repeat(" ", w-totalCells-width(part.text)), ""}, part)
+	part := segment{}
+	if change {
+		part = changePart(e, now, p)
+	}
+	return append(l, segment{" ", ""}, part, spaces(w.change-width(part.text)))
 }

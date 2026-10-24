@@ -3,59 +3,63 @@
 === 0 tasks, 160 columns
 === 0 tasks, 255 columns
 === 1 tasks, 80 columns
-▌ ◆ \e[1mT2\e[0m 修复 Windows 下 shim 测试不稳定 ···  \e[1;7mneeds input\e[0m \e[2m  18m\e[0m
+▌ ◆ \e[1mT2\e[0m 修复 Windows 下 shim 测试不稳定  \e[1;7mneeds input\e[0m  \e[2m18m\e[0m
 === 1 tasks, 120 columns
-▌ ◆ \e[1mT2\e[0m 修复 Windows 下 shim 测试不稳定 ···  \e[1;7mneeds input\e[0m \e[2m  18m\e[0m
+▌ ◆ \e[1mT2\e[0m 修复 Windows 下 shim 测试不稳定  \e[1;7mneeds input\e[0m  \e[2m18m\e[0m
 === 1 tasks, 160 columns
-▌ ◆ \e[1mT2\e[0m 修复 Windows 下 shim 测试不稳定 ···  \e[1;7mneeds input\e[0m \e[2m  18m\e[0m
+▌ ◆ \e[1mT2\e[0m 修复 Windows 下 shim 测试不稳定  \e[1;7mneeds input\e[0m  \e[2m18m\e[0m
 === 1 tasks, 255 columns
-▌ ◆ \e[1mT2\e[0m 修复 Windows 下 shim 测试不稳定 ··  \e[1;7mneeds input\e[0m \e[2m  18m\e[0m
+▌ ◆ \e[1mT2\e[0m 修复 Windows 下 shim 测试不稳定  \e[1;7mneeds input\e[0m  \e[2m18m\e[0m
 === 3 tasks, 80 columns
-▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 shim 测试不稳定 ··  \e[1;7mneeds input\e[0m                \e[2m  18m\e[0m
-▌ ◆ \e[1mT9 \e[0m Install migration from 1.x ·······  \e[1;7mneeds you · merge conflict\e[0m \e[2m1h35m\e[0m
-▎ ✗ \e[1mT10\e[0m Peek transcript paging ···········  failed                     \e[2m2h10m\e[0m
+▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 shim 测试不稳定  \e[1;7mneeds input\e[0m                 \e[2m  18m\e[0m
+▌ ◆ \e[1mT9 \e[0m Install migration from 1.x ····  \e[1;7mneeds you · merge conflict\e[0m  \e[2m1h35m\e[0m
+▎ ✗ \e[1mT10\e[0m Peek transcript paging ········  failed                      \e[2m2h10m\e[0m
 === 3 tasks, 120 columns
-▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 shim 测试不稳定 ···  \e[1;7mneeds input\e[0m                \e[2m  18m\e[0m
-▌ ◆ \e[1mT9 \e[0m Install migration from 1.x ········  \e[1;7mneeds you · merge conflict\e[0m \e[2m1h35m\e[0m
-▎ ✗ \e[1mT10\e[0m Peek transcript paging ············  failed                     \e[2m2h10m\e[0m
+▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 shim 测试不稳定  \e[1;7mneeds input\e[0m                 \e[2m  18m\e[0m
+▌ ◆ \e[1mT9 \e[0m Install migration from 1.x ····  \e[1;7mneeds you · merge conflict\e[0m  \e[2m1h35m\e[0m
+▎ ✗ \e[1mT10\e[0m Peek transcript paging ········  failed                      \e[2m2h10m\e[0m
 === 3 tasks, 160 columns
-▌ ◆ \e[1mT2\e[0m 修复 Windows 下 shim 测试不稳定 ···  \e[1;7mneeds input\e[0m                \e[2m  18m\e[0m   ▎ ✗ \e[1mT10\e[0m Peek transcript paging ···  failed \e[2m2h10m\e[0m
-▌ ◆ \e[1mT9\e[0m Install migration from 1.x ········  \e[1;7mneeds you · merge conflict\e[0m \e[2m1h35m\e[0m
+▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 shim 测试不稳定  \e[1;7mneeds input\e[0m                 \e[2m  18m\e[0m
+▌ ◆ \e[1mT9 \e[0m Install migration from 1.x ····  \e[1;7mneeds you · merge conflict\e[0m  \e[2m1h35m\e[0m
+▎ ✗ \e[1mT10\e[0m Peek transcript paging ········  failed                      \e[2m2h10m\e[0m
 === 3 tasks, 255 columns
-▌ ◆ \e[1mT2\e[0m 修复 Windows 下 shim 测试不稳定 ··  \e[1;7mneeds input\e[0m \e[2m  18m\e[0m   ▌ ◆ \e[1mT9\e[0m Install migration fr…  \e[1;7mneeds you · merge confl…\e[0m \e[2m1h35m\e[0m   ▎ ✗ \e[1mT10\e[0m Peek transcript paging ···  failed \e[2m2h10m\e[0m
+▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 shim 测试不稳定  \e[1;7mneeds input\e[0m                 \e[2m  18m\e[0m
+▌ ◆ \e[1mT9 \e[0m Install migration from 1.x ····  \e[1;7mneeds you · merge conflict\e[0m  \e[2m1h35m\e[0m
+▎ ✗ \e[1mT10\e[0m Peek transcript paging ········  failed                      \e[2m2h10m\e[0m
 === 6 tasks, 80 columns
-▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 shim 测试不稳定 ··  \e[1;7mneeds input\e[0m                \e[2m  18m\e[0m
-▌ ◆ \e[1mT9 \e[0m Install migration from 1.x ·······  \e[1;7mneeds you · merge conflict\e[0m \e[2m1h35m\e[0m
-▎ ✗ \e[1mT10\e[0m Peek transcript paging ···········  failed                     \e[2m2h10m\e[0m
+▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 shim 测试不稳定  \e[1;7mneeds input\e[0m                 \e[2m  18m\e[0m
+▌ ◆ \e[1mT9 \e[0m Install migration from 1.x ····  \e[1;7mneeds you · merge conflict\e[0m  \e[2m1h35m\e[0m
+▎ ✗ \e[1mT10\e[0m Peek transcript paging ········  failed                      \e[2m2h10m\e[0m
   \e[1m+3\e[0m\e[2m more  \e[0m✓ T3  ● T1  ● T4
 === 6 tasks, 120 columns
-▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 shim 测试不稳定 ···  \e[1;7mneeds input\e[0m                \e[2m  18m\e[0m
-▌ ◆ \e[1mT9 \e[0m Install migration from 1.x ········  \e[1;7mneeds you · merge conflict\e[0m \e[2m1h35m\e[0m
-▎ ✗ \e[1mT10\e[0m Peek transcript paging ············  failed                     \e[2m2h10m\e[0m
-  \e[1m+3\e[0m\e[2m more  \e[0m✓ T3  ● T1  ● T4
+▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 shim …   \e[1;7mneeds input\e[0m                 \e[2m  18m\e[0m   ▎ ✓ \e[1mT3\e[0m Add --json to csquad s…  done     \e[2m1h05m\e[0m
+▌ ◆ \e[1mT9 \e[0m Install migration from…  \e[1;7mneeds you · merge conflict\e[0m  \e[2m1h35m\e[0m   ▎ ● \e[1mT1\e[0m Port the store to mode…  working  \e[2m  42m\e[0m
+▎ ✗ \e[1mT10\e[0m Peek transcript paging   failed                      \e[2m2h10m\e[0m   ▎ ● \e[1mT4\e[0m Codex app-server recon…  working  \e[2m   7m\e[0m
 === 6 tasks, 160 columns
-▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 shim 测试不稳定 ··  \e[1;7mneeds input\e[0m                \e[2m  18m\e[0m   ▎ ✓ \e[1mT3\e[0m Add --json to csquad status ········  done    \e[2m1h05m\e[0m
-▌ ◆ \e[1mT9 \e[0m Install migration from 1.x ·······  \e[1;7mneeds you · merge conflict\e[0m \e[2m1h35m\e[0m   ▎ ● \e[1mT1\e[0m Port the store to modernc sqlite ···  working \e[2m  42m\e[0m
-▎ ✗ \e[1mT10\e[0m Peek transcript paging ···········  failed                     \e[2m2h10m\e[0m   ▎ ● \e[1mT4\e[0m Codex app-server reconnect ·········  working \e[2m   7m\e[0m
+▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 shim 测试不稳定  \e[1;7mneeds input\e[0m                 \e[2m  18m\e[0m   ▎ ✓ \e[1mT3\e[0m Add --json to csquad status ····  done     \e[2m1h05m\e[0m
+▌ ◆ \e[1mT9 \e[0m Install migration from 1.x ····  \e[1;7mneeds you · merge conflict\e[0m  \e[2m1h35m\e[0m   ▎ ● \e[1mT1\e[0m Port the store to modernc sqlite  working  \e[2m  42m\e[0m
+▎ ✗ \e[1mT10\e[0m Peek transcript paging ········  failed                      \e[2m2h10m\e[0m   ▎ ● \e[1mT4\e[0m Codex app-server reconnect ·····  working  \e[2m   7m\e[0m
 === 6 tasks, 255 columns
-▌ ◆ \e[1mT2\e[0m 修复 Windows 下 shim…  \e[1;7mneeds input\e[0m              \e[2m  18m\e[0m   ▎ ✗ \e[1mT10\e[0m Peek transcript paging ········  failed \e[2m2h10m\e[0m   ▎ ● \e[1mT1\e[0m Port the store to modernc sqlite ···  working \e[2m  42m\e[0m
-▌ ◆ \e[1mT9\e[0m Install migration fr…  \e[1;7mneeds you · merge confl…\e[0m \e[2m1h35m\e[0m   ▎ ✓ \e[1mT3 \e[0m Add --json to csquad status ···  done   \e[2m1h05m\e[0m   ▎ ● \e[1mT4\e[0m Codex app-server reconnect ·········  working \e[2m   7m\e[0m
+▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 shim 测试不稳定  \e[1;7mneeds input\e[0m                 \e[2m  18m\e[0m   ▎ ✓ \e[1mT3\e[0m Add --json to csquad status ····  done     \e[2m1h05m\e[0m
+▌ ◆ \e[1mT9 \e[0m Install migration from 1.x ····  \e[1;7mneeds you · merge conflict\e[0m  \e[2m1h35m\e[0m   ▎ ● \e[1mT1\e[0m Port the store to modernc sqlite  working  \e[2m  42m\e[0m
+▎ ✗ \e[1mT10\e[0m Peek transcript paging ········  failed                      \e[2m2h10m\e[0m   ▎ ● \e[1mT4\e[0m Codex app-server reconnect ·····  working  \e[2m   7m\e[0m
 === 12 tasks, 80 columns
-▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 shim 测试不稳定 ··  \e[1;7mneeds input\e[0m                \e[2m  18m\e[0m
-▌ ◆ \e[1mT9 \e[0m Install migration from 1.x ·······  \e[1;7mneeds you · merge conflict\e[0m \e[2m1h35m\e[0m
-▎ ✗ \e[1mT10\e[0m Peek transcript paging ···········  failed                     \e[2m2h10m\e[0m
+▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 shim 测试不稳定  \e[1;7mneeds input\e[0m                 \e[2m  18m\e[0m
+▌ ◆ \e[1mT9 \e[0m Install migration from 1.x ····  \e[1;7mneeds you · merge conflict\e[0m  \e[2m1h35m\e[0m
+▎ ✗ \e[1mT10\e[0m Peek transcript paging ········  failed                      \e[2m2h10m\e[0m
   \e[1m+9\e[0m\e[2m more  \e[0m✓ T3  ● T1  ● T4  ◐ T6  ◑ T7  ⇡ T8  ◇ T12  ◌ T5  ■ T11
 === 12 tasks, 120 columns
-▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 shim 测试不稳定 ···  \e[1;7mneeds input\e[0m                \e[2m  18m\e[0m
-▌ ◆ \e[1mT9 \e[0m Install migration from 1.x ········  \e[1;7mneeds you · merge conflict\e[0m \e[2m1h35m\e[0m
-▎ ✗ \e[1mT10\e[0m Peek transcript paging ············  failed                     \e[2m2h10m\e[0m
-  \e[1m+9\e[0m\e[2m more  \e[0m✓ T3  ● T1  ● T4  ◐ T6  ◑ T7  ⇡ T8  ◇ T12  ◌ T5  ■ T11
-=== 12 tasks, 160 columns
-▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 shim 测试不稳定 ··  \e[1;7mneeds input\e[0m                \e[2m  18m\e[0m   ▎ ✓ \e[1mT3\e[0m Add --json to csquad status ········  done    \e[2m1h05m\e[0m
-▌ ◆ \e[1mT9 \e[0m Install migration from 1.x ·······  \e[1;7mneeds you · merge conflict\e[0m \e[2m1h35m\e[0m   ▎ ● \e[1mT1\e[0m Port the store to modernc sqlite ···  working \e[2m  42m\e[0m
-▎ ✗ \e[1mT10\e[0m Peek transcript paging ···········  failed                     \e[2m2h10m\e[0m   ▎ ● \e[1mT4\e[0m Codex app-server reconnect ·········  working \e[2m   7m\e[0m
+▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 shim …   \e[1;7mneeds input\e[0m                 \e[2m  18m\e[0m   ▎ ✓ \e[1mT3\e[0m Add --json to csquad s…  done     \e[2m1h05m\e[0m
+▌ ◆ \e[1mT9 \e[0m Install migration from…  \e[1;7mneeds you · merge conflict\e[0m  \e[2m1h35m\e[0m   ▎ ● \e[1mT1\e[0m Port the store to mode…  working  \e[2m  42m\e[0m
+▎ ✗ \e[1mT10\e[0m Peek transcript paging   failed                      \e[2m2h10m\e[0m   ▎ ● \e[1mT4\e[0m Codex app-server recon…  working  \e[2m   7m\e[0m
   \e[1m+6\e[0m\e[2m more  \e[0m◐ T6  ◑ T7  ⇡ T8  ◇ T12  ◌ T5  ■ T11
+=== 12 tasks, 160 columns
+▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 s…  \e[1;7mneeds input\e[0m                 \e[2m  18m\e[0m   ▎ ● \e[1mT1\e[0m Port the store to…  working       \e[2m42m\e[0m   ▎ ⇡ \e[1mT8 \e[0m Status line chip …  merging     \e[2m   3m\e[0m
+▌ ◆ \e[1mT9 \e[0m Install migration…  \e[1;7mneeds you · merge conflict\e[0m  \e[2m1h35m\e[0m   ▎ ● \e[1mT4\e[0m Codex app-server …  working       \e[2m 7m\e[0m   ▎ ◇ \e[1mT12\e[0m \e[2m重构状态行的宽度… \e[0m  idle        \e[2m   5m\e[0m
+▎ ✗ \e[1mT10\e[0m Peek transcript p…  failed                      \e[2m2h10m\e[0m   ▎ ◐ \e[1mT6\e[0m Retry SQLITE_BUSY…  checking 1/3  \e[2m12m\e[0m   ▎ ◌ \e[1mT5 \e[0m \e[2mDocument hooks in…\e[0m  waiting T4  \e[2m   7m\e[0m
+▎ ✓ \e[1mT3 \e[0m Add --json to csq…  done                        \e[2m1h05m\e[0m   ▎ ◑ \e[1mT7\e[0m Windows PATH reso…  fixing 2/3    \e[2m31m\e[0m   ▎ ■ \e[1mT11\e[0m \e[2mBenchmark Advance…\e[0m  stopped     \e[2m4h00m\e[0m
 === 12 tasks, 255 columns
-▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 shi…  \e[1;7mneeds input\e[0m              \e[2m  18m\e[0m   ▎ ✓ \e[1mT3\e[0m Add --json to csquad status ········  done    \e[2m1h05m\e[0m   ▎ ◐ \e[1mT6\e[0m Retry SQLITE_BUSY in Transition ·  checking 1/3 \e[2m  12m\e[0m   ▎ ◇ \e[1mT12\e[0m \e[2m重构状态行的宽度计算 ·······\e[0m  idle       \e[2m   5m\e[0m
-▌ ◆ \e[1mT9 \e[0m Install migration f…  \e[1;7mneeds you · merge confl…\e[0m \e[2m1h35m\e[0m   ▎ ● \e[1mT1\e[0m Port the store to modernc sqlite ···  working \e[2m  42m\e[0m   ▎ ◑ \e[1mT7\e[0m Windows PATH resolution ·········  fixing 2/3   \e[2m  31m\e[0m   ▎ ◌ \e[1mT5 \e[0m \e[2mDocument hooks in README ···\e[0m  waiting T4 \e[2m   7m\e[0m
-▎ ✗ \e[1mT10\e[0m Peek transcript pag…  failed                   \e[2m2h10m\e[0m   ▎ ● \e[1mT4\e[0m Codex app-server reconnect ·········  working \e[2m   7m\e[0m   ▎ ⇡ \e[1mT8\e[0m Status line chip grid ···········  merging      \e[2m   3m\e[0m   ▎ ■ \e[1mT11\e[0m \e[2mBenchmark AdvanceAll ·······\e[0m  stopped    \e[2m4h00m\e[0m
+▌ ◆ \e[1mT2 \e[0m 修复 Windows 下 shim 测试不稳定  \e[1;7mneeds input\e[0m                 \e[2m  18m\e[0m   ▎ ● \e[1mT1\e[0m Port the store to modernc sqlite  working       \e[2m42m\e[0m   ▎ ⇡ \e[1mT8 \e[0m Status line chip grid ··  merging     \e[2m   3m\e[0m
+▌ ◆ \e[1mT9 \e[0m Install migration from 1.x ····  \e[1;7mneeds you · merge conflict\e[0m  \e[2m1h35m\e[0m   ▎ ● \e[1mT4\e[0m Codex app-server reconnect ·····  working       \e[2m 7m\e[0m   ▎ ◇ \e[1mT12\e[0m \e[2m重构状态行的宽度计算 ···\e[0m  idle        \e[2m   5m\e[0m
+▎ ✗ \e[1mT10\e[0m Peek transcript paging ········  failed                      \e[2m2h10m\e[0m   ▎ ◐ \e[1mT6\e[0m Retry SQLITE_BUSY in Transition   checking 1/3  \e[2m12m\e[0m   ▎ ◌ \e[1mT5 \e[0m \e[2mDocument hooks in README\e[0m  waiting T4  \e[2m   7m\e[0m
+▎ ✓ \e[1mT3 \e[0m Add --json to csquad status ···  done                        \e[2m1h05m\e[0m   ▎ ◑ \e[1mT7\e[0m Windows PATH resolution ········  fixing 2/3    \e[2m31m\e[0m   ▎ ■ \e[1mT11\e[0m \e[2mBenchmark AdvanceAll ···\e[0m  stopped     \e[2m4h00m\e[0m

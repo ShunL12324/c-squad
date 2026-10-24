@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="410.4" height="45" viewBox="0 0 410.4 45">
+<rect x="0.5" y="0.5" width="409.4" height="44" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+<g font-family="ui-monospace, SFMono-Regular, 'Cascadia Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace" font-size="14" text-anchor="middle">
+<text x="16.2" y="27" fill="#2ea662">▎</text>
+<text x="33" y="27" fill="#2ea662">✓</text>
+<text x="49.8 58.2" y="27" fill="#1f2328" font-weight="bold">T4</text>
+<text x="75" y="27" fill="#1f2328">✻</text>
+<text x="91.8 100.2 108.6 117 125.4 133.8" y="27" fill="#1f2328">readme</text>
+<text x="150.6 159 167.4 175.8" y="27" fill="#1f2328">demo</text>
+<text x="192.6 201 209.4 217.8 226.2 234.6 243 251.4 259.8" y="27" fill="#1f2328">recording</text>
+<text x="285 293.4 301.8 310.2" y="27" fill="#2ea662">done</text>
+<text x="335.4 343.8 352.2 360.6" y="27" fill="#8f9193">290k</text>
+<text x="385.8 394.2" y="27" fill="#8f9193">3m</text>
+</g>
+</svg>

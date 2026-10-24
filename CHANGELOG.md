@@ -12,7 +12,7 @@
   and every fix round's findings until the user approved them in agent view.
 - The status line's usage cell shows numbers instead of a trail: working,
   checking, fixing and merging rows show the fresh total and the change
-  since the last refresh (`326k  +4.1k`; `+0` faint; `+?` when the provider
+  since the last refresh (`326k +4.1k`; `+0` faint; `+?` when the provider
   reports no or partial usage); a stall shows `idle 3m` in amber after the
   total (not for a checking task, which waits for its check). Other rows
   show their total, faint, as before. In a narrow cell the change goes
@@ -21,6 +21,21 @@
   (`status line +4.1k in 10 s`) instead of the trail; `status --json` has
   `change`, `changeText` and `changeSeconds` instead of `trail` and
   `trailSeconds`.
+- The status line ledger is a tight table. The state, usage and age of a
+  column are each as wide as their widest value, two cells apart, so one
+  task reads `▎ ✓ T4 ✻ readme demo recording  done  290k  3m` with no
+  holes. Up to four tasks always take one column, at any width; more take
+  ⌈n/4⌉ columns (2 for 5–8 tasks, 3 for 9–12, 4 from 13) only when every
+  title keeps 16 cells, else one column fewer and a `+N more` row. Each
+  column is as wide as its widest row instead of a fixed share of the
+  terminal (the thresholds 124, 187 and 250 are gone). A dotted leader
+  follows a title only when it is 3 or more cells shorter than the
+  longest title of its column. The change after the total keeps 7 cells
+  (`+4.1k`, `+0`, `+?`, `idle 3m`), so a stall does not move the row. A
+  `needs you` badge wider than the state and usage runs on before the age,
+  which stays in its column; when the row does not fit, the reason is cut
+  (to 16 cells), never the age. The README shows the ledger as SVG samples
+  rendered from the real layout (`docs/images/ledger`).
 - `csquad peek` shows the last assistant message in full, so `peek T12 -n 1`
   is the whole final report; older messages are still cut at 3000
   characters. `csquad status` says when it cut the latest message and which
@@ -70,9 +85,9 @@
 - The status line no longer loses the age at the right of a full row:
   Claude Code indents the status line and cuts a row longer than
   `COLUMNS-4` with `…`, and the ledger filled `COLUMNS-1`. Rows now fit
-  `COLUMNS-4`; the column thresholds (124, 187, 250) stay. In a narrow cell
-  the title shrinks first, then the usage cell steps down and the reason of
-  a `needs you` badge is cut, then the title gives the rest.
+  `COLUMNS-4`. In a narrow cell the title shrinks first, then the usage
+  cell steps down and the reason of a `needs you` badge is cut, then the
+  title gives the rest.
 
 - Windows: a detached csquad (a check, an advance) no longer opens a console
   window for every git, shell or agent it starts; they share its hidden

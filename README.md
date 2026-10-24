@@ -318,18 +318,58 @@ can hold the message until you approve it in agent view.
 
 ## Read the status line
 
-![The status line: needs input, ready and done on the left; checking 1/3, working and waiting T5 on the right.](docs/images/status-line.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/ledger/ledger-80-dark.svg">
+  <img src="docs/images/ledger/ledger-80-light.svg" alt="The status line at 80 columns. It shows 4 tasks in one column. Row 1: T9, Install migration from 1.x, needs you, merge conflict, 1h35m. Row 2: T4, readme demo recording, done, 290k tokens, 3m. Row 3: T1, Codex app-server reconnect, working, 326k tokens, plus 4.1k, 7m. Row 4: T7, Windows PATH resolution, fixing 2/3, 210k tokens, idle 3m, 31m.">
+</picture>
 
 Each task has one row. A row has these parts, from left to right:
 
 1. A colored bar and a glyph for the state.
 2. The task ID and the engine mark: `✻` for Claude Code, `⬡` for Codex.
-3. The title, with a dotted leader.
+3. The title. A title that is 3 or more cells shorter than the longest title of its column gets
+   a dotted leader to its state.
 4. The state.
 5. The usage: the total and the new tokens, the total only, or nothing.
 6. The time since the task entered its state.
 
-The most urgent tasks come first.
+The most urgent tasks come first. The state, the usage and the time are in columns. Each column
+is as wide as its widest value.
+
+<details>
+<summary>More widths</summary>
+
+One task at 80 columns:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/ledger/ledger-1-task-80-dark.svg">
+  <img src="docs/images/ledger/ledger-1-task-80-light.svg" alt="The status line at 80 columns with one task. Row 1: T4, readme demo recording, done, 290k tokens, 3m.">
+</picture>
+
+Nine tasks at 124 columns. Two columns show 6 tasks. The titles are cut to 16 cells, and the
+reason of the badge is cut. The last row shows the 3 other tasks:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/ledger/ledger-9-tasks-124-dark.svg">
+  <img src="docs/images/ledger/ledger-9-tasks-124-light.svg" alt="The status line at 124 columns with 9 tasks, in two columns. Left column: T2, needs input, 18m. T9, needs you, merge conflict, cut, 1h35m. T10, failed, 61k tokens, 2h10m. Right column: T4, done, 290k tokens, 3m. T1, working, 326k tokens, plus 4.1k, 7m. T6, checking 1/3, 88k tokens, plus 0, 12m. Row 4: plus 3 more, T7, T8 and T5. The titles are cut.">
+</picture>
+
+Nine tasks at 160 columns. The titles are not cut:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/ledger/ledger-9-tasks-160-dark.svg">
+  <img src="docs/images/ledger/ledger-9-tasks-160-light.svg" alt="The status line at 160 columns with 9 tasks, in two columns. Left column: T2, 修复 Windows 下 shim 测试不稳定, needs input, 18m. T9, Install migration from 1.x, needs you, merge conflict, 1h35m. T10, Peek transcript paging, failed, 61k tokens, 2h10m. Right column: T4, readme demo recording, done, 290k tokens, 3m. T1, Codex app-server reconnect, working, 326k tokens, plus 4.1k, 7m. T6, Retry SQLITE_BUSY in Transition, checking 1/3, 88k tokens, plus 0, 12m. Row 4: plus 3 more, T7, T8 and T5.">
+</picture>
+
+A long badge at 56 columns. The titles are cut to 12 cells and the reason of the badge is cut.
+The time stays in its column:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/ledger/ledger-long-badge-56-dark.svg">
+  <img src="docs/images/ledger/ledger-long-badge-56-light.svg" alt="The status line at 56 columns with 3 tasks. Row 1: T9, Install migration, cut, needs you, merge conflict, cut, 1h35m. Row 2: T4, readme demo, cut, done, 290k tokens, 3m. Row 3: T1, Codex app-server, cut, working, 326k tokens, plus 4.1k, 7m.">
+</picture>
+
+</details>
 
 | Glyph | State | Meaning | What to do |
 | --- | --- | --- | --- |
@@ -360,7 +400,8 @@ of the reason, for example `needs you · max rounds` or `needs you · merge conf
 ### The usage
 
 A task that is `working`, `checking`, `fixing` or `merging` shows its total, then the new tokens
-since the refresh before (about 10 seconds), for example `326k  +4.1k`:
+since the refresh before (about 10 seconds), for example `326k +4.1k`. The part after the
+total always takes 7 cells, so the row does not move when the part changes:
 
 | After the total | Meaning |
 | --- | --- |
@@ -384,12 +425,17 @@ usage: 51.8k fresh · +0 since the last refresh (0 s) · last activity 13s ago
 
 ### Width and number of rows
 
-- The status line uses one column of tasks below 124 terminal columns. It uses 2 columns from 124,
-  3 from 187 and 4 from 250.
+- Up to 4 tasks use one column, in all terminal widths.
+- More tasks use more columns: 2 for 5 to 8 tasks, 3 for 9 to 12 tasks, 4 for 13 tasks or more.
+  The status line adds a column only if each title keeps 16 cells or more. If not, it uses one
+  column less.
+- Each column is as wide as its longest row.
 - It uses at most 4 rows. When more tasks exist, the last row shows `+N more` with the glyph and
   ID of each other task.
 - A row is at most 4 cells narrower than the terminal: Claude Code indents the status line and
   cuts longer rows.
+- A `needs you` badge can be wider than the state and the usage. Then it goes across the usage,
+  and the time stays in its column.
 - In a narrow terminal, the title gets shorter first. Then the usage drops the new tokens, then
   the total, and the reason of a `needs you` badge gets shorter. The age is never cut.
 - `NO_COLOR` removes the colors. The glyphs, bold, faint and reverse video stay.

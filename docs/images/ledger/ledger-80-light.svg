@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="612" height="108" viewBox="0 0 612 108">
+<rect x="0.5" y="0.5" width="611" height="107" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+<g font-family="ui-monospace, SFMono-Regular, 'Cascadia Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace" font-size="14" text-anchor="middle">
+<text x="16.2" y="27" fill="#e6a614">▎</text>
+<text x="33" y="27" fill="#e6a614">◆</text>
+<text x="49.8 58.2" y="27" fill="#1f2328" font-weight="bold">T9</text>
+<text x="75" y="27" fill="#1f2328">✻</text>
+<text x="91.8 100.2 108.6 117 125.4 133.8 142.2" y="27" fill="#1f2328">Install</text>
+<text x="159 167.4 175.8 184.2 192.6 201 209.4 217.8 226.2" y="27" fill="#1f2328">migration</text>
+<text x="243 251.4 259.8 268.2" y="27" fill="#1f2328">from</text>
+<text x="285 293.4 301.8" y="27" fill="#1f2328">1.x</text>
+<rect x="322.8" y="12" width="218.4" height="21" fill="#e6a614"/>
+<text x="327 335.4 343.8 352.2 360.6" y="27" fill="#141414" font-weight="bold">needs</text>
+<text x="377.4 385.8 394.2" y="27" fill="#141414" font-weight="bold">you</text>
+<text x="411" y="27" fill="#141414" font-weight="bold">·</text>
+<text x="427.8 436.2 444.6 453 461.4" y="27" fill="#141414" font-weight="bold">merge</text>
+<text x="478.2 486.6 495 503.4 511.8 520.2 528.6 537" y="27" fill="#141414" font-weight="bold">conflict</text>
+<text x="562.2 570.6 579 587.4 595.8" y="27" fill="#8f9193">1h35m</text>
+<text x="16.2" y="48" fill="#2ea662">▎</text>
+<text x="33" y="48" fill="#2ea662">✓</text>
+<text x="49.8 58.2" y="48" fill="#1f2328" font-weight="bold">T4</text>
+<text x="75" y="48" fill="#1f2328">✻</text>
+<text x="91.8 100.2 108.6 117 125.4 133.8" y="48" fill="#1f2328">readme</text>
+<text x="150.6 159 167.4 175.8" y="48" fill="#1f2328">demo</text>
+<text x="192.6 201 209.4 217.8 226.2 234.6 243 251.4 259.8" y="48" fill="#1f2328">recording</text>
+<text x="276.6 285 293.4 301.8" y="48" fill="#1f2328">····</text>
+<text x="327 335.4 343.8 352.2" y="48" fill="#2ea662">done</text>
+<text x="427.8 436.2 444.6 453" y="48" fill="#8f9193">290k</text>
+<text x="587.4 595.8" y="48" fill="#8f9193">3m</text>
+<text x="16.2" y="69" fill="#408ce8">▎</text>
+<text x="33" y="69" fill="#408ce8">●</text>
+<text x="49.8 58.2" y="69" fill="#1f2328" font-weight="bold">T1</text>
+<text x="75" y="69" fill="#1f2328">⬡</text>
+<text x="91.8 100.2 108.6 117 125.4" y="69" fill="#1f2328">Codex</text>
+<text x="142.2 150.6 159 167.4 175.8 184.2 192.6 201 209.4 217.8" y="69" fill="#1f2328">app-server</text>
+<text x="234.6 243 251.4 259.8 268.2 276.6 285 293.4 301.8" y="69" fill="#1f2328">reconnect</text>
+<text x="327 335.4 343.8 352.2 360.6 369 377.4" y="69" fill="#408ce8">working</text>
+<text x="427.8 436.2 444.6 453" y="69" fill="#1f2328">326k</text>
+<text x="469.8 478.2 486.6 495 503.4" y="69" fill="#408ce8">+4.1k</text>
+<text x="587.4 595.8" y="69" fill="#8f9193">7m</text>
+<text x="16.2" y="90" fill="#e87c3c">▎</text>
+<text x="33" y="90" fill="#e87c3c">◑</text>
+<text x="49.8 58.2" y="90" fill="#1f2328" font-weight="bold">T7</text>
+<text x="75" y="90" fill="#1f2328">✻</text>
+<text x="91.8 100.2 108.6 117 125.4 133.8 142.2" y="90" fill="#1f2328">Windows</text>
+<text x="159 167.4 175.8 184.2" y="90" fill="#1f2328">PATH</text>
+<text x="201 209.4 217.8 226.2 234.6 243 251.4 259.8 268.2 276.6" y="90" fill="#1f2328">resolution</text>
+<text x="293.4 301.8" y="90" fill="#1f2328">··</text>
+<text x="327 335.4 343.8 352.2 360.6 369" y="90" fill="#e87c3c">fixing</text>
+<text x="385.8 394.2 402.6" y="90" fill="#e87c3c">2/3</text>
+<text x="427.8 436.2 444.6 453" y="90" fill="#1f2328">210k</text>
+<text x="469.8 478.2 486.6 495" y="90" fill="#e6a614">idle</text>
+<text x="511.8 520.2" y="90" fill="#e6a614">3m</text>
+<text x="579 587.4 595.8" y="90" fill="#8f9193">31m</text>
+</g>
+</svg>

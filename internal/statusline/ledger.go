@@ -36,6 +36,7 @@ const (
 	Idle       = "idle"
 	Waiting    = "waiting"
 	Stopped    = "stopped"
+	Gone       = "gone" // the session was removed outside csquad
 )
 
 type style struct {
@@ -71,6 +72,7 @@ var styles = map[string]style{
 	Idle:       {"◇", gray, 4, false, true, "idle"},
 	Waiting:    {"◌", gray, 5, false, true, "waiting"},
 	Stopped:    {"■", gray, 5, false, true, "stopped"},
+	Gone:       {"□", gray, 5, false, true, "gone"},
 }
 
 func styleOf(key string) style {

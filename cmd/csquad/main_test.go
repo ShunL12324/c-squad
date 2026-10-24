@@ -508,8 +508,10 @@ func TestStatesFollowAgentView(t *testing.T) {
 			t.Errorf("%+v: %s", c, out)
 		}
 	}
+	// Removed outside csquad, and nothing of it is left (it is outside
+	// git): taken out of the list.
 	h.SetSessions(nil)
-	if out := ok(t, csq(t, h, opts{env: mine()}, "status")).stdout; !strings.Contains(out, "state: gone ") {
+	if out := ok(t, csq(t, h, opts{env: mine()}, "status")).stdout; strings.Contains(out, "## T"+n+" ") {
 		t.Errorf("removed session: %s", out)
 	}
 }

@@ -130,3 +130,68 @@ func TestAncestorDirtyAndRemoval(t *testing.T) {
 		t.Error("worktree left")
 	}
 }
+
+func commitFile(t *testing.T, g Git, dir, file, msg string) {
+	t.Helper()
+	os.WriteFile(filepath.Join(dir, file), []byte(msg), 0o644)
+	run(t, g, dir, "add", file)
+	run(t, g, dir, "commit", "-qm", msg)
+}
+
+// Merged by patch: every commit not in the target has its patch there. A
+// merge commit never counts as in the target by patch.
+func TestMergedByPatch(t *testing.T) {
+	g, r := repo(t)
+	run(t, g, r, "switch", "-qc", "topic")
+	commitFile(t, g, r, "x", "x")
+	commitFile(t, g, r, "y", "y")
+	run(t, g, r, "switch", "-q", "main")
+	commitFile(t, g, r, "m", "m")
+	run(t, g, r, "cherry-pick", "topic~1")
+	merged, byPatch, commits, err := g.Merged(r, "topic", "main")
+	if err != nil || merged || byPatch || len(commits) != 2 || !commits[0].InPatch || commits[1].InPatch || commits[1].Subject != "y" {
+		t.Errorf("partly picked: %v %v %+v %v", merged, byPatch, commits, err)
+	}
+	run(t, g, r, "cherry-pick", "topic")
+	if merged, byPatch, _, err := g.Merged(r, "topic", "main"); !merged || !byPatch || err != nil {
+		t.Errorf("all picked: %v %v %v", merged, byPatch, err)
+	}
+	sha, _ := g.Run(r, "rev-parse", "topic")
+	if merged, byPatch, _, _ := g.Merged(r, sha, "main"); !merged || !byPatch {
+		t.Error("a detached head by its commit")
+	}
+	if merged, byPatch, commits, _ := g.Merged(r, "main~3", "main"); !merged || byPatch || commits != nil {
+		t.Error("an ancestor is merged, not by patch")
+	}
+	// A merge commit on the branch: not merged by patch.
+	run(t, g, r, "switch", "-qc", "merging", "topic")
+	commitFile(t, g, r, "z", "z")
+	run(t, g, r, "switch", "-qc", "side", "topic")
+	commitFile(t, g, r, "w", "w")
+	run(t, g, r, "switch", "-q", "merging")
+	run(t, g, r, "merge", "-q", "--no-ff", "--no-edit", "side")
+	run(t, g, r, "switch", "-q", "main")
+	run(t, g, r, "cherry-pick", "merging~1", "side")
+	if merged, _, _, _ := g.Merged(r, "side", "main"); !merged {
+		t.Error("side is in main by patch")
+	}
+	if merged, _, _, _ := g.Merged(r, "merging", "main"); merged {
+		t.Error("a merge commit counted as in the target by patch")
+	}
+}
+
+func TestChanges(t *testing.T) {
+	g, r := repo(t)
+	commitFile(t, g, r, "b", "b")
+	os.WriteFile(filepath.Join(r, "a"), []byte("changed"), 0o644)
+	run(t, g, r, "mv", "b", "c")
+	os.MkdirAll(filepath.Join(r, "shots", "deep"), 0o755)
+	os.WriteFile(filepath.Join(r, "shots", "deep", "1.png"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(r, "new file"), []byte("x"), 0o644)
+	tracked, untracked, err := g.Changes(r)
+	sort.Strings(tracked)
+	sort.Strings(untracked)
+	if err != nil || strings.Join(tracked, "|") != "a|c" || strings.Join(untracked, "|") != "new file|shots/deep/1.png" {
+		t.Errorf("%q %q %v", tracked, untracked, err)
+	}
+}

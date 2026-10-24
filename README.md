@@ -136,12 +136,33 @@ claude  Merged worktree-t1-http-client-retry into main, and go test passes.
 Claude merges the task's branch into the branch of your main checkout. Then it runs
 `csquad finish`. This command removes the task only when the work is safe:
 
-1. It makes sure that each branch of the task is merged into the target branch.
+1. It makes sure that each branch of the task is merged into the target branch. A branch is also
+   merged when the target has the same changes (the same patch) for each of its commits, for
+   example after a cherry-pick or a rebase.
 2. It makes sure that the worktree has no uncommitted changes.
 3. It removes the worktree, the merged branches and the session.
 
-If a check fails, `csquad finish` stops and tells you what is not merged. It never deletes
-unmerged work.
+If a check fails, `csquad finish` stops and removes nothing. It never deletes unmerged work. It
+shows the commits that are not in the target, the uncommitted files, and the two next steps:
+
+```text
+csquad: T2 is not finished, nothing was removed:
+  - branch worktree-t2-layout is not merged into main:
+      3f2a91c try a grid layout
+      8be0d14 add debug screenshots
+      2 commits already in main by patch (cherry-picked)
+  - worktree ~/demo/app/.claude/worktrees/t2-layout has uncommitted changes: only untracked files: .pristine/ (14 files)
+  keep the work and stop tracking it: csquad cancel T2
+  delete it:                          csquad cancel T2 --discard
+```
+
+- To keep only some commits, cherry-pick them into the target, then run `csquad finish T2`. If
+  commits that you do not want are left, run `csquad cancel T2 --discard`.
+- `csquad cancel T2` removes the task from the list. Its worktree and branch stay for you.
+- `csquad cancel T2 --discard` deletes the task's worktrees, branches and session, also the
+  unmerged work.
+
+Do not delete the branch, worktree or session of a task by hand: use these commands.
 
 ```sh
 git merge worktree-t1-http-client-retry
@@ -567,9 +588,15 @@ The check failed in each round. Run `csquad status` to read the findings. Send a
 hint, then run `csquad retry T7` for one more round. Or cancel the task.
 
 **`csquad finish` refuses to remove a task.**
-The output names the branch that is not merged, or the worktree that has uncommitted changes.
-Merge or commit the work, then run `csquad finish` again. To delete the work, run
-`csquad cancel T7 --discard`.
+The output shows the commits that are not in the target and the uncommitted files. Merge,
+cherry-pick or commit the work, then run `csquad finish` again. To keep the work and stop
+tracking the task, run `csquad cancel T7`. To delete the work, run `csquad cancel T7 --discard`.
+
+**A task shows `gone`.**
+The session of the task was removed outside csquad, for example in agent view, and some of its
+work (a worktree or a branch) is left. Run `csquad cancel T7` to remove the task from the list. It
+keeps unmerged work and tells you where it is. `csquad cancel T7 --discard` deletes it. When
+nothing of the task is left, csquad removes it from the list without a command.
 
 **How many tasks can run at the same time?**
 csquad sets no limit. Each task uses its own session and tokens, so you decide how many to run.

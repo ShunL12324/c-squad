@@ -71,6 +71,7 @@ func (a *App) statusQuery(ctx context.Context, in statusline.Input) ([]statuslin
 	if err != nil && len(live) == 0 {
 		return nil, err
 	}
+	tasks = a.clearGone(ctx, tasks, live)
 	a.prune(ctx, gone(tasks, live))
 	a.maybeAdvance(ctx, tasks, live)
 	marks := len(engine.Names()) > 1
@@ -79,7 +80,7 @@ func (a *App) statusQuery(ctx context.Context, in statusline.Input) ([]statuslin
 		l, ok := live[t.ID]
 		v := view(t, l, ok)
 		key := v.Key
-		if key == engine.Gone || key == "starting" {
+		if key == "starting" {
 			key = "stopped"
 		}
 		text := v.Text

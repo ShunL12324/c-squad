@@ -26,7 +26,10 @@ their state (needs input, failed, done, idle, working, stopped, gone), age,
 session, directory and latest message. Tasks with a check, a merge or an
 order show csquad's flow instead: `waiting T3`, `checking 1/3`,
 `fixing 2/3`, `merging`, `ready` (the check passed), `needs you` with a
-`note:` line saying why (`csquad retry T12` resumes it). `status` cuts a long
+`note:` line saying why (`csquad retry T12` resumes it). A `gone` row means
+the session was removed outside csquad, and some of its work (a worktree or
+branch) is left; `csquad cancel T12` clears it and keeps unmerged work. A gone
+task with nothing left leaves the list by itself. `status` cuts a long
 latest message; `peek` shows the last messages with tool calls folded, the
 last reply in full (`peek T12 -n 1`: the whole final report).
 

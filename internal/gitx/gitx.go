@@ -123,9 +123,80 @@ func (g Git) IsAncestor(dir, a, b string) (bool, error) {
 	return false, fmt.Errorf("git merge-base --is-ancestor %s %s: %s", a, b, strings.TrimSpace(errb.String()))
 }
 
+// Commit is a commit of a branch that is not reachable from a target.
+type Commit struct {
+	Hash    string // abbreviated
+	Subject string
+	InPatch bool // a commit with the same patch is in the target (cherry-picked or rebased)
+}
+
+// Merged reports whether head's work is in target: head is an ancestor of
+// target, or every commit of head not reachable from target has a
+// patch-equivalent commit in target (byPatch). commits are head's commits
+// not reachable from target, oldest first. A merge commit is never
+// patch-equivalent, and a conflict-resolved cherry-pick changes the patch:
+// both stay unmerged.
+func (g Git) Merged(dir, head, target string) (merged, byPatch bool, commits []Commit, err error) {
+	if ok, err := g.IsAncestor(dir, head, target); err != nil || ok {
+		return ok, false, nil, err
+	}
+	// The right side of target...head is what git cherry target head lists;
+	// --cherry-mark marks the patch-equivalent ones "=" and, unlike git
+	// cherry, keeps merge commits (">").
+	out, err := g.Run(dir, "log", "--cherry-mark", "--right-only", "--reverse", "--format=%m %h %s", target+"..."+head, "--")
+	if err != nil {
+		return false, false, nil, err
+	}
+	byPatch = true
+	for _, line := range strings.Split(out, "\n") {
+		mark, rest, _ := strings.Cut(strings.TrimRight(line, "\r"), " ")
+		if mark == "" {
+			continue
+		}
+		hash, subject, _ := strings.Cut(rest, " ")
+		c := Commit{Hash: hash, Subject: subject, InPatch: mark == "="}
+		byPatch = byPatch && c.InPatch
+		commits = append(commits, c)
+	}
+	byPatch = byPatch && len(commits) > 0
+	return byPatch, byPatch, commits, nil
+}
+
 // Dirty returns `git status --porcelain` of a worktree ("" when clean).
 func (g Git) Dirty(dir string) (string, error) {
 	return g.Run(dir, "status", "--porcelain")
+}
+
+// Changes lists a worktree's uncommitted changes: the tracked paths that
+// differ from HEAD (staged or not), and every untracked file (not
+// directories).
+func (g Git) Changes(dir string) (tracked, untracked []string, err error) {
+	cmd := exec.Command("git", "-C", dir, "status", "--porcelain", "-z", "--untracked-files=all")
+	cmd.Env = g.Env
+	var out, errb bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	if err := cmd.Run(); err != nil {
+		return nil, nil, fmt.Errorf("git status: %s", strings.TrimSpace(errb.String()))
+	}
+	entries := strings.Split(out.String(), "\x00")
+	for i := 0; i < len(entries); i++ {
+		e := entries[i]
+		if len(e) < 4 {
+			continue
+		}
+		xy, path := e[:2], e[3:]
+		switch xy {
+		case "??":
+			untracked = append(untracked, path)
+		case "!!":
+		default:
+			tracked = append(tracked, path)
+			if xy[0] == 'R' || xy[0] == 'C' {
+				i++ // the next entry is the source path
+			}
+		}
+	}
+	return tracked, untracked, nil
 }
 
 // RemoveWorktree unlocks (Claude Code locks the worktrees it creates) and
@@ -168,6 +239,21 @@ func (g Git) DeleteMerged(repo, branch, target string) error {
 		return err
 	}
 	_, err = g.Run(repo, "update-ref", "-d", "refs/heads/"+branch, sha)
+	return err
+}
+
+// DeleteByPatch deletes a branch whose commits were verified in the target
+// by patch (Merged said byPatch), while it still points at sha, the commit
+// verified. git branch -d refuses such a branch, so this is -D.
+func (g Git) DeleteByPatch(repo, branch, sha string) error {
+	cur, err := g.Run(repo, "rev-parse", "--verify", "-q", "refs/heads/"+branch)
+	if err != nil {
+		return err
+	}
+	if cur != sha {
+		return fmt.Errorf("branch %s moved since it was verified merged by patch", branch)
+	}
+	_, err = g.Run(repo, "branch", "-D", branch)
 	return err
 }
 

@@ -24,8 +24,41 @@ type plan struct {
 	target    string
 	worktrees []gitx.Worktree
 	branches  []string
-	problems  []string // unmerged or uncommitted work: nothing may be removed
-	ignored   []string // refs named for the task but older than it: never touched
+	byPatch   map[string]string // branch → its head, verified in the target by patch only
+	problems  []problem         // unmerged or uncommitted work: nothing may be removed
+	ignored   []string          // refs named for the task but older than it: never touched
+}
+
+// problem is one reason a task's work is not in its target; detail names
+// the commits.
+type problem struct {
+	text   string
+	detail []string
+}
+
+func (p *plan) problem(detail []string, format string, args ...any) {
+	p.problems = append(p.problems, problem{fmt.Sprintf(format, args...), detail})
+}
+
+// refs names the task's worktrees and branches.
+func (p plan) refs() []string {
+	var list []string
+	for _, w := range p.worktrees {
+		list = append(list, "worktree "+w.Path)
+	}
+	for _, b := range p.branches {
+		list = append(list, "branch "+b)
+	}
+	return list
+}
+
+// summary is the problems on one line.
+func (p plan) summary() string {
+	var list []string
+	for _, x := range p.problems {
+		list = append(list, x.text)
+	}
+	return strings.Join(list, "; ")
 }
 
 // inspect finds what a task left in git and checks it against target ("" =
@@ -73,36 +106,136 @@ func (a *App) inspect(t store.Task, target string, l engine.Live) (plan, error) 
 	}
 	for _, b := range p.branches {
 		if b == target {
-			p.problems = append(p.problems, fmt.Sprintf("branch %s is the target itself", b))
+			p.problem(nil, "branch %s is the target itself", b)
 			continue
 		}
-		ok, err := g.IsAncestor(p.repo, "refs/heads/"+b, target)
+		merged, byPatch, commits, err := g.Merged(p.repo, "refs/heads/"+b, target)
 		if err != nil {
 			return p, err
 		}
-		if !ok {
-			p.problems = append(p.problems, fmt.Sprintf("branch %s is not merged into %s", b, target))
+		switch {
+		case byPatch:
+			// git branch -d refuses it: clean deletes it while it is at
+			// the commit verified here.
+			if p.byPatch == nil {
+				p.byPatch = map[string]string{}
+			}
+			if p.byPatch[b], err = g.Run(p.repo, "rev-parse", "--verify", "-q", "refs/heads/"+b); err != nil {
+				return p, err
+			}
+		case !merged:
+			p.problem(commitLines(commits, target), "branch %s is not merged into %s", b, target)
 		}
 	}
 	for _, w := range p.worktrees {
 		if w.Detached && w.Head != "" {
-			ok, err := g.IsAncestor(p.repo, w.Head, target)
+			merged, _, commits, err := g.Merged(p.repo, w.Head, target)
 			if err != nil {
 				return p, err
 			}
-			if !ok {
-				p.problems = append(p.problems, fmt.Sprintf("worktree %s has a detached HEAD %s not merged into %s", w.Path, short(w.Head), target))
+			if !merged {
+				p.problem(commitLines(commits, target), "worktree %s has a detached HEAD %s not merged into %s", w.Path, short(w.Head), target)
 			}
 		}
-		dirty, err := g.Dirty(w.Path)
+		tracked, untracked, err := g.Changes(w.Path)
 		if err != nil {
 			return p, err
 		}
-		if dirty != "" {
-			p.problems = append(p.problems, fmt.Sprintf("worktree %s has uncommitted changes:\n%s", w.Path, indent(dirty)))
+		if len(tracked)+len(untracked) > 0 {
+			p.problem(nil, "worktree %s has uncommitted changes: %s", w.Path, changeText(tracked, untracked))
 		}
 	}
 	return p, nil
+}
+
+// listCap is about how many commits, files or directories a refusal names.
+const listCap = 5
+
+// commitLines names the commits not in target, oldest first, and counts
+// those in it by patch.
+func commitLines(commits []gitx.Commit, target string) []string {
+	var out, rest []string
+	inPatch := 0
+	for _, c := range commits {
+		if c.InPatch {
+			inPatch++
+		} else {
+			rest = append(rest, c.Hash+" "+c.Subject)
+		}
+	}
+	if len(rest) > 2*listCap {
+		out = append(rest[:2*listCap], fmt.Sprintf("and %d more", len(rest)-2*listCap))
+	} else {
+		out = rest
+	}
+	if inPatch > 0 {
+		out = append(out, fmt.Sprintf("%s already in %s by patch (cherry-picked)", plural(inPatch, "commit"), target))
+	}
+	return out
+}
+
+// changeText tells modified tracked files from untracked ones; untracked
+// files are grouped by their top-level directory.
+func changeText(tracked, untracked []string) string {
+	var out []string
+	if len(tracked) > 0 {
+		out = append(out, "modified tracked files: "+capped(tracked))
+	}
+	if len(untracked) > 0 {
+		var groups []string
+		count := map[string]int{}
+		for _, f := range untracked {
+			g := f
+			if dir, _, ok := strings.Cut(f, "/"); ok {
+				g = dir + "/"
+			}
+			if count[g] == 0 {
+				groups = append(groups, g)
+			}
+			count[g]++
+		}
+		for i, g := range groups {
+			if strings.HasSuffix(g, "/") {
+				groups[i] = fmt.Sprintf("%s (%s)", g, plural(count[g], "file"))
+			}
+		}
+		if len(tracked) == 0 {
+			out = append(out, "only untracked files: "+capped(groups))
+		} else {
+			out = append(out, "untracked files: "+capped(groups))
+		}
+	}
+	return strings.Join(out, "; ")
+}
+
+func capped(list []string) string {
+	if len(list) > listCap {
+		return strings.Join(list[:listCap], ", ") + fmt.Sprintf(", and %d more", len(list)-listCap)
+	}
+	return strings.Join(list, ", ")
+}
+
+func plural(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
+}
+
+// refusal is finish's error for work not in the target: what blocks it,
+// then both ways out.
+func refusal(t store.Task, p plan) error {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s is not finished, nothing was removed:", t.Label())
+	for _, x := range p.problems {
+		fmt.Fprintf(&b, "\n  - %s", x.text)
+		if len(x.detail) > 0 {
+			fmt.Fprintf(&b, ":\n      %s", strings.Join(x.detail, "\n      "))
+		}
+	}
+	fmt.Fprintf(&b, "\n  keep the work and stop tracking it: csquad cancel %s", t.Label())
+	fmt.Fprintf(&b, "\n  delete it:                          csquad cancel %s --discard", t.Label())
+	return errors.New(b.String())
 }
 
 // clean removes what inspect found, worktrees first, then branches; it
@@ -131,7 +264,9 @@ func (a *App) clean(p plan, force bool) ([]string, []string, error) {
 	}
 	for _, b := range p.branches {
 		var err error
-		if force {
+		if sha, ok := p.byPatch[b]; ok && !force {
+			err = g.DeleteByPatch(p.repo, b, sha)
+		} else if force {
 			_, err = g.Run(p.repo, "branch", "-D", b)
 		} else {
 			err = g.DeleteMerged(p.repo, b, p.target)
@@ -213,7 +348,7 @@ func (a *App) finishOne(ctx context.Context, label, into string, all bool) error
 		return err
 	}
 	if len(p.problems) > 0 {
-		return fmt.Errorf("%s is not finished, nothing was removed:\n  - %s", t.Label(), strings.Join(p.problems, "\n  - "))
+		return refusal(t, p)
 	}
 	removed, done, err := a.clean(p, false)
 	if err != nil {
@@ -242,16 +377,33 @@ func (a *App) finishOne(ctx context.Context, label, into string, all bool) error
 	}
 	flow.Event(a.Home, t, stored, "finished")
 	a.removeFiles(t.ID, lock)
-	merged := ""
-	if len(p.branches) > 0 {
-		merged = fmt.Sprintf(" · merged into %s: %s", p.target, strings.Join(p.branches, ", "))
-	}
-	a.printf("finished %s%s · removed %s\n", t.Name(), merged, orNone(done))
+	a.printf("finished %s%s · removed %s\n", t.Name(), mergedText(p), orNone(done))
 	if left != "" {
 		a.printf("  the session is left: %s\n", left)
 	}
 	a.printIgnored(p.ignored)
 	return nil
+}
+
+// mergedText says which branches are in the target, and which only by
+// patch.
+func mergedText(p plan) string {
+	var plain, patch []string
+	for _, b := range p.branches {
+		if _, ok := p.byPatch[b]; ok {
+			patch = append(patch, b)
+		} else {
+			plain = append(plain, b)
+		}
+	}
+	s := ""
+	if len(plain) > 0 {
+		s += fmt.Sprintf(" · merged into %s: %s", p.target, strings.Join(plain, ", "))
+	}
+	if len(patch) > 0 {
+		s += fmt.Sprintf(" · merged into %s by patch (cherry-picked/rebased): %s", p.target, strings.Join(patch, ", "))
+	}
+	return s
 }
 
 // Cancel takes a task out of the list (phase cancelled; the row keeps its
@@ -312,7 +464,7 @@ func (a *App) Cancel(ctx context.Context, label string, discard, all bool) error
 		}
 		ignored = p.ignored
 		if len(p.problems) > 0 && !discard {
-			keep = fmt.Sprintf("kept its work: %s\n  csquad cancel %s --discard deletes it, unmerged work included", strings.Join(p.problems, "; "), t.Label())
+			keep = fmt.Sprintf("kept its work (%s): %s\n  csquad cancel %s --discard deletes it, unmerged work included", strings.Join(p.refs(), ", "), p.summary(), t.Label())
 		} else {
 			removed, gitDone, err := a.clean(p, discard)
 			done = append(done, gitDone...)
@@ -376,13 +528,7 @@ func (a *App) cancelAgain(ctx context.Context, t store.Task, discard bool) error
 	}
 	session := t.SessionID != "" && l.State != engine.Gone
 	if !discard {
-		var left []string
-		for _, w := range p.worktrees {
-			left = append(left, "worktree "+w.Path)
-		}
-		for _, b := range p.branches {
-			left = append(left, "branch "+b)
-		}
+		left := p.refs()
 		if session {
 			left = append(left, "session "+t.SessionID)
 		}
@@ -421,6 +567,74 @@ func (a *App) cancelAgain(ctx context.Context, t store.Task, discard bool) error
 	return nil
 }
 
+// clearGone takes out of the list the running tasks whose session was
+// removed outside csquad and of which nothing is left: no worktree and no
+// branch named for them. It returns the tasks still listed. A task with
+// anything left stays, gone, until csquad cancel.
+func (a *App) clearGone(ctx context.Context, tasks []store.Task, live map[int]engine.Live) []store.Task {
+	var out []store.Task
+	for _, t := range tasks {
+		if l, ok := live[t.ID]; ok && l.State == engine.Gone && t.Phase == store.Running && a.clearIfEmpty(ctx, t) {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+func (a *App) clearIfEmpty(ctx context.Context, t store.Task) bool {
+	lock, err := flock.Try(a.TaskLock(t.ID))
+	if err != nil {
+		return false // csquad is starting, merging or cancelling it
+	}
+	defer lock.Release()
+	if left, err := a.leftovers(t); err != nil || len(left) > 0 {
+		return false
+	}
+	db, err := a.Store()
+	if err != nil {
+		return false
+	}
+	next := t
+	next.Phase, next.Step, next.Note = store.Cancelled, "", "removed outside csquad"
+	stored, err := db.Transition(ctx, t, next)
+	if err != nil {
+		return false
+	}
+	flow.Event(a.Home, t, stored, "removed outside csquad: no session, worktree or branch is left")
+	a.removeFiles(t.ID, lock)
+	return true
+}
+
+// leftovers names the worktrees and branches named for a task. A task in
+// place has none of its own; neither has one whose directory is gone or
+// outside git.
+func (a *App) leftovers(t store.Task) ([]string, error) {
+	if t.InPlace {
+		return nil, nil
+	}
+	if _, err := os.Stat(t.Cwd); errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	g := gitx.Git{Env: a.Env}
+	top := g.TopLevel(t.Cwd)
+	if top == "" {
+		if _, err := g.Run(t.Cwd, "rev-parse", "--git-dir"); err != nil && !strings.Contains(err.Error(), "not a git repository") {
+			return nil, err
+		}
+		return nil, nil
+	}
+	wts, err := g.Worktrees(top)
+	if err != nil || len(wts) == 0 {
+		return nil, err
+	}
+	refs, err := g.TaskRefs(wts[0].Path, t.ID, time.UnixMilli(t.CreatedAt))
+	if err != nil {
+		return nil, err
+	}
+	return plan{worktrees: refs.Worktrees, branches: refs.Branches}.refs(), nil
+}
+
 // printIgnored names the refs named for a task but older than it.
 func (a *App) printIgnored(refs []string) {
 	if len(refs) > 0 {
@@ -450,10 +664,6 @@ func orNone(list []string) string {
 		return "nothing"
 	}
 	return strings.Join(list, ", ")
-}
-
-func indent(s string) string {
-	return "      " + strings.ReplaceAll(strings.TrimRight(s, "\n"), "\n", "\n      ")
 }
 
 func short(h string) string {

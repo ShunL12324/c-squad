@@ -23,6 +23,34 @@
   is the whole final report; older messages are still cut at 3000
   characters. `csquad status` says when it cut the latest message and which
   peek shows all of it.
+- `csquad finish` names what blocks it and the next step. For each unmerged
+  branch (or detached HEAD) it lists the commits not in the target, with
+  short hash and subject, and counts those already in the target by patch
+  ("2 commits already in main by patch (cherry-picked)"). A dirty worktree
+  says "only untracked files: .pristine/ (14 files)", grouped by top-level
+  path, apart from "modified tracked files: …". Every refusal ends with
+  `csquad cancel T2` (keep the work, stop tracking it) and
+  `csquad cancel T2 --discard` (delete it). `cancel` that keeps work names
+  the worktrees and branches it kept.
+- A branch whose commits are all in the target by patch (cherry-picked or
+  rebased; `git cherry` shows only `-`) counts as merged, for `finish`,
+  for cancel's nothing-to-lose check and for a `--merge` landing (which no
+  longer rebases it). finish says "merged into main by patch
+  (cherry-picked/rebased)" and deletes that branch with `git branch -D`,
+  only while it still points at the commit verified. A merge commit, or a
+  cherry-pick whose patch changed while resolving a conflict, keeps the
+  branch unmerged.
+- A task whose session was removed outside csquad (`gone`) and of which
+  nothing is left (no worktree, no branch named for it) leaves the list by
+  itself, from `status` or the status line: phase `cancelled`, note
+  "removed outside csquad", with an event in the log. One with work left
+  stays: `status` shows `gone` with the hint `csquad cancel T2`, and the
+  status line row shows `gone` instead of `stopped`.
+- The finish-task skill says how to keep only some commits (cherry-pick,
+  then finish; then `cancel --discard` after asking the user), and that
+  `csquad cancel` and `cancel --discard` are the ways to stop tracking or
+  delete a task's work, never deleting it by hand. The task-status skill
+  explains a `gone` row.
 
 ### Fixed
 

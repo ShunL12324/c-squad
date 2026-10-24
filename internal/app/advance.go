@@ -570,7 +570,9 @@ func (a *App) landing(ctx context.Context, t store.Task) flow.Landing {
 		if b == t.MergeInto {
 			return problem("branch %s is the target itself", b)
 		}
-		ok, err := g.IsAncestor(p.repo, "refs/heads/"+b, "refs/heads/"+t.MergeInto)
+		// A branch whose commits are all in the target by patch has
+		// nothing to land; the cleanup deletes it.
+		ok, _, _, err := g.Merged(p.repo, "refs/heads/"+b, "refs/heads/"+t.MergeInto)
 		if err != nil {
 			return problem("%v", err)
 		}
@@ -633,7 +635,7 @@ func (a *App) landing(ctx context.Context, t store.Task) flow.Landing {
 		return problem("%v", err)
 	}
 	if len(p.problems) > 0 {
-		return problem("unproven merge: %s", strings.Join(p.problems, "; "))
+		return problem("unproven merge: %s", p.summary())
 	}
 	removed, _, err := a.clean(p, false)
 	if err != nil {

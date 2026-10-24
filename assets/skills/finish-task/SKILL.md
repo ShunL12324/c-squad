@@ -23,7 +23,8 @@ them", "wrap up"), finish every task of this session that is done, idle or ready
 after another, without asking which. Skip tasks that are still working or need
 input, and list them at the end. If one task hits a blocker (conflict, failing
 tests, unmerged or uncommitted work), stop on that task, report it, and carry
-on with the others.
+on with the others. A task shown `gone` had its session removed outside
+csquad; finish or cancel it like any other.
 
 1. Find what the task left: `{{CSQUAD}} peek T12 -n 4`. Its final message names
    the branch, commit and any worktree; the session's directory is in the
@@ -38,23 +39,32 @@ on with the others.
 3. Run `{{CSQUAD}} finish T12` (add `--into BRANCH` when the target is not the
    branch checked out in the main checkout). It verifies before deleting
    anything: every branch the task created is merged into the target
-   (`git merge-base --is-ancestor`), a detached worktree's `HEAD` too, and its
-   worktree has no uncommitted changes. Then, in this order, it removes the
+   (`git merge-base --is-ancestor`, or every commit of it is in the target by
+   patch, as after a cherry-pick or a rebase), a detached worktree's `HEAD`
+   too, and its worktree has no uncommitted changes. Then, in this order, it removes the
    verified worktrees and merged branches with git, then the session
    (`claude rm`, or archiving a Codex task's thread), and deletes the task's
    settings file, which can hold a provider token. A Codex task's worktree is
    `<repo>-wt/t12-slug` next to the repository, on `task/t12-slug`.
-4. If it refuses, it names what is unmerged or uncommitted: report that to the
-   user and stop on that task. Never work around it by deleting branches or
-   worktrees yourself.
+4. If it refuses, it lists the commits not in the target and the uncommitted
+   files, and ends with both ways out: `{{CSQUAD}} cancel T12` keeps the work
+   and stops tracking it, `{{CSQUAD}} cancel T12 --discard` deletes it. Report
+   that to the user and stop on that task until they choose.
+   To keep only some commits, cherry-pick them, then `{{CSQUAD}} finish T12`;
+   if commits are left that the user does not want, ask, then
+   `{{CSQUAD}} cancel T12 --discard`. To keep the work but stop tracking it:
+   `{{CSQUAD}} cancel T12`. Never delete a task's branches, worktrees or
+   session by hand.
 5. If `claude rm` refused and csquad printed a value for `--discard-unpushed`
    or `--force-remove-worktree`, csquad already used it where the work was
    proven merged; otherwise it says the session is left. Do not invent such a
    value.
 
-Hard rules: never delete unmerged branches or uncommitted work, never use
-`--force`, `-D`, `--discard-unpushed` or `--force-remove-worktree` yourself;
-on any doubt, report what you found and ask. Leave branches and worktrees the
+Hard rules: never delete unmerged branches or uncommitted work yourself;
+`{{CSQUAD}} cancel T12 --discard` is the way to delete them, and only after
+the user agrees. Never use `--force`, `-D`, `--discard-unpushed` or
+`--force-remove-worktree` yourself; on any doubt, report what you found and
+ask. Leave branches and worktrees the
 task did not create alone. Report what was merged and removed.
 
 <!-- claude -->

@@ -28,6 +28,7 @@ func (a *App) listed(ctx context.Context, all bool) ([]store.Task, map[int]engin
 		return nil, nil, err
 	}
 	live, err := a.observe(ctx, tasks)
+	tasks = a.clearGone(ctx, tasks, live)
 	a.prune(ctx, gone(tasks, live))
 	return tasks, live, err
 }
@@ -59,6 +60,7 @@ type statusEntry struct {
 	Latest    string      `json:"latest"`
 	Attach    string      `json:"attach,omitempty"`
 	Note      string      `json:"note,omitempty"`
+	Hint      string      `json:"hint,omitempty"`
 	After     []string    `json:"after,omitempty"`
 	Check     string      `json:"check,omitempty"`
 	Round     int         `json:"round,omitempty"`
@@ -115,6 +117,9 @@ func (a *App) Status(ctx context.Context, all, asJSON bool) error {
 		if t.Phase == store.NeedsYou || t.Phase == store.Failed {
 			e.Note = t.Note
 		}
+		if views[t.ID].Key == engine.Gone {
+			e.Hint = fmt.Sprintf("the session was removed outside csquad; csquad cancel %s clears it (unmerged work is kept)", t.Label())
+		}
 		if t.CheckSpec != "" {
 			e.Check, e.Round, e.MaxRounds = t.CheckSpec, t.Round, t.MaxRounds
 		}
@@ -135,6 +140,9 @@ func (a *App) Status(ctx context.Context, all, asJSON bool) error {
 			}
 			if e.Note != "" {
 				a.printf("note: %s\n", e.Note)
+			}
+			if e.Hint != "" {
+				a.printf("hint: %s\n", e.Hint)
 			}
 			if p := strings.TrimPrefix(flowPlan(t), "\n  then: "); p != "" {
 				a.printf("flow: %s\n", p)

@@ -63,7 +63,7 @@ func TestFinishVerifiesThenRemovesGitFirstThenTheSession(t *testing.T) {
 	// Uncommitted changes: refused.
 	os.WriteFile(filepath.Join(wt, "c.txt"), []byte("c\n"), 0o644)
 	r = csq(t, h, opts{env: mine()}, "finish", "T1")
-	if r.code != 1 || !strings.Contains(r.stderr, "has uncommitted changes") || !strings.Contains(r.stderr, "?? c.txt") {
+	if r.code != 1 || !strings.Contains(r.stderr, "has uncommitted changes") || !strings.Contains(r.stderr, "uncommitted changes: only untracked files: c.txt") {
 		t.Fatalf("%+v", r)
 	}
 	os.Remove(filepath.Join(wt, "c.txt"))
@@ -239,5 +239,93 @@ func TestCancelKeepsUnmergedWorkUnlessDiscard(t *testing.T) {
 	}
 	if !strings.Contains(git(t, h2, repo2, "log", "--oneline", "main"), "init") {
 		t.Error("main touched")
+	}
+}
+
+// commit writes a file in dir and commits it.
+func commit(t *testing.T, h *testutil.Home, dir, file, msg string) {
+	t.Helper()
+	os.WriteFile(filepath.Join(dir, file), []byte(msg+"\n"), 0o644)
+	git(t, h, dir, "add", file)
+	git(t, h, dir, "commit", "-qm", msg)
+}
+
+// The user cherry-picked two of the task's four commits and left
+// screenshots in the worktree: finish names what blocks it and both ways
+// out.
+func TestFinishRefusalNamesWhatBlocksAndBothWaysOut(t *testing.T) {
+	h, repo, wt := repoWithTask(t)
+	commit(t, h, wt, "c.txt", "second")
+	commit(t, h, wt, "d.txt", "third")
+	commit(t, h, wt, "e.txt", "fourth")
+	git(t, h, repo, "cherry-pick", "worktree-t1-fix~2", "worktree-t1-fix")
+	os.MkdirAll(filepath.Join(wt, ".pristine", "deep"), 0o755)
+	for _, f := range []string{"a.png", "b.png", filepath.Join("deep", "c.png")} {
+		os.WriteFile(filepath.Join(wt, ".pristine", f), []byte("x"), 0o644)
+	}
+	fix, third := git(t, h, repo, "rev-parse", "--short", "worktree-t1-fix~3"), git(t, h, repo, "rev-parse", "--short", "worktree-t1-fix~1")
+	ways := "  keep the work and stop tracking it: csquad cancel T1\n" +
+		"  delete it:                          csquad cancel T1 --discard\n"
+	branch := "csquad: T1 is not finished, nothing was removed:\n" +
+		"  - branch worktree-t1-fix is not merged into main:\n" +
+		"      " + fix + " fix\n" +
+		"      " + third + " third\n" +
+		"      2 commits already in main by patch (cherry-picked)\n"
+	r := csq(t, h, opts{env: mine()}, "finish", "T1")
+	if want := branch + "  - worktree " + wt + " has uncommitted changes: only untracked files: .pristine/ (3 files)\n" + ways; r.code != 1 || r.stderr != want {
+		t.Errorf("untracked only:\n%s\nwant:\n%s", r.stderr, want)
+	}
+	// Modified tracked files are told apart; the list is capped.
+	os.WriteFile(filepath.Join(wt, "b.txt"), []byte("changed\n"), 0o644)
+	for _, f := range []string{"n1", "n2", "n3", "n4", "n5"} {
+		os.WriteFile(filepath.Join(wt, f), []byte("x"), 0o644)
+	}
+	r = csq(t, h, opts{env: mine()}, "finish", "T1")
+	if want := branch + "  - worktree " + wt + " has uncommitted changes: modified tracked files: b.txt; untracked files: .pristine/ (3 files), n1, n2, n3, n4, and 1 more\n" + ways; r.code != 1 || r.stderr != want {
+		t.Errorf("modified:\n%s\nwant:\n%s", r.stderr, want)
+	}
+	if !exists(wt) || len(h.Sessions()) != 1 || !strings.Contains(git(t, h, repo, "branch"), "worktree-t1-fix") {
+		t.Error("something was removed")
+	}
+}
+
+// A branch whose commits are all in the target by patch (cherry-picked or
+// rebased) is merged; a cherry-pick whose patch changed is not.
+func TestFinishTreatsABranchInTheTargetByPatchAsMerged(t *testing.T) {
+	h, repo, wt := repoWithTask(t)
+	commit(t, h, repo, "m.txt", "main moves on")
+	git(t, h, repo, "cherry-pick", "worktree-t1-fix")
+	// A detached worktree of the task at that commit follows the same rule.
+	probe := filepath.Join(repo, ".claude", "worktrees", "t1-probe")
+	git(t, h, repo, "worktree", "add", "-q", "--detach", probe, "worktree-t1-fix")
+	r := ok(t, csq(t, h, opts{env: mine()}, "finish", "T1"))
+	if !strings.Contains(r.stdout, "finished T1 · fix · merged into main by patch (cherry-picked/rebased): worktree-t1-fix · removed ") {
+		t.Errorf("cherry-picked: %s", r.stdout)
+	}
+	if exists(wt) || exists(probe) || strings.Contains(git(t, h, repo, "branch"), "worktree-t1-fix") || len(h.Sessions()) != 0 {
+		t.Error("cherry-picked: not cleaned up")
+	}
+
+	h, repo, wt = repoWithTask(t)
+	commit(t, h, wt, "c.txt", "second")
+	commit(t, h, repo, "m.txt", "main moves on")
+	git(t, h, repo, "branch", "rebased", "worktree-t1-fix")
+	git(t, h, repo, "rebase", "-q", "main", "rebased")
+	git(t, h, repo, "switch", "-q", "main")
+	git(t, h, repo, "merge", "-q", "--ff-only", "rebased")
+	git(t, h, repo, "branch", "-q", "-d", "rebased")
+	r = ok(t, csq(t, h, opts{env: mine()}, "finish", "T1"))
+	if !strings.Contains(r.stdout, "merged into main by patch (cherry-picked/rebased): worktree-t1-fix") || exists(wt) || strings.Contains(git(t, h, repo, "branch"), "worktree-t1-fix") {
+		t.Errorf("rebased: %s", r.stdout)
+	}
+
+	// Resolved differently while picking: the patch changed, so unmerged.
+	h, repo, wt = repoWithTask(t)
+	git(t, h, repo, "cherry-pick", "-n", "worktree-t1-fix")
+	os.WriteFile(filepath.Join(repo, "b.txt"), []byte("b, resolved\n"), 0o644)
+	git(t, h, repo, "commit", "-qam", "fix, resolved")
+	r = csq(t, h, opts{env: mine()}, "finish", "T1")
+	if r.code != 1 || !strings.Contains(r.stderr, "branch worktree-t1-fix is not merged into main:\n      ") || strings.Contains(r.stderr, "by patch") || !exists(wt) {
+		t.Errorf("changed patch: %+v", r)
 	}
 }

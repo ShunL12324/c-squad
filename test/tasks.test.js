@@ -129,30 +129,100 @@ function statusline(columns, input) {
   return strip(r.stdout).split('\n').filter(Boolean);
 }
 
-test('statusline: column count follows COLUMNS', () => {
-  setSessions([1, 2, 3, 4, 5].map((n) => session(n, 'job')));
-  // A cell is 4 (label) + 4 ("job" + 1) + 11 (badge) = 19 wide, gaps are 2.
-  assert.equal(statusline(40).length, 3); // 2 columns
-  assert.equal(statusline(62).length, 2); // 3 columns
-  assert.equal(statusline(104).length, 1); // 5 columns
-  assert.equal(statusline(10).length, 5); // always at least 1 column
+// ---- the task ledger (issue #44) -------------------------------------------
+
+const { ledger, ledgerAge } = require(tasksJs);
+const NOW = Date.parse('2026-10-24T12:00:00Z');
+const L = (num, title, state, minutesAgo = 5) => ({ num, label: `T${num}`, title, state, since: NOW - minutesAgo * 60000 });
+const twelve = () => [
+  L(2, '修复 Windows 下 shim 测试不稳定', 'needs input', 18), L(9, 'Install migration from 1.x', 'needs input', 95),
+  L(10, 'Peek transcript paging', 'failed', 130), L(3, 'Add --json to status', 'done', 65), L(1, 'Port the store', 'working', 42),
+  L(4, 'Codex app-server reconnect', 'working', 7), L(6, 'Retry SQLITE_BUSY', 'working', 12), L(7, 'Windows PATH resolution', 'working', 31),
+  L(8, 'Status line chip grid', 'working', 3), L(12, '重构状态行的宽度计算', 'idle', 5), L(5, 'Document hooks', 'stopped', 7), L(11, 'Benchmark', 'stopped', 240),
+];
+
+test('ledger: ages', () => {
+  assert.deepEqual([0.5, 42, 65, 599, 600, 2000].map((m) => ledgerAge(NOW - m * 60000, NOW)), ['now', '42m', '1h05m', '9h59m', '10h', '33h']);
+  assert.equal(ledgerAge(0, NOW), '');
 });
 
-test('statusline: rows are aligned', () => {
-  setSessions([session(1, 'a'), session(2, 'a much longer title for this one'), session(10, 'b', 'blocked'), session(3, 'c', 'done')]);
+test('ledger: columns from the width, most urgent first, column by column', () => {
+  const tasks = twelve().slice(0, 6).reverse(); // input order must not matter
+  // With twelve tasks every available column is used.
+  const cols = (c) => ledger(twelve(), c, NOW, true)[0].split(/ {3}▎| {3}▌/).length;
+  assert.equal(cols(80), 1);
+  assert.equal(cols(123), 1);
+  assert.equal(cols(124), 2);
+  assert.equal(cols(187), 3);
+  assert.equal(cols(250), 4);
+  const rows = ledger(tasks, 80, NOW, true).map(strip); // NO_COLOR keeps bold and faint
+  assert.equal(rows.length, 4); // 3 shown + "+3 more"
+  assert.match(rows[0], /^▌ ◆ T2 .*needs input\s+18m$/);
+  assert.match(rows[1], /^▌ ◆ T9 .*needs input\s+1h35m$/);
+  assert.match(rows[2], /^▎ ✗ T10 .*failed\s+2h10m$/);
+  assert.equal(rows[3], '  +3 more  ✓ T3  ● T1  ● T4');
+  // Column by column: the second column of a two-column ledger starts after the first's rows.
+  const two = ledger(tasks, 140, NOW, true).map(strip);
+  assert.equal(two.length, 3);
+  assert.match(two[0], /T2 .*T3 /);
+});
+
+test('ledger: rows and overflow at every size', () => {
+  for (const n of [0, 1, 3, 6, 12]) {
+    for (const c of [80, 120, 160, 255]) {
+      for (const noColor of [true, false]) {
+        const rows = ledger(twelve().slice(0, n), c, NOW, noColor);
+        if (!n) assert.deepEqual(rows, []);
+        assert.ok(rows.length <= 4, `${n} tasks at ${c}: ${rows.length} rows`);
+        const shown = rows.map(strip).join('\n').match(/\bT\d+\b/g) || [];
+        assert.equal(new Set(shown).size, n, `${n} tasks at ${c} must all be named`);
+      }
+    }
+  }
+  assert.ok(!ledger(twelve(), 255, NOW, true).some((r) => r.includes('more')), '12 tasks fit four columns of three');
+});
+
+test('ledger: no row reaches the last column, at any width', () => {
+  const tasks = twelve();
+  for (let c = 1; c <= 300; c++) {
+    for (const noColor of [true, false]) {
+      for (const r of ledger(tasks, c, NOW, noColor)) assert.ok(dw(strip(r)) <= c - 1, `width ${c}: ${strip(r)}`);
+    }
+  }
+});
+
+test('ledger: NO_COLOR, titles and unknown states', () => {
+  const tasks = [L(1, 'tab\there\x1b[31m red', 'needs input'), L(2, '写测试', 'mystery'), L(3, 'ok', 'idle')];
+  const plain = ledger(tasks, 100, NOW, true);
+  assert.ok(plain.every((r) => !/\x1b\[(3|4)8;/.test(r)), 'NO_COLOR: no colours');
+  assert.ok(plain[0].includes('\x1b[1;7m'), 'NO_COLOR: urgent state in reverse video');
+  assert.ok(!plain.join('').includes('\x1b[31m'), 'control characters in titles are dropped');
+  assert.match(strip(plain[0]), /^▌ ◆ T1 tab here \[31m red ·+  needs input/);
+  assert.match(strip(plain[1]), /◇ T2 写测试 ·+  mystery/); // unknown states rank with idle
+  const colored = ledger(tasks, 100, NOW, false);
+  assert.ok(colored[0].includes('48;2;230;166;20'), 'urgent state is a filled badge');
+  assert.equal(strip(colored[0]).length, strip(plain[0]).length);
+});
+
+test('statusline: shows the ledger under the user line, with time in state', () => {
+  setSessions([session(1, 'job'), session(10, 'b', 'blocked'), session(3, 'c', 'done')]);
   const rows = statusline(100);
-  assert.equal(rows.length, 2);
-  assert.equal(new Set(rows.map(dw)).size, 1, rows.join('\n'));
-  // Most urgent first: needs input, then done.
-  assert.match(rows[0], /^ T10 b\s+◆ needs input\s+T3\s+c\s+✓ done/);
+  assert.equal(rows.length, 3);
+  assert.match(rows[0], /^▎ ◆ T10 b ·+  needs input\s+\S+$/);
+  assert.match(rows[1], /^▎ ✓ T3 +c ·+  done\s+\S+$/);
+  assert.match(rows[2], /^▎ ● T1 +job ·+  working\s+now$/);
 });
 
-test('statusline: CJK titles keep the grid aligned', () => {
-  setSessions([session(1, '修复登录页面的问题'), session(2, 'fix login'), session(3, '写测试', 'done'), session(4, 'ok')]);
-  const rows = statusline(70);
-  assert.ok(rows.length >= 2);
-  assert.equal(new Set(rows.map(dw)).size, 1, rows.join('\n'));
-  assert.ok(rows.some((r) => r.includes('修复登录页面的问题')));
+test('statusline: the age is the time in the current state', () => {
+  const t = { ...session(1, 'job'), startedAt: Date.now() - 2 * 3600000 };
+  const input = JSON.stringify({ session_id: 'age-test', transcript_path: transcript([t]) });
+  setSessions([t]);
+  assert.match(statusline(100, input)[0], /working\s+2h00m$/); // first seen working: since its start
+  assert.match(statusline(100, input)[0], /working\s+2h00m$/); // seen again unchanged: same start
+  setSessions([{ ...t, state: 'done' }]);
+  assert.match(statusline(100, input)[0], /done\s+now$/); // the state changed: since now
+  setSessions([{ ...t, state: 'done' }]);
+  assert.match(statusline(100, input)[0], /done\s+now$/); // unchanged: still since that change
 });
 
 test('statusline: prints the saved original status line first', () => {
@@ -997,7 +1067,7 @@ test('working with status idle counts as idle', async () => {
   let r = await runWait(['T12'], { script: [[150, [idle(12, 'fix login')]]] });
   assert.equal(r.stdout, 'T12 · fix login · idle\n');
   setSessions([idle(3, 'resting'), { ...T(4, 'busy'), status: 'busy' }]);
-  assert.match(strip(statusline(200).join('\n')), /T3 resting\s+✓ idle .*T4 busy\s+● working/);
+  assert.match(strip(statusline(200).join('\n')), /● T4 busy ·+  working .*◇ T3 resting ·+  idle/);
   r = spawnSync(process.execPath, [tasksJs, 'status', '--all'], { env, encoding: 'utf8' });
   assert.match(r.stdout, /## T3 · resting\nstate: idle/);
 });

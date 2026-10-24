@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.4.0 - 2026-10-24
+
+### Changed
+
+- The status line lists tasks as a ledger instead of a grid of chips (#44):
+  one row per task with a coloured rail and glyph, the id, the title with a
+  dotted leader, the state (`needs input` as a filled badge) and how long the
+  task has been in that state. Two to four tasks side by side from 124, 187
+  and 250 columns; at most four rows, the last one `+N more` with the hidden
+  tasks' glyphs and ids (or counts when they do not fit); rows never reach the
+  terminal's last column; most urgent first. `NO_COLOR` is honoured. Claude
+  Code reports no state-change time, so the status line remembers when each
+  task entered its state.
+
 ## 1.3.3 - 2026-10-24
 
 1.3.2 was tagged but never published: its Windows test run failed on the

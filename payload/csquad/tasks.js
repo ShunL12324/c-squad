@@ -1053,28 +1053,147 @@ async function wait(args) {
 
 // ---- status line ----------------------------------------------------------
 
-const C = {
-  reset: '\x1b[0m',
-  bold: '\x1b[1m',
-  chipBg: '\x1b[48;2;49;50;68m',
-  idFg: '\x1b[38;2;205;214;244m',
-  titleFg: '\x1b[38;2;166;173;200m',
-  darkFg: '\x1b[38;2;17;17;27m',
-  mutedFg: '\x1b[38;2;127;132;156m',
-  badgeBg: '\x1b[48;2;69;71;90m',
-  blueFg: '\x1b[38;2;137;180;250m',
+// The task ledger (issue #44): one row per task, most urgent first:
+//   ▎ ◆ T12 title of the task ·········  needs input   18m
+// rail and glyph in the state's colour, the id, the title with a dotted
+// leader, the state and the time in that state. Cells are 60+ columns wide,
+// up to four side by side; at most four rows, the last one `+N more` when the
+// tasks do not fit. NO_COLOR keeps bold, faint and reverse video only.
+const LEDGER = {
+  'needs input': { glyph: '◆', rgb: '230;166;20', rank: 0, urgent: true },
+  failed: { glyph: '✗', rgb: '232;76;82', rank: 1 },
+  done: { glyph: '✓', rgb: '46;166;98', rank: 2 },
+  working: { glyph: '●', rgb: '64;140;232', rank: 3 },
+  idle: { glyph: '◇', rgb: '138;143;152', rank: 4, faint: true },
+  stopped: { glyph: '■', rgb: '138;143;152', rank: 5, faint: true },
 };
+const UNKNOWN = { glyph: '◇', rgb: '138;143;152', rank: 4, faint: true };
+const CELL_MIN = 60;
+const CELL_GAP = 3;
+const MAX_COLS = 4;
+const MAX_ROWS = 4;
 
-// Badges by state; lower ranks come first.
-const BADGES = {
-  'needs input': [0, '\x1b[48;2;249;226;175m' + C.darkFg + C.bold, ' ◆ needs input '],
-  done: [1, '\x1b[48;2;166;227;161m' + C.darkFg + C.bold, ' ✓ done '],
-  idle: [1, '\x1b[48;2;166;227;161m' + C.darkFg + C.bold, ' ✓ idle '],
-  failed: [2, '\x1b[48;2;243;139;168m' + C.darkFg + C.bold, ' ✗ failed '],
-  working: [3, C.badgeBg + C.blueFg, ' ● working '],
-  stopped: [4, C.badgeBg + C.mutedFg, ' ■ stopped '],
-};
-const TITLE_WIDTH = 28;
+// ledgerAge is the time since `since`, at most five columns: now, 42m, 1h05m, 12h.
+function ledgerAge(since, now) {
+  if (!since) return '';
+  const m = Math.floor((now - since) / 60000);
+  if (m < 1) return 'now';
+  if (m < 60) return `${m}m`;
+  if (Math.floor(m / 60) >= 10) return `${Math.floor(m / 60)}h`;
+  return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m`;
+}
+
+// A line is a list of segments {text, sgr}; sgr is the escape sequence's
+// parameters ('' for plain text).
+const segWidth = (line) => line.reduce((w, s) => w + width(s.text), 0);
+
+function clipLine(line, max) {
+  const out = [];
+  let used = 0;
+  for (const s of line) {
+    if (used >= max) break;
+    const w = width(s.text);
+    if (used + w <= max) {
+      out.push(s);
+      used += w;
+      continue;
+    }
+    let text = '';
+    for (const ch of s.text) {
+      const cw = charWidth(ch.codePointAt(0));
+      if (used + cw > max) break;
+      text += ch;
+      used += cw;
+    }
+    out.push({ ...s, text });
+    break;
+  }
+  return out;
+}
+
+function renderLine(line, noColor) {
+  return line.map((s) => (s.sgr && !(noColor && s.colorOnly) ? `\x1b[${s.sgr}m${s.text}\x1b[0m` : s.text)).join('');
+}
+
+function ledgerStyle(state) {
+  return LEDGER[state] || UNKNOWN;
+}
+
+// ledger lays out the tasks; each task has num, label, title, a state (as
+// stateOf gives it) and since (when it entered that state, in ms).
+function ledger(list, columns, now, noColor) {
+  const usable = columns - 1; // some terminals wrap in the last column
+  if (!list.length || usable < 1) return [];
+  const fg = (rgb) => (noColor ? '' : `38;2;${rgb}`);
+  const entries = list.map((t) => {
+    const state = t.state;
+    return { t, state, st: ledgerStyle(state), title: String(t.title).replace(/[\x00-\x1f\x7f-\x9f]/g, ' ') };
+  });
+  entries.sort((a, b) => a.st.rank - b.st.rank || a.t.num - b.t.num);
+  const ncol = Math.min(MAX_COLS, Math.max(1, Math.floor((usable + CELL_GAP) / (CELL_MIN + CELL_GAP))));
+  const cellW = Math.floor((usable - CELL_GAP * (ncol - 1)) / ncol);
+  let shown = entries;
+  let rest = [];
+  if (entries.length > MAX_ROWS * ncol) {
+    shown = entries.slice(0, (MAX_ROWS - 1) * ncol);
+    rest = entries.slice((MAX_ROWS - 1) * ncol);
+  }
+  const rows = Math.ceil(shown.length / ncol);
+  const columnsOf = [];
+  for (let i = 0; i < shown.length; i += rows) columnsOf.push(shown.slice(i, i + rows));
+  const cells = columnsOf.map((col) => {
+    const idW = Math.max(...col.map((e) => width(e.t.label)));
+    const stateW = Math.max(...col.map((e) => width(e.state)));
+    return col.map((e) => {
+      const { st } = e;
+      const color = fg(st.rgb);
+      const fixed = 4 + idW + 1 + 2 + stateW + 1 + 5;
+      const area = Math.max(0, cellW - fixed);
+      let title;
+      if (width(e.title) + 2 <= area) title = e.title + ' ' + '·'.repeat(area - width(e.title) - 1);
+      else title = pad(truncate(e.title, area), area);
+      const stateSgr = st.urgent ? (noColor ? '1;7' : `1;38;2;20;20;20;48;2;${st.rgb}`) : color;
+      return [
+        { text: st.urgent && noColor ? '▌' : '▎', sgr: color, colorOnly: true },
+        { text: ' ' },
+        { text: st.glyph, sgr: color, colorOnly: true },
+        { text: ' ' },
+        { text: pad(e.t.label, idW), sgr: '1' },
+        { text: ' ' },
+        { text: title, sgr: st.faint ? '2' : '' },
+        { text: '  ' },
+        { text: e.state, sgr: stateSgr },
+        { text: ' '.repeat(stateW - width(e.state) + 1) },
+        { text: ledgerAge(e.t.since, now).padStart(5), sgr: '2' },
+      ];
+    });
+  });
+  const lines = [];
+  for (let r = 0; r < rows; r++) {
+    let line = [];
+    cells.forEach((col, c) => {
+      if (r >= col.length) return;
+      if (c > 0) line.push({ text: ' '.repeat(CELL_GAP) });
+      line = line.concat(col[r]);
+    });
+    lines.push(line);
+  }
+  if (rest.length) lines.push([{ text: '  ' }, ...overflowLine(rest, usable - 2, fg)]);
+  return lines.map((l) => renderLine(clipLine(l, usable), noColor));
+}
+
+// overflowLine is "+7 more" and the hidden tasks: by id when they fit, else as
+// counts per state.
+function overflowLine(rest, max, fg) {
+  const head = [{ text: `+${rest.length}`, sgr: '1' }, { text: ' more  ', sgr: '2' }];
+  const byId = rest.flatMap((e, i) => [...(i ? [{ text: '  ' }] : []), { text: e.st.glyph, sgr: fg(e.st.rgb), colorOnly: true }, { text: ' ' + e.t.label }]);
+  if (segWidth(head) + segWidth(byId) <= max) return [...head, ...byId];
+  const counts = new Map();
+  for (const e of rest) counts.set(e.st, (counts.get(e.st) || 0) + 1);
+  const tally = [...counts].flatMap(([st, n], i) => [...(i ? [{ text: ' ' }] : []), { text: st.glyph, sgr: fg(st.rgb), colorOnly: true }, { text: String(n) }]);
+  if (segWidth(head) + segWidth(tally) <= max) return [...head, ...tally];
+  return [{ text: truncate(`+${rest.length} more`, max), sgr: '1' }];
+}
 
 function charWidth(cp) {
   return (cp >= 0x1100 && cp <= 0x115f) || (cp >= 0x2e80 && cp <= 0xa4cf) || (cp >= 0xac00 && cp <= 0xd7a3) ||
@@ -1106,34 +1225,6 @@ function truncate(s, max) {
 
 function pad(s, w) {
   return s + ' '.repeat(Math.max(0, w - width(s)));
-}
-
-// grid lays out one chip per task: every cell as wide as the widest chip, as
-// many columns as the terminal allows, most urgent tasks first.
-function grid(list, columns) {
-  const chips = list.map((t) => {
-    const state = stateOf(t);
-    const [rank, style, text] = BADGES[state] || [5, C.badgeBg + C.mutedFg, ` ${state} `];
-    // Titles come from the model: no control characters (escape sequences) in the line.
-    return { rank, num: t.num, label: ` ${t.label} `, title: t.title.replace(/[\x00-\x1f\x7f-\x9f]/g, ' '), style, text };
-  });
-  if (!chips.length) return '';
-  chips.sort((a, b) => a.rank - b.rank || a.num - b.num);
-  const labelW = Math.max(...chips.map((c) => width(c.label)));
-  const badgeW = Math.max(...chips.map((c) => width(c.text)));
-  let titleW = Math.max(...chips.map((c) => Math.min(width(c.title) + 1, TITLE_WIDTH)));
-  titleW = Math.max(0, Math.min(titleW, columns - labelW - badgeW));
-  const gap = 2;
-  const cell = labelW + titleW + badgeW;
-  const cols = Math.max(1, Math.floor((columns + gap) / (cell + gap)));
-  const rows = [];
-  for (let i = 0; i < chips.length; i += cols) {
-    rows.push(chips.slice(i, i + cols).map((c) =>
-      C.chipBg + C.idFg + C.bold + pad(c.label, labelW) + C.reset +
-      C.chipBg + C.titleFg + pad(truncate(c.title, titleW - 1), titleW) +
-      c.style + pad(c.text, badgeW) + C.reset).join(' '.repeat(gap)));
-  }
-  return rows.join('\n');
 }
 
 // statusline prints the user's own status line, saved at install time in
@@ -1183,9 +1274,39 @@ async function statusline() {
   } catch {}
   if (list) cache.tasks = list, cache.tasksAt = now;
   else list = cache.tasks && now - cache.tasksAt < STALE_MS ? cache.tasks : [];
+  const rows = withSince(list, cache, now);
   saveLastGood(key, cache);
-  const out = [own, grid(list, Number(process.env.COLUMNS) || 120)].filter(Boolean).join('\n');
+  const noColor = typeof process.env.NO_COLOR === 'string' && process.env.NO_COLOR !== '';
+  const out = [own, ...ledger(rows, Number(process.env.COLUMNS) || 120, now, noColor)].filter(Boolean).join('\n');
   if (out) process.stdout.write(out + '\n');
+}
+
+// withSince adds each task's state and when it entered it. Claude Code reports
+// no such time, so the status line remembers it in its cache: a state seen for
+// the first time dates from the task's start when working, else from its
+// transcript's last write (when it stopped); a change of state dates from now.
+function withSince(list, cache, now) {
+  const prev = cache.since && typeof cache.since === 'object' ? cache.since : {};
+  const next = {};
+  const rows = list.map((t) => {
+    const state = stateOf(t);
+    let since;
+    const p = prev[t.sessionId];
+    if (p && p.state === state && Number.isFinite(p.since)) since = p.since;
+    else if (p) since = now;
+    else if (state === 'working') since = t.startedAt || now;
+    else {
+      try {
+        since = fs.statSync(transcriptPath(t.sessionId)).mtimeMs;
+      } catch {
+        since = t.startedAt || now;
+      }
+    }
+    next[t.sessionId] = { state, since };
+    return { ...t, state, since };
+  });
+  cache.since = next;
+  return rows;
 }
 
 function lastGoodFile(key) {
@@ -1244,5 +1365,5 @@ if (require.main === module) {
       fail(e.stderr ? String(e.stderr).replace(ANSI, '').trim() : e.message);
     });
 } else {
-  module.exports = { findOnPath, shimTarget, cmdQuote, claudeCommand, gitBash };
+  module.exports = { findOnPath, shimTarget, cmdQuote, claudeCommand, gitBash, ledger, ledgerAge };
 }

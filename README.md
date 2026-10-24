@@ -34,11 +34,12 @@ claude  launched T1 · fix login redirect, T2 · add parser tests, T3 · update 
         They run in the background; check agent view or the status line.
 ```
 
-Your status line now has a chip per task, most urgent first:
+Your status line now lists the tasks, most urgent first:
 
 ```text
-T2  add parser tests       ◆ needs input    T1  fix login redirect     ✓ done
-T3  update the docs        ● working
+▎ ◆ T2 add parser tests ··························  needs input   18m
+▎ ✓ T1 fix login redirect ························  done        1h05m
+▎ ● T3 update the docs ···························  working        7m
 ```
 
 ```text
@@ -69,18 +70,24 @@ Just ask; Claude picks the skill from what you say.
 
 ## The status line
 
-Your own status line stays exactly as it is; csquad prints it first, then a grid of
-task chips below it:
+Your own status line stays exactly as it is; csquad prints it first, then one row
+per task: its state, id and title, and how long it has been in that state.
 
-| Badge | Meaning |
+| State | Meaning |
 | --- | --- |
 | `◆ needs input` | the task is waiting on an answer; reply in agent view |
-| `✓ done` | finished; ask Claude to merge it |
 | `✗ failed` | the session failed |
+| `✓ done` | finished; ask Claude to merge it |
 | `● working` | still running |
+| `◇ idle` | finished its turn and waiting |
 | `■ stopped` | stopped before finishing |
 
-The chips show only the tasks launched by the **current session**. `/clear`
+Wide terminals show two to four tasks side by side (from 124, 187 and 250
+columns). At most four rows are used; when more tasks run, the last row lists
+the rest as `+N more`. `NO_COLOR` turns colours off and keeps bold, faint and
+reverse video.
+
+The rows show only the tasks launched by the **current session**. `/clear`
 starts a new session, so earlier tasks drop off the line but keep running; the
 full list is always in agent view (`claude agents`), or ask Claude to
 "show all tasks".

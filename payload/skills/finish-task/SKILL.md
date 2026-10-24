@@ -42,6 +42,9 @@ and carry on with the others.
    such value (Claude Code before 2.1.260 has neither flag), do not invent
    one: finish the cleanup with git as in step 4 and report that the session
    is left.
+6. Run `node {{CSQUAD_DIR}}/tasks.js status`: it also deletes the removed
+   task's settings file, which can hold the provider token it was launched
+   with.
 
 Hard rules: never delete unmerged branches or uncommitted work, never use
 `--force`, `-D`, `--discard-unpushed` or `--force-remove-worktree` unless step 3

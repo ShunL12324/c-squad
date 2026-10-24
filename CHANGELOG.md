@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.3.2 - 2026-10-24
+
+### Fixed
+
+- Settings that `launch` changes (the `baseRef`, in-place isolation, forwarded
+  provider variables) are always written to `csquad/settings/T<n>.json` (mode
+  600) and passed by path, so a `-- --settings FILE` holding a token is no
+  longer inlined into `claude`'s command line (#42). A `--settings` csquad does
+  not need to change is passed through untouched.
+- Provider variables are forwarded all or nothing: when the task's own
+  `--settings`, the user's or the project's settings choose a provider
+  (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`,
+  `CLAUDE_CODE_USE_*`, `CLAUDE_CODE_OAUTH_TOKEN` or `apiKeyHelper`), none of the
+  launching session's are, so one provider's token and model mappings never
+  reach another provider (#43). `launch` names the forwarded keys (never their
+  values) on stderr.
+- A removed task's settings file, which can hold a token, is deleted by
+  `status` and the status line, not only by the next launch; `finish-task`
+  runs `status` after removing a session (#43). Files written after the task
+  list was requested are never pruned (a status line racing a launch deleted
+  the new task's settings), and a session that launched nothing never prunes.
+
 ## 1.3.1 - 2026-10-22
 
 ### Changed

@@ -589,6 +589,16 @@ test('launch: a prompt too large for argv goes through a file', () => {
 });
 
 const lastArgv = () => JSON.parse(fs.readFileSync(state + '.argv', 'utf8').trim().split('\n').pop());
+// age backdates a file, as if written before the task list was fetched.
+const age = (file) => fs.utimesSync(file, new Date(Date.now() - 600000), new Date(Date.now() - 600000));
+// settingsOf returns the settings claude got: parsed from the inline JSON or the
+// file named after --settings; null without --settings.
+const settingsOf = (argv = lastArgv()) => {
+  const i = argv.indexOf('--settings');
+  if (i === -1) return null;
+  const v = argv[i + 1];
+  return JSON.parse(v.trim().startsWith('{') ? v : fs.readFileSync(v, 'utf8'));
+};
 
 test('launch: arguments after -- go to claude and override the defaults', () => {
   const launchWith = (...extra) => {
@@ -600,7 +610,9 @@ test('launch: arguments after -- go to claude and override the defaults', () => 
   assert.equal(r.status, 0, r.stderr);
   let argv = lastArgv();
   const tail = argv.slice(argv.indexOf('--append-system-prompt'));
-  assert.deepEqual(argv.slice(argv.indexOf('--model'), argv.indexOf('--append-system-prompt')), ['--model', 'opus', '--settings', '{"model":"x y","worktree":{"baseRef":"head"}}', '--effort', 'high']);
+  const sIdx = argv.indexOf('--settings');
+  assert.deepEqual([...argv.slice(argv.indexOf('--model'), sIdx), ...argv.slice(sIdx + 2, argv.indexOf('--append-system-prompt'))], ['--model', 'opus', '--effort', 'high']);
+  assert.deepEqual(settingsOf(argv), { model: 'x y', worktree: { baseRef: 'head' } });
   assert.equal(argv.filter((a) => a === '--model').length, 1); // no configured default added
   assert.deepEqual(tail.slice(-2), ['--', 'go']);
   assert.ok(argv.includes('--permission-mode')); // still the configured default
@@ -622,7 +634,7 @@ test('launch: --isolation none works in place, --no-worker-rules drops the rules
     return spawnSync(process.execPath, [tasksJs, 'launch', '--title', 'iso', '--cwd', root, ...a], { env, input: 'go', encoding: 'utf8', timeout: 20000 });
   };
   const sys = (argv) => argv[argv.indexOf('--append-system-prompt') + 1];
-  const settings = (argv) => JSON.parse(argv[argv.indexOf('--settings') + 1]);
+  const settings = (argv) => settingsOf(argv);
 
   let r = run();
   assert.equal(r.status, 0, r.stderr);
@@ -669,11 +681,7 @@ test('launch: worktrees branch from the local HEAD unless the user chose a baseR
     fs.rmSync(state + '.argv', { force: true });
     return spawnSync(process.execPath, [tasksJs, 'launch', '--title', 'base', '--cwd', cwd, ...a], { env, input: 'go', encoding: 'utf8', timeout: 20000 });
   };
-  const settingsArg = () => {
-    const argv = lastArgv();
-    const i = argv.indexOf('--settings');
-    return i === -1 ? null : JSON.parse(argv[i + 1]);
-  };
+  const settingsArg = () => settingsOf();
   assert.equal(run(root).status, 0);
   assert.deepEqual(settingsArg(), { worktree: { baseRef: 'head' } });
   // The user's own choice after --, kept exactly as given.
@@ -704,45 +712,116 @@ test('launch: worktrees branch from the local HEAD unless the user chose a baseR
 
 // Claude Code's background service does not see the launching shell's
 // environment: the session's provider variables go to the task through a 0600
-// settings file, merged with the user's --settings (whose env wins).
+// settings file, all or nothing (issue #43), and settings csquad changes never
+// reach the command line (issue #42).
 test('launch: provider variables of the launching session reach the task', () => {
   const run = (e, ...a) => {
     setSessions([]);
     fs.rmSync(state + '.argv', { force: true });
     return spawnSync(process.execPath, [tasksJs, 'launch', '--title', 'env', '--cwd', root, ...a], { env: { ...env, ...e }, input: 'go', encoding: 'utf8', timeout: 20000 });
   };
-  const provider = { ANTHROPIC_BASE_URL: 'https://proxy.example', ANTHROPIC_AUTH_TOKEN: 'sk-secret', CLAUDE_CODE_USE_BEDROCK: '1', UNRELATED: 'x' };
-  let r = run(provider, '--', '--settings', '{"model":"opus","env":{"ANTHROPIC_BASE_URL":"https://mine.example"}}');
+  const provider = { ANTHROPIC_BASE_URL: 'https://proxy.example', ANTHROPIC_AUTH_TOKEN: 'sk-secret', ANTHROPIC_DEFAULT_OPUS_MODEL: 'gpt-a', CLAUDE_CODE_USE_BEDROCK: '1', UNRELATED: 'x' };
+  let r = run(provider, '--', '--settings', '{"model":"opus"}');
   assert.equal(r.status, 0, r.stderr);
   let argv = lastArgv();
   const file = argv[argv.indexOf('--settings') + 1];
   assert.equal(file, path.join(dir, 'csquad', 'settings', 'T1.json'));
   assert.ok(!argv.join(' ').includes('sk-secret'), 'the token must not be on the command line');
   const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
-  assert.deepEqual(saved.env, { ANTHROPIC_BASE_URL: 'https://mine.example', ANTHROPIC_AUTH_TOKEN: 'sk-secret', CLAUDE_CODE_USE_BEDROCK: '1' });
+  assert.deepEqual(saved.env, { ANTHROPIC_BASE_URL: 'https://proxy.example', ANTHROPIC_AUTH_TOKEN: 'sk-secret', ANTHROPIC_DEFAULT_OPUS_MODEL: 'gpt-a', CLAUDE_CODE_USE_BEDROCK: '1' });
   assert.equal(saved.model, 'opus');
   assert.deepEqual(saved.worktree, { baseRef: 'head' });
   if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600);
-  // A later launch prunes the file of a task that is gone, and keeps a listed one's.
+  assert.match(r.stderr, /T1 uses this session's provider settings \(ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_DEFAULT_OPUS_MODEL, CLAUDE_CODE_USE_BEDROCK\)/);
+  assert.doesNotMatch(r.stderr, /sk-secret/);
+
+  // #43: a task routed to another provider gets none of this session's variables.
+  r = run(provider, '--', '--settings', '{"env":{"ANTHROPIC_BASE_URL":"https://providerB.example"}}');
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(settingsOf().env, { ANTHROPIC_BASE_URL: 'https://providerB.example' });
+  assert.doesNotMatch(r.stderr, /provider settings/);
+  // ... nor when the user's own settings.json picks the provider (it applies to the task anyway).
+  const user = path.join(dir, 'settings.json');
+  const before = fs.existsSync(user) ? fs.readFileSync(user) : null;
+  fs.writeFileSync(user, JSON.stringify({ env: { ANTHROPIC_AUTH_TOKEN: 'sk-from-settings' } }));
+  try {
+    r = run(provider);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(settingsOf().env, undefined);
+  } finally {
+    if (before) fs.writeFileSync(user, before);
+    else fs.rmSync(user);
+  }
+  // ... nor when an apiKeyHelper in --settings provides the credentials.
+  r = run(provider, '--', '--settings', '{"apiKeyHelper":"/bin/echo k"}');
+  assert.equal(settingsOf().env, undefined);
+
+  // #42: a --settings file with a token is never inlined into argv, even when
+  // only the baseRef is added and nothing is forwarded.
+  const secretFile = path.join(root, 'provider-settings.json');
+  fs.writeFileSync(secretFile, JSON.stringify({ env: { ANTHROPIC_AUTH_TOKEN: 'sk-FILE-SECRET', ANTHROPIC_BASE_URL: 'https://relay.example' } }));
+  r = run({}, '--', '--settings', secretFile);
+  assert.equal(r.status, 0, r.stderr);
+  argv = lastArgv();
+  assert.ok(!argv.join(' ').includes('sk-FILE-SECRET'), 'file content must not be inlined');
+  assert.deepEqual(settingsOf(argv), { env: { ANTHROPIC_AUTH_TOKEN: 'sk-FILE-SECRET', ANTHROPIC_BASE_URL: 'https://relay.example' }, worktree: { baseRef: 'head' } });
+  r = run({}, '--', `--settings=${secretFile}`);
+  assert.ok(!lastArgv().join(' ').includes('sk-FILE-SECRET'));
+
+  // Pruning: a later launch, `status` and the status line drop the files of tasks that are gone.
   const stale = path.join(dir, 'csquad', 'settings', 'T9.json');
   fs.writeFileSync(stale, '{}');
+  age(stale);
   setSessions([session(1, 'env')]);
   r = spawnSync(process.execPath, [tasksJs, 'launch', '--title', 'env2', '--cwd', root], { env: { ...env, ...provider }, input: 'go', encoding: 'utf8', timeout: 20000 });
   assert.equal(r.status, 0, r.stderr);
   assert.ok(!fs.existsSync(stale));
-  assert.ok(fs.existsSync(file));
+  assert.ok(fs.existsSync(path.join(dir, 'csquad', 'settings', 'T1.json')));
   assert.ok(fs.existsSync(path.join(dir, 'csquad', 'settings', 'T2.json')));
-  // Without provider variables nothing is written and the settings stay inline.
+  setSessions([session(1, 'env')]); // T2 removed with claude rm
+  // A file written while the task list was being fetched is not judged by that list:
+  // a just-launched task may not be listed yet in a snapshot another process took.
+  spawnSync(process.execPath, [tasksJs, 'status', '--all'], { env, encoding: 'utf8' });
+  assert.ok(fs.existsSync(path.join(dir, 'csquad', 'settings', 'T2.json')));
+  age(path.join(dir, 'csquad', 'settings', 'T2.json'));
+  spawnSync(process.execPath, [tasksJs, 'status', '--all'], { env, encoding: 'utf8' });
+  assert.ok(!fs.existsSync(path.join(dir, 'csquad', 'settings', 'T2.json')));
+  assert.ok(fs.existsSync(path.join(dir, 'csquad', 'settings', 'T1.json')));
+
+  // Nothing to add (baseRef set by the user, nothing to forward): no file, arguments untouched.
   fs.rmSync(path.join(dir, 'csquad', 'settings'), { recursive: true, force: true });
-  r = run({});
+  r = run({}, '--', '--settings', '{"worktree":{"baseRef":"fresh"}}');
   assert.equal(r.status, 0, r.stderr);
   argv = lastArgv();
-  assert.deepEqual(JSON.parse(argv[argv.indexOf('--settings') + 1]), { worktree: { baseRef: 'head' } });
+  assert.equal(argv[argv.indexOf('--settings') + 1], '{"worktree":{"baseRef":"fresh"}}');
   assert.ok(!fs.existsSync(path.join(dir, 'csquad', 'settings')));
   // A failed launch leaves no settings file behind.
   r = spawnSync(process.execPath, [tasksJs, 'launch', '--title', 'FAILME', '--cwd', root], { env: { ...env, ...provider }, input: 'go', encoding: 'utf8', timeout: 20000 });
   assert.equal(r.status, 1);
   assert.ok(!fs.existsSync(path.join(dir, 'csquad', 'settings', 'T1.json')));
+});
+
+// The status line of a session that launched nothing skips `claude agents`;
+// its empty list must not count as "every task is gone".
+test('statusline: a session without launches never prunes task files', () => {
+  setSessions([session(4, 'other session task')]);
+  const settingsDir = path.join(dir, 'csquad', 'settings');
+  fs.mkdirSync(settingsDir, { recursive: true });
+  const kept = path.join(settingsDir, 'T4.json');
+  fs.writeFileSync(kept, '{}');
+  age(kept);
+  const empty = path.join(root, 'no-launches.jsonl');
+  fs.writeFileSync(empty, JSON.stringify({ type: 'user', message: { content: 'hi' } }) + '\n');
+  statusline(100, JSON.stringify({ session_id: 'no-launches', transcript_path: empty }));
+  assert.ok(fs.existsSync(kept));
+  // A session that did launch prunes for real: T4 is listed, so it stays; T5 is gone.
+  const gone = path.join(settingsDir, 'T5.json');
+  fs.writeFileSync(gone, '{}');
+  age(gone);
+  statusline(100, JSON.stringify({ transcript_path: transcript([session(4, 'other session task')]) }));
+  assert.ok(fs.existsSync(kept));
+  assert.ok(!fs.existsSync(gone));
+  fs.rmSync(settingsDir, { recursive: true, force: true });
 });
 
 test('launch: awkward characters in the title and prompt reach claude intact', () => {
@@ -786,6 +865,7 @@ test('launch: small prompts stay on the command line; prompt files are pruned an
   const prompts = path.join(dir, 'csquad', 'prompts');
   fs.mkdirSync(prompts, { recursive: true });
   fs.writeFileSync(path.join(prompts, 'T7.md'), 'old'); // its task is gone
+  age(path.join(prompts, 'T7.md'));
   setSessions([]);
   assert.equal(launchProc('small').status, 0);
   const argv = JSON.parse(fs.readFileSync(state + '.argv', 'utf8').trim().split('\n').pop());

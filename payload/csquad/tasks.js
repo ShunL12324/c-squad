@@ -311,56 +311,35 @@ function workerRules(text, inPlace) {
   return out.join('\n');
 }
 
-// withSettings merges `patch(settings)` into the --settings passed after `--`
-// (inline JSON or a file), or adds a --settings argument when there is none.
-// When patch returns the settings unchanged, the arguments stay as they were.
-function withSettings(extra, patch) {
-  const out = [...extra];
-  let i = out.findIndex((a) => a === '--settings' || a.startsWith('--settings='));
-  let settings = {};
-  if (i !== -1) {
-    const inline = out[i].startsWith('--settings=');
-    const value = inline ? out[i].slice('--settings='.length) : out[i + 1];
-    if (value === undefined) fail('--settings needs a value');
-    try {
-      settings = JSON.parse(value.trim().startsWith('{') ? value : fs.readFileSync(value, 'utf8'));
-    } catch (e) {
-      fail(`cannot read --settings ${value}: ${e.message}`);
-    }
-    out.splice(i, inline ? 1 : 2);
-  } else {
-    i = out.length;
+// readUserSettings finds the --settings passed after `--` (inline JSON or a
+// file) and parses it, failing early on a bad value; null when there is none.
+function readUserSettings(extra) {
+  const i = extra.findIndex((a) => a === '--settings' || a.startsWith('--settings='));
+  if (i === -1) return null;
+  const inline = extra[i].startsWith('--settings=');
+  const value = inline ? extra[i].slice('--settings='.length) : extra[i + 1];
+  if (value === undefined) fail('--settings needs a value');
+  let parsed;
+  try {
+    parsed = JSON.parse(value.trim().startsWith('{') ? value : fs.readFileSync(value, 'utf8'));
+  } catch (e) {
+    fail(`cannot read --settings ${value}: ${e.message}`);
   }
-  const next = patch(settings);
-  if (next === settings) return extra; // nothing to add: keep the user's argument as given
-  out.splice(i, 0, '--settings', JSON.stringify(next));
-  return out;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) fail(`--settings ${value} is not a JSON object`);
+  return { index: i, count: inline ? 1 : 2, settings: parsed };
 }
 
 function worktreeOf(settings) {
   return settings && settings.worktree && typeof settings.worktree === 'object' ? settings.worktree : {};
 }
 
-// inPlaceSettings makes Claude Code skip its worktree isolation for this task
-// (`worktree.bgIsolation: "none"`; a background session otherwise rejects edits
-// to the shared checkout). CLAUDE_BG_ISOLATION in the environment does not
-// reach the session, so it goes through --settings.
-function inPlaceSettings(extra) {
-  return withSettings(extra, (s) => ({ ...s, worktree: { ...worktreeOf(s), bgIsolation: 'none' } }));
+function envOf(settings) {
+  return settings && settings.env && typeof settings.env === 'object' ? settings.env : {};
 }
 
-// headBaseSettings makes the task's worktree branch from the local HEAD
-// (`worktree.baseRef: "head"`) instead of Claude Code's default, origin's
-// default branch, which lacks commits that are not pushed yet. A baseRef the
-// user set (after `--`, in their own or the project's settings) wins.
-function headBaseSettings(extra, cwd) {
-  return withSettings(extra, (s) => {
-    if (worktreeOf(s).baseRef !== undefined || userSetsBaseRef(cwd)) return s;
-    return { ...s, worktree: { ...worktreeOf(s), baseRef: 'head' } };
-  });
-}
-
-function userSetsBaseRef(cwd) {
+// The settings files Claude Code reads for a session in `cwd`: the user's, and
+// the project's (`cwd` and its repository root).
+function ambientSettings(cwd) {
   const dirs = [cwd];
   try {
     const top = execFileSync('git', ['-C', cwd, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10000, windowsHide: true }).trim();
@@ -368,7 +347,7 @@ function userSetsBaseRef(cwd) {
   } catch {}
   const files = [path.join(CLAUDE_HOME, 'settings.json')];
   for (const d of dirs) files.push(path.join(d, '.claude', 'settings.json'), path.join(d, '.claude', 'settings.local.json'));
-  return files.some((f) => worktreeOf(readJSON(f, null)).baseRef !== undefined);
+  return files.map((f) => readJSON(f, null)).filter((x) => x && typeof x === 'object');
 }
 
 // Arguments csquad sets itself; passing them after `--` would break the launch.
@@ -380,10 +359,9 @@ function launch(args) {
   const reserved = args.claude.find((a) => RESERVED.includes(a.split('=')[0]));
   if (reserved) fail(`${reserved} is set by tasks.js launch and cannot be passed after --`);
   if (args.isolation !== undefined && args.isolation !== 'none' && args.isolation !== 'worktree') fail('--isolation must be none or worktree');
-  if (args.isolation === 'none') args.claude = inPlaceSettings(args.claude);
   const cwd = canonical(args.cwd || process.cwd());
   if (!fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) fail(cwd + ' is not a directory');
-  if (args.isolation !== 'none') args.claude = headBaseSettings(args.claude, cwd);
+  args.userSettings = readUserSettings(args.claude);
   const source = args['prompt-file'];
   let prompt;
   try {
@@ -415,15 +393,33 @@ function promptFile(num, prompt) {
   return file;
 }
 
-// The provider settings of the launching session reach its tasks. Claude Code's
-// background service does not see the shell environment (aliases that set
-// ANTHROPIC_BASE_URL for one session, a token exported in .zshrc), so these
-// variables go into the task's --settings env; values the user set in that
-// --settings win. They hold credentials, so the settings are written to
-// <csquad dir>/settings/T<n>.json (mode 0600) instead of the command line; the
-// file stays while the task exists, since a resumed task reads it again.
+// The task's settings: the user's --settings plus what csquad adds.
+//  - worktree.bgIsolation "none" for an in-place task (a background session
+//    otherwise rejects edits to the shared checkout; CLAUDE_BG_ISOLATION in the
+//    environment does not reach the session);
+//  - worktree.baseRef "head" for a worktree task, so it sees unpushed commits
+//    (Claude Code's default branches from origin's default branch), unless the
+//    user chose a baseRef in --settings, their settings or the project's;
+//  - the launching session's provider variables. Claude Code's background
+//    service does not see the shell environment (an alias that sets
+//    ANTHROPIC_BASE_URL for one session, a token exported in .zshrc). They are
+//    forwarded all or nothing: when --settings, the user's or the project's
+//    settings choose a provider themselves, none are, so one provider's token
+//    never reaches another provider's base URL.
+// Whenever csquad changes the settings, they go to <csquad dir>/settings/T<n>.json
+// (mode 0600) and claude gets the path, so no credential from the user's
+// settings or the environment lands on the command line. The file stays while
+// the task exists (a resumed task reads it again) and is removed afterwards.
 const PROVIDER_ENV = /^(ANTHROPIC_[A-Z0-9_]+|CLAUDE_CODE_USE_[A-Z0-9_]+|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CODE_SUBAGENT_MODEL)$/;
+// Keys that pick a provider or its credentials.
+const PROVIDER_CHOICE = /^(ANTHROPIC_BASE_URL|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_API_KEY|CLAUDE_CODE_USE_[A-Z0-9_]+|CLAUDE_CODE_OAUTH_TOKEN)$/;
 const SETTINGS = path.join(HERE, 'settings');
+
+function choosesProvider(settings) {
+  if (!settings) return false;
+  if (typeof settings.apiKeyHelper === 'string' && settings.apiKeyHelper) return true;
+  return Object.keys(envOf(settings)).some((k) => PROVIDER_CHOICE.test(k));
+}
 
 function providerEnv(env = process.env) {
   const out = {};
@@ -432,31 +428,59 @@ function providerEnv(env = process.env) {
   return out;
 }
 
-function taskSettings(extra, num) {
-  const env = providerEnv();
-  if (!Object.keys(env).length) return { extra, file: null };
-  let merged;
-  const out = withSettings(extra, (s) => (merged = { ...s, env: { ...env, ...(s.env && typeof s.env === 'object' ? s.env : {}) } }));
+// taskSettings returns the arguments after `--` with the task's settings in
+// place, the settings file written for it (or null), and the forwarded keys.
+function taskSettings(extra, user, { inPlace, cwd, num }) {
+  const base = user ? user.settings : {};
+  const next = { ...base };
+  const ambient = ambientSettings(cwd);
+  if (inPlace) {
+    next.worktree = { ...worktreeOf(base), bgIsolation: 'none' };
+  } else if (worktreeOf(base).baseRef === undefined && !ambient.some((a) => worktreeOf(a).baseRef !== undefined)) {
+    next.worktree = { ...worktreeOf(base), baseRef: 'head' };
+  }
+  let forwarded = [];
+  if (!choosesProvider(base) && !ambient.some(choosesProvider)) {
+    const env = providerEnv();
+    forwarded = Object.keys(env);
+    if (forwarded.length) next.env = { ...envOf(base), ...env };
+  }
+  // Nothing added: the user's arguments stay exactly as given.
+  if (JSON.stringify(next) === JSON.stringify(base)) return { extra, file: null, forwarded };
   fs.mkdirSync(SETTINGS, { recursive: true, mode: 0o700 });
   const file = path.join(SETTINGS, `T${num}.json`);
-  fs.writeFileSync(file, JSON.stringify(merged, null, 2) + '\n', { mode: 0o600 });
+  fs.writeFileSync(file, JSON.stringify(next, null, 2) + '\n', { mode: 0o600 });
   fs.chmodSync(file, 0o600);
-  const i = out.indexOf('--settings');
-  out[i + 1] = file;
-  return { extra: out, file };
+  const out = [...extra];
+  if (user) out.splice(user.index, user.count, '--settings', file);
+  else out.push('--settings', file);
+  return { extra: out, file, forwarded };
 }
 
-function prunePrompts(live) {
+// prunePrompts removes the prompt and settings files of tasks that are no
+// longer listed. `listedAt` is when the task list was requested: a file written
+// after that (a task launched while the list was being fetched, possibly by
+// another process) cannot be judged by the list and is kept.
+const PRUNE_MARGIN = 5000;
+
+function prunePrompts(live, listedAt) {
+  const stale = (file) => {
+    try {
+      return fs.statSync(file).mtimeMs < listedAt - PRUNE_MARGIN;
+    } catch {
+      return false;
+    }
+  };
   try {
     for (const f of fs.readdirSync(SETTINGS)) {
       const m = f.match(/^T(\d+)\.json$/);
-      if (m && !live.has(Number(m[1]))) fs.rmSync(path.join(SETTINGS, f), { force: true });
+      if (m && !live.has(Number(m[1])) && stale(path.join(SETTINGS, f))) fs.rmSync(path.join(SETTINGS, f), { force: true });
     }
   } catch {}
   try {
     for (const f of fs.readdirSync(PROMPTS)) {
       const m = f.match(/^T(\d+)\.md$/);
-      if (m && !live.has(Number(m[1]))) fs.rmSync(path.join(PROMPTS, f), { force: true });
+      if (m && !live.has(Number(m[1])) && stale(path.join(PROMPTS, f))) fs.rmSync(path.join(PROMPTS, f), { force: true });
       // Prompts staged by the create-task skill that a launch never consumed.
       else if (!m && /^draft-.*\.md$/.test(f) && Date.now() - fs.statSync(path.join(PROMPTS, f)).mtimeMs > 86400000) fs.rmSync(path.join(PROMPTS, f), { force: true });
     }
@@ -466,14 +490,15 @@ function prunePrompts(live) {
 // start launches the task numbered one above the highest task Claude Code
 // lists; claude --bg returns once the new session is listed.
 function start(args, cwd, prompt) {
+  const listedAt = Date.now();
   const listed = tasks();
   const num = Math.max(0, ...listed.map((t) => t.num)) + 1;
-  prunePrompts(new Set(listed.map((t) => t.num)));
+  prunePrompts(new Set(listed.map((t) => t.num)), listedAt);
   const label = 'T' + num;
   const name = `${label} · ${args.title}`;
   const rules = args['no-worker-rules'] ? '' : workerRules(fs.readFileSync(path.join(HERE, 'worker.md'), 'utf8'), args.isolation === 'none');
   const system = rules + `\nYour task ID is ${label}.\n`;
-  const { extra, file: settingsFile } = taskSettings(args.claude || [], num);
+  const { extra, file: settingsFile, forwarded } = taskSettings(args.claude || [], args.userSettings, { inPlace: args.isolation === 'none', cwd, num });
   const has = (...flags) => extra.some((a) => flags.includes(a.split('=')[0]));
   const argv = ['--bg', '--name', name];
   // Defaults apply only when the arguments after `--` do not set them.
@@ -495,6 +520,7 @@ function start(args, cwd, prompt) {
     throw new Error(`launching ${name} failed:\n${output || r.error}`);
   }
   recordLaunch(process.env.CLAUDE_CODE_SESSION_ID, m[1]);
+  if (forwarded.length) console.error(`${label} uses this session's provider settings (${forwarded.join(', ')}), stored in ${settingsFile} (mode 600) while the task exists.`);
   // The "launched" marker lets the status line and status find, in the
   // launching session's transcript, which tasks that session started.
   console.log(`launched ${name} · session ${m[1]} · ${cwd}`);
@@ -862,7 +888,9 @@ function shortDir(dir) {
 }
 
 function status(args) {
+  const listedAt = Date.now();
   let list = tasks();
+  prunePrompts(new Set(list.map((t) => t.num)), listedAt);
   const sid = process.env.CLAUDE_CODE_SESSION_ID;
   if (!args.all && sid) {
     list = ownTasks(list, launchedBy(historyOfSession(sid), sid));
@@ -1132,6 +1160,7 @@ async function statusline() {
     // Most sessions never launch a task: only ask claude when one did.
     if (typeof transcript === 'string') ids = launchedBy(historyOf(transcript, key), key);
   } catch {}
+  const listedAt = Date.now();
   const [ownOut, agentsOut] = await Promise.all([
     typeof command === 'string' && command ? runAsync(shellCommand(command), input, 3000) : Promise.resolve(''),
     ids.size ? runAsync(claudeCommand(['agents', '--json', '--all']), '', 3500) : Promise.resolve('[]'),
@@ -1143,7 +1172,14 @@ async function statusline() {
   else if (own) cache.own = own, cache.ownAt = now;
   let list = null;
   try {
-    if (agentsOut !== null) list = ownTasks(taskList(JSON.parse(agentsOut)), ids);
+    if (agentsOut !== null) {
+      const all = taskList(JSON.parse(agentsOut));
+      // Only a real `claude agents` answer can tell a removed task (whose
+      // settings may hold credentials) from a live one; without launches this
+      // session skips the query and `all` is empty.
+      if (ids.size) prunePrompts(new Set(all.map((t) => t.num)), listedAt);
+      list = ownTasks(all, ids);
+    }
   } catch {}
   if (list) cache.tasks = list, cache.tasksAt = now;
   else list = cache.tasks && now - cache.tasksAt < STALE_MS ? cache.tasks : [];

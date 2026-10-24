@@ -1,28 +1,46 @@
 # Contributing
 
-C Squad is a small, zero-dependency Node package: an installer (`bin/`, `lib/`)
-and the files it installs (`payload/`). Keep it small and readable.
+csquad 3 is one Go binary (`cmd/csquad`) that carries everything it installs:
+the worker rules and the skills are embedded from `assets/`. Keep it small and
+readable.
+
+## Build
+
+Go 1.26 or newer, no C toolchain (`CGO_ENABLED=0`; SQLite is
+`modernc.org/sqlite`):
 
 ```sh
 git clone https://github.com/ShunL12324/c-squad.git
 cd c-squad
-npm test
+CGO_ENABLED=0 go build -o csquad ./cmd/csquad
+./csquad install     # copies itself to ~/.csquad/bin/csquad, installs the skills, wraps the status line
 ```
 
-- Tests use `node:test`. They must only touch temporary directories: set
-  `CLAUDE_CONFIG_DIR` and `HOME` (`USERPROFILE` on Windows) to one, and put a
-  fake `claude` on `PATH` (a `claude.cmd` shim on Windows). CI runs Linux, macOS
-  and Windows.
-  Never point them at a real `~/.claude`.
-- `payload/` is what users get. Skills reference `{{CSQUAD_DIR}}`, which the
-  installer replaces with the real path.
-- Check `npm pack --dry-run` lists only intended files.
+Cross-compile with `GOOS`/`GOARCH` (darwin, linux, windows × amd64, arm64),
+e.g. `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o csquad.exe ./cmd/csquad`.
+`-ldflags "-X github.com/ShunL12324/c-squad/internal/app.Version=3.0.0"` sets
+the version.
 
-## Releasing
+npm packaging (a small main package plus per-platform optional packages with
+the binary, so `npx csquad@latest install` keeps working) is a later
+milestone; until then there is no release pipeline.
 
-1. Bump `version` in `package.json` and add a `CHANGELOG.md` entry; commit.
-2. Tag `vX.Y.Z` (matching `package.json`) and push the tag.
-3. `.github/workflows/release.yml` runs the tests and publishes with npm trusted
-   publishing (OIDC, provenance). No npm token is stored.
+## Test
+
+```sh
+go vet ./...
+GOOS=windows go vet ./...
+go test ./...
+```
+
+- Tests only touch temporary directories: `CSQUAD_HOME`, `CLAUDE_CONFIG_DIR`
+  and `HOME` point into `t.TempDir()`, and `claude` on `PATH` is a fake (the
+  test binary itself, see `internal/testutil`). Never point them at a real
+  `~/.claude` or `~/.csquad`, and never start the real `claude`.
+- The status line ledger has golden files in `internal/statusline/testdata`;
+  after a deliberate layout change, `go test ./internal/statusline -run
+  TestGolden -update` rewrites them; read the diff.
+- `assets/` is what users get. Skills reference `{{CSQUAD}}`, which install
+  replaces with the absolute, shell-quoted path of the installed binary.
 
 Contributions are provided under the project's [MIT license](LICENSE).

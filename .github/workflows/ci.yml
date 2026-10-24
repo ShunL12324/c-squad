@@ -14,12 +14,29 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-14, windows-latest]
-        node: ['18', '24']
     runs-on: ${{ matrix.os }}
+    env:
+      CGO_ENABLED: '0'
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-go@v7
         with:
-          node-version: ${{ matrix.node }}
-      - run: npm test
-      - run: npm pack --dry-run
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test -count=1 ./...
+  cross:
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: |
+          for os in linux darwin windows; do
+            for arch in amd64 arm64; do
+              GOOS=$os GOARCH=$arch go vet ./...
+              GOOS=$os GOARCH=$arch go build -o /dev/null ./cmd/csquad
+            done
+          done

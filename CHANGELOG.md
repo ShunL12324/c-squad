@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased (3.0, milestone 1)
+
+### Changed
+
+- **Breaking:** csquad is one Go binary (`cmd/csquad`, `CGO_ENABLED=0`)
+  instead of the Node `tasks.js` and installer (#41). `csquad install` copies
+  it to `~/.csquad/bin/csquad`, renders the skills with its absolute path and
+  wraps the status line. Commands: `launch status peek wait send finish
+  cancel statusline install update uninstall status-install`.
+- Tasks are recorded in `~/.csquad/csquad.db` (SQLite) instead of being found
+  by scanning transcripts and `launches/`; a task belongs to the session in
+  its `parent_session` column, and numbering comes from the table.
+- `csquad finish` verifies a task's branches are merged and its worktrees
+  clean, removes them with git, then removes the session; `csquad cancel`
+  stops a task and keeps unmerged work unless `--discard`; `csquad send`
+  messages a live session's inbox or wakes a stopped one.
+- The status line ledger sizes each column's title area to its longest title,
+  so a single wide column no longer trails dozens of dots.
+- Merged task settings are always written to `~/.csquad/settings/T<n>.json`
+  (mode 600) and passed by path, including a user's inline `--settings`.
+- Model routing lives in `~/.csquad/models.md`; `config.json` is gone.
+- A csquad 1.x installation is not migrated: `install` asks for
+  `npx csquad@1 uninstall` first. npm packaging is not rebuilt yet.
+
 ## 1.4.0 - 2026-10-24
 
 ### Changed

@@ -7,7 +7,8 @@
 #   scripts/demo/demo.sh clean    remove the tasks, the sessions and the temp dir
 #   scripts/demo/demo.sh run CMD  run a command in the isolated environment
 #
-# Needs: tmux, asciinema 3, agg, python3, jq, go, claude, and the provider in
+# Needs: tmux, asciinema 3, agg, python3, jq, go, claude, codex with a login
+# in ~/.codex/auth.json (copied, mode 600), and the provider in
 # ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN (forwarded, never printed).
 set -euo pipefail
 
@@ -20,6 +21,9 @@ COLS=120
 ROWS=32
 MAIN_MODEL=${DEMO_MAIN_MODEL:-sonnet}
 TASK_MODEL=${DEMO_TASK_MODEL:-haiku}
+CODEX_AUTH=${DEMO_CODEX_AUTH:-$HOME/.codex/auth.json}
+# The Codex model: DEMO_CODEX_MODEL, else the one in ~/.codex/config.toml.
+CODEX_MODEL=${DEMO_CODEX_MODEL:-$(sed -n 's/^model *= *"\(.*\)"/\1/p' "$HOME/.codex/config.toml" 2>/dev/null | head -1)}
 RAW=$ROOT/raw.cast
 MARKS=$ROOT/marks
 CAST=$REPO/docs/demo/demo.cast
@@ -27,14 +31,15 @@ GIF=$REPO/docs/images/demo.gif
 
 CLAUDE_BIN=$(command -v claude)
 GO_BIN=$(command -v go)
+CODEX_BIN=$(command -v codex)
 
 # denv runs a command in the isolated environment only.
 denv() {
 	env -i \
 		HOME="$H" USER=demo LOGNAME=demo SHELL=/bin/bash \
 		TERM=xterm-256color COLORTERM=truecolor LANG=C.UTF-8 LC_ALL=C.UTF-8 \
-		PATH="$H/.csquad/bin:$(dirname "$CLAUDE_BIN"):$(dirname "$GO_BIN"):/usr/local/bin:/usr/bin:/bin" \
-		CLAUDE_CONFIG_DIR="$H/.claude" CSQUAD_HOME="$H/.csquad" \
+		PATH="$H/.csquad/bin:$(dirname "$CLAUDE_BIN"):$(dirname "$CODEX_BIN"):$(dirname "$GO_BIN"):/usr/local/bin:/usr/bin:/bin" \
+		CLAUDE_CONFIG_DIR="$H/.claude" CSQUAD_HOME="$H/.csquad" CODEX_HOME="$H/.codex" \
 		ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:?}" ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_AUTH_TOKEN:?}" \
 		DISABLE_AUTOUPDATER=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
 		GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod \
@@ -75,6 +80,16 @@ EOF
 		projects: {($p): {hasTrustDialogAccepted: true, hasCompletedProjectOnboarding: true,
 			projectOnboardingSeenCount: 1}}
 	}' >"$H/.claude/.claude.json"
+
+	# Codex: the login (never shown) and a minimal config. It must exist
+	# before install, so that install sets up the Codex skills and hook.
+	mkdir -p "$H/.codex"
+	install -m 600 "$CODEX_AUTH" "$H/.codex/auth.json"
+	{
+		[ -z "$CODEX_MODEL" ] || printf 'model = "%s"\n' "$CODEX_MODEL"
+		printf 'model_reasoning_effort = "low"\n\n[projects."%s"]\ntrust_level = "trusted"\n' "$H/demo"
+	} >"$H/.codex/config.toml"
+	chmod 600 "$H/.codex/config.toml"
 
 	project
 	denv "$ROOT/bin/csquad" install
@@ -270,7 +285,7 @@ typ() {
 	local s=$1 i
 	for ((i = 0; i < ${#s}; i++)); do
 		t send-keys -t demo -l -- "${s:i:1}"
-		sleep "0.0$((RANDOM % 5 + 3))"
+		sleep "0.0$((RANDOM % 4 + 3))"
 	done
 	sleep 0.6
 	t send-keys -t demo Enter
@@ -279,7 +294,7 @@ typ() {
 mark() { echo "$1 $(date +%s.%N)" >>"$MARKS"; }
 
 # row prints the task's status line row on screen ("" when it has none).
-row() { screen | grep -E "$1 ✻" | head -1; }
+row() { screen | grep -E "$1 (✻|⬡)" | head -1; }
 
 # wait_row waits until the row matches a regex. The status line refreshes
 # every 10 s, so the screen, not csquad status, decides when to go on.
@@ -312,29 +327,34 @@ EOF
 	local rec=$!
 	sleep 2
 
-	typ 'create two tasks: add a `--done` filter to `list`, and add tests for `add`'
+	typ '/create-task add a --done flag to list so I can see only finished todos'
 	mark fast
 	wait_row T1 'working' 120
-	wait_row T2 'working' 120
 	wait_idle
 	mark slow
-	sleep 2
-	typ 'after T1, a task to add a CHANGELOG entry for `--done`'
+	sleep 1
+	typ '/create-task after T1, add a changelog entry for the new flag'
 	mark fast
-	wait_row T3 'waiting T1' 120
+	wait_row T2 'waiting T1' 120
+	wait_idle
+	mark slow
+	sleep 1
+	typ '/create-task with codex: write tests for the add command'
+	mark fast
+	wait_row T3 'working' 180
 	wait_idle
 	mark slow
 	sleep 2
 	mark fast
 	wait_row T1 '[^a-z ] +(done|ready|idle)( |$)' 600
 	mark slow
-	sleep 4
-	typ 'finish T1'
+	sleep 3
+	typ '/finish-task T1'
 	mark fast
 	wait_row T1 '^$' 300
 	wait_idle
 	mark slow
-	sleep 5
+	sleep 4
 	mark end
 	t detach-client -s demo
 	wait "$rec"
@@ -365,6 +385,9 @@ clean() {
 		denv claude agents --json --all 2>/dev/null | jq -r '.[]? | select(.id != null) | .id' 2>/dev/null | while read -r id; do
 			denv claude rm "$id" || true
 		done
+		[ ! -d "$H/.codex" ] || denv codex app-server daemon stop >/dev/null 2>&1 || true
+		# The daemon's pid-update-loop outlives "daemon stop".
+		pkill -f "^$H/.codex/packages/" || true
 	fi
 	rm -rf "${ROOT:?}"
 }

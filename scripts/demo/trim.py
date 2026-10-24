@@ -5,7 +5,7 @@ Usage: trim.py RAW.cast MARKS OUT.cast
 
 MARKS has lines "NAME EPOCH" written by demo.sh: "start" just before the
 recording starts, then "fast" and "slow" switch the playback speed, and "end"
-(or tmux detaching) cuts the rest. Fast parts play $DEMO_FAST (default 4)
+(or tmux detaching) cuts the rest. Fast parts play $DEMO_FAST (default 6)
 times faster, so the tasks work in a few seconds and their rows still change
 on screen.
 
@@ -15,7 +15,7 @@ import json
 import os
 import sys
 
-FAST = float(os.environ.get("DEMO_FAST", "4"))
+FAST = float(os.environ.get("DEMO_FAST", "6"))
 
 
 def main(raw, marks, out):

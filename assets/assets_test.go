@@ -16,7 +16,7 @@ func TestSkillsHaveValidFrontmatterAndUnbrokenInlineCode(t *testing.T) {
 	files := map[string]string{"worker.md": WorkerRules(false) + WorkerRules(true),
 		"worker-codex.md": WorkerRulesFor("codex", false) + WorkerRulesFor("codex", true), "flow.md": FlowRules()}
 	skills := map[string]string{}
-	for _, host := range Hosts {
+	for _, host := range append(Hosts, Shared) {
 		for name, text := range SkillsFor(host) {
 			skills[host+"/"+name] = text
 		}

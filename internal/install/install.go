@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -74,6 +75,10 @@ type Manifest struct {
 	// Codex: what install wrote below AgentsDir, when $CODEX_HOME existed.
 	AgentsDir  string            `json:"agentsDir,omitempty"`
 	CodexFiles map[string]string `json:"codexFiles,omitempty"` // agents-dir relative path → sha256
+	// SharedSkills: AgentsDir/skills was the Claude skills directory itself
+	// (one linked to the other). Files then holds the one shared copy,
+	// written with both hosts' instructions, and CodexFiles is empty.
+	SharedSkills bool `json:"sharedSkills,omitempty"`
 	// HooksText is the text install inserted into Codex's hooks.json (the
 	// whole file when install created it); uninstall removes exactly that.
 	HooksText string `json:"hooksText,omitempty"`
@@ -211,7 +216,7 @@ func (o Options) checkPaths(rels []string) error {
 		}
 	}
 	for d := range dirs {
-		if isLink(d) {
+		if isDirLink(d) {
 			if _, err := os.Stat(d); err != nil {
 				return fmt.Errorf("%s is a dangling symlink; fix or remove it first, nothing was changed", d)
 			}
@@ -260,6 +265,11 @@ func Install(o Options, update bool) error {
 	if err != nil {
 		return err
 	}
+	if codex.files != nil && o.sharedSkills(codex.dir) {
+		// Both hosts read the same files: one copy with both hosts' blocks.
+		files, codex.shared = o.skillFiles(assets.Shared), true
+	}
+	known := knownHashes(old)
 	if err := os.MkdirAll(o.Home, 0o755); err != nil {
 		return err
 	}
@@ -267,10 +277,10 @@ func Install(o Options, update bool) error {
 		return err
 	}
 	m := Manifest{Version: o.Version, ClaudeDir: o.ClaudeDir, Binary: BinaryPath(o.Home), Settings: old.Settings, Npm: o.Env.Get("CSQUAD_NPM")}
-	if m.Files, err = o.writeManaged(o.ClaudeDir, files, old.Files); err != nil {
+	if m.Files, err = o.writeManaged(o.ClaudeDir, files, old.Files, known); err != nil {
 		return err
 	}
-	if err := o.installCodex(codex, &m, old); err != nil {
+	if err := o.installCodex(codex, &m, old, known); err != nil {
 		return err
 	}
 	hash, err := o.wrapStatusLine(m.Settings)
@@ -435,10 +445,32 @@ func sorted(files map[string][]byte) []string {
 	return rels
 }
 
+// sharedSkills reports whether the Claude skills directory and the one
+// Codex reads below agentsDir are the same directory: one a symlink or
+// junction to the other, or both to a third.
+func (o Options) sharedSkills(agentsDir string) bool {
+	return sameFile(filepath.Join(o.ClaudeDir, "skills"), filepath.Join(agentsDir, "skills"))
+}
+
+// knownHashes is, per relative path, every content csquad wrote there last
+// time, for Claude Code and for Codex. A skills directory both share holds
+// either one (before 3.0.2 they were written over each other), and neither
+// is an edit of the user's.
+func knownHashes(m Manifest) map[string][]string {
+	known := map[string][]string{}
+	for _, files := range []map[string]string{m.Files, m.CodexFiles} {
+		for rel, hash := range files {
+			known[rel] = append(known[rel], hash)
+		}
+	}
+	return known
+}
+
 // writeManaged writes files (relative path → content) below root and
-// returns their hashes. A file that is not what csquad installed last time
-// (old) is saved as .bak first; files of old that are no longer shipped go.
-func (o Options) writeManaged(root string, files map[string][]byte, old map[string]string) (map[string]string, error) {
+// returns their hashes. A file that holds none of the contents csquad wrote
+// last time (known) is saved as .bak first; files of old that are no longer
+// shipped go.
+func (o Options) writeManaged(root string, files map[string][]byte, old map[string]string, known map[string][]string) (map[string]string, error) {
 	hashes := map[string]string{}
 	for _, rel := range sorted(files) {
 		content := files[rel]
@@ -446,7 +478,7 @@ func (o Options) writeManaged(root string, files map[string][]byte, old map[stri
 		hash := sha(content)
 		current, err := os.ReadFile(dest)
 		exists := err == nil
-		if exists && sha(current) != hash && sha(current) != old[rel] {
+		if exists && sha(current) != hash && !slices.Contains(known[rel], sha(current)) {
 			// Not what csquad installed last time: keep the user's version.
 			if err := os.WriteFile(dest+".bak", current, 0o644); err != nil {
 				return hashes, err
@@ -464,9 +496,9 @@ func (o Options) writeManaged(root string, files map[string][]byte, old map[stri
 		hashes[rel] = hash
 	}
 	// Files an older version shipped that this one no longer does.
-	for rel, hash := range old {
+	for rel := range old {
 		if _, ok := hashes[rel]; !ok {
-			o.removeFrom(root, rel, hash)
+			o.removeFrom(root, rel, known[rel])
 		}
 	}
 	return hashes, nil
@@ -474,23 +506,25 @@ func (o Options) writeManaged(root string, files map[string][]byte, old map[stri
 
 // removeManaged deletes a file csquad installed; an edited one is renamed to
 // .bak.
-func (o Options) removeManaged(rel, hash string) { o.removeFrom(o.ClaudeDir, rel, hash) }
+func (o Options) removeManaged(rel string, hashes []string) { o.removeFrom(o.ClaudeDir, rel, hashes) }
 
-func (o Options) removeFrom(root, rel, hash string) {
+// removeFrom deletes a file holding one of the contents csquad wrote
+// (hashes); any other content is the user's edit, renamed to .bak.
+func (o Options) removeFrom(root, rel string, hashes []string) {
 	file := filepath.Join(root, filepath.FromSlash(rel))
 	b, err := os.ReadFile(file)
 	if err != nil {
 		return
 	}
-	if sha(b) != hash {
+	if !slices.Contains(hashes, sha(b)) {
 		if err := renameRetry(file, file+".bak"); err == nil {
 			o.log("%s was edited; kept your version as %s.bak", rel, rel)
 		}
 	} else {
 		os.Remove(file)
 	}
-	// Drop the skill directory once it is empty.
-	if parent := filepath.Dir(file); parent != root && parent != filepath.Join(root, "skills") {
+	// Drop the skill's directories once they are empty.
+	for parent := filepath.Dir(file); parent != root && parent != filepath.Join(root, "skills") && strings.HasPrefix(parent, root); parent = filepath.Dir(parent) {
 		rmdirIfEmpty(parent)
 	}
 }
@@ -499,7 +533,7 @@ func (o Options) removeFrom(root, rel, hash string) {
 // directory shared with other tools) is never csquad's to remove: on Windows
 // removing it would delete the link itself.
 func rmdirIfEmpty(d string) {
-	if isLink(d) {
+	if isDirLink(d) {
 		return
 	}
 	if entries, err := os.ReadDir(d); err == nil && len(entries) == 0 {
@@ -517,12 +551,18 @@ func Uninstall(o Options) error {
 	if err := o.restoreStatusLine(m); err != nil {
 		return err
 	}
-	for rel, hash := range m.Files {
-		o.removeManaged(rel, hash)
+	// Asked before any file goes: an emptied shared skills directory stays,
+	// or the link to it would dangle.
+	shared := o.sharedSkills(o.agentsDirOf(m))
+	known := knownHashes(m)
+	for rel := range m.Files {
+		o.removeManaged(rel, known[rel])
 	}
 	o.uninstallCodexHook(m)
-	rmdirIfEmpty(filepath.Join(o.ClaudeDir, "skills"))
-	o.uninstallCodex(m)
+	if !shared {
+		rmdirIfEmpty(filepath.Join(o.ClaudeDir, "skills"))
+	}
+	o.uninstallCodex(m, known)
 	for _, f := range []string{o.manifestFile(), o.savedFile(), o.backupFile()} {
 		os.Remove(f)
 	}

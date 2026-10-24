@@ -6,11 +6,11 @@ description: Send further instructions to a running or finished background task 
 # Message a task
 
 <!-- codex -->
-Run, outside Codex's sandbox (ask for escalated permissions):
+Run every csquad command outside Codex's sandbox (ask for escalated
+permissions): it writes `~/.csquad` and talks to Codex's app-server.
+
 <!-- /codex -->
-<!-- claude -->
 Run:
-<!-- /claude -->
 
 ```bash
 {{CSQUAD}} send T12 "the message"

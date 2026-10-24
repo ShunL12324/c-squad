@@ -563,6 +563,9 @@ original `statusLine` exactly, or removes the key if you had none.
 When `$CODEX_HOME` exists, `install` also does these steps:
 
 - It installs the skills into `~/.agents/skills`, so a Codex session can create tasks.
+  When `~/.claude/skills` and `~/.agents/skills` are the same directory (one links to the other),
+  it writes one copy of each skill there. Each copy keeps the instructions for both agents,
+  labelled **Claude Code:** and **Codex:**.
 - It adds one Stop hook group to `~/.codex/hooks.json`, marked `"__csquad__": true`.
 
 Approve the hook once with `/hooks` in Codex. Codex must run `csquad` outside its sandbox. Codex

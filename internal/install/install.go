@@ -329,11 +329,16 @@ func (o Options) installBinary() error {
 		return err
 	}
 	if runtime.GOOS == "windows" {
-		// A running .exe cannot be replaced, but it can be renamed.
+		// A running .exe cannot be replaced, but it can be renamed: only then
+		// is it moved aside, so an install leaves no .old behind otherwise.
 		os.Remove(dest + ".old")
+		if os.Rename(tmp, dest) == nil {
+			return nil
+		}
 		_ = os.Rename(dest, dest+".old")
 	}
 	if err := renameRetry(tmp, dest); err != nil {
+		os.Remove(tmp)
 		return err
 	}
 	return nil

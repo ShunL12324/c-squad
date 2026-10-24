@@ -241,7 +241,7 @@ func (a *App) finishOne(ctx context.Context, label, into string, all bool) error
 		return fmt.Errorf("%s: %v", t.Label(), err)
 	}
 	flow.Event(a.Home, t, stored, "finished")
-	a.removeFiles(t.ID)
+	a.removeFiles(t.ID, lock)
 	merged := ""
 	if len(p.branches) > 0 {
 		merged = fmt.Sprintf(" · merged into %s: %s", p.target, strings.Join(p.branches, ", "))
@@ -332,7 +332,7 @@ func (a *App) Cancel(ctx context.Context, label string, discard, all bool) error
 		return fmt.Errorf("%s: %v", t.Label(), err)
 	}
 	flow.Event(a.Home, t, stored, "cancelled")
-	a.removeFiles(t.ID)
+	a.removeFiles(t.ID, lock)
 	a.printf("cancelled %s · %s\n", t.Name(), orNone(done))
 	if keep != "" {
 		a.printf("  %s\n", keep)
@@ -352,10 +352,12 @@ func (a *App) printIgnored(refs []string) {
 }
 
 // removeFiles deletes a finished task's settings, prompt, lock and usage
-// files.
-func (a *App) removeFiles(id int) {
+// files. It releases the task lock first: Windows cannot delete an open
+// file.
+func (a *App) removeFiles(id int, lock *flock.Lock) {
 	os.Remove(claude.SettingsFile(a.Home, id))
 	os.Remove(claude.PromptFile(a.Home, id))
+	lock.Release()
 	os.Remove(a.TaskLock(id))
 	os.Remove(a.usageState(id))
 	os.Remove(a.usageBase(id))

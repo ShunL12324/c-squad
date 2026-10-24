@@ -525,7 +525,7 @@ func (a *App) land(ctx context.Context, t store.Task) {
 		a.warnf("csquad: %s: %v\n", t.Label(), err)
 	}
 	if won && stored.Phase == store.Done {
-		a.removeFiles(t.ID)
+		a.removeFiles(t.ID, l)
 	}
 }
 

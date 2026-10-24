@@ -154,19 +154,19 @@ func TestUsageCellStepsDown(t *testing.T) {
 		}
 		last = n
 	}
-	if got := cell(40); got != "▅▆▅▅" {
+	if got := cell(43); got != "▅▆▅▅" {
+		t.Errorf("43: %q", got)
+	}
+	if got := cell(40); got != "▅" {
 		t.Errorf("40: %q", got)
 	}
-	if got := cell(37); got != "▅" {
-		t.Errorf("37: %q", got)
-	}
-	if got := cell(30); got != "" {
-		t.Errorf("30: %q", got)
+	if got := cell(33); got != "" {
+		t.Errorf("33: %q", got)
 	}
 	// A short title needs no more room: the whole trail stays.
 	tasks[0].Title = "fix"
-	if got := cell(40); got != "▅▃▆▅▅▆▅▅" {
-		t.Errorf("40, short title: %q", got)
+	if got := cell(43); got != "▅▃▆▅▅▆▅▅" {
+		t.Errorf("43, short title: %q", got)
 	}
 }
 

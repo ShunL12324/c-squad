@@ -83,13 +83,21 @@ func styleOf(key string) style {
 }
 
 const (
-	minCellWidth = 60
-	columnGap    = 3
-	maxColumns   = 4
-	maxRows      = 4
-	minLeader    = 3  // dots after the longest title of a column
-	minTitle     = 12 // titles shrink to this before the usage cell steps down
+	// Margin is what Claude Code takes from COLUMNS: it indents the status
+	// line by two cells and cuts a longer row than COLUMNS-4 with "…"
+	// (Claude Code 2.1.295, a statusLine without padding, as install writes
+	// it).
+	Margin    = 4
+	columnGap = 3
+	maxRows   = 4
+	minLeader = 3  // dots after the longest title of a column
+	minTitle  = 12 // titles shrink to this before the usage cell steps down
+	minBadge  = 16 // an urgent badge is cut to this before the title gives more: "needs you · max…"
 )
+
+// columnsFrom are the terminal widths from which the ledger has 2, 3 and 4
+// columns.
+var columnsFrom = []int{124, 187, 250}
 
 // usageWidths are the usage cell's widths, widest first: the whole trail,
 // then a short one, then the newest change alone.
@@ -215,15 +223,20 @@ func (e entry) label() string { return "T" + strconv.Itoa(e.t.ID) }
 
 // Layout lays out the ledger: one row per task, most urgent first, in one
 // to four columns by width, at most four rows (the last one "+N more" when
-// the tasks do not fit), no row reaching the last column. It is a pure
-// function of its arguments.
+// the tasks do not fit), no row wider than Claude Code shows (COLUMNS minus
+// Margin). It is a pure function of its arguments.
 func Layout(tasks []Task, columns int, now time.Time, noColor bool) []string {
-	usable := columns - 1 // some terminals wrap in the last column
+	usable := columns - Margin
 	if len(tasks) == 0 || usable < 1 {
 		return nil
 	}
 	p := painter{noColor}
-	ncol := min(maxColumns, max(1, (usable+columnGap)/(minCellWidth+columnGap)))
+	ncol := 1
+	for _, from := range columnsFrom {
+		if columns >= from {
+			ncol++
+		}
+	}
 	cellMax := (usable - columnGap*(ncol-1)) / ncol
 	reasonMax := min(24, max(8, cellMax/5))
 	entries := make([]entry, len(tasks))
@@ -274,7 +287,9 @@ func Layout(tasks []Task, columns int, now time.Time, noColor bool) []string {
 // plus a short leader, and no wider than the cell allows, so a short title in
 // a wide terminal does not trail dozens of dots. An urgent badge runs across
 // the usage cell. In a narrow cell titles shrink first, down to minTitle,
-// then the usage cell steps down.
+// then the usage cell steps down, then the badge text is cut, down to
+// minBadge; then the title gives what is left and states are cut. The age
+// is never cut while the cell has room for the row without title and state.
 func column(entries []entry, cellMax int, now time.Time, p painter) []line {
 	idW, stateW, urgentW, titleW, marks, usage := 0, 0, 0, 0, false, false
 	for _, e := range entries {
@@ -292,16 +307,22 @@ func column(entries []entry, cellMax int, now time.Time, p painter) []line {
 	if marks {
 		base += 2
 	}
+	want := min(minTitle, titleW+1+minLeader) // the title area kept while the rest gives
 	usageW, span := 0, 0
 	if usage {
 		for _, w := range usageWidths {
-			if cellMax-(base+max(stateW, urgentW-w-1)+w+1) >= min(minTitle, titleW+1+minLeader) {
+			if cellMax-(base+max(stateW, urgentW-w-1)+w+1) >= want {
 				usageW, span = w, w+1
 				break
 			}
 		}
 	}
-	stateW = max(stateW, urgentW-span)
+	badgeW := urgentW
+	if over := base + max(stateW, badgeW-span) + span + want - cellMax; over > 0 {
+		badgeW = max(stateW+span, badgeW-over, min(badgeW, minBadge))
+	}
+	stateW = min(max(stateW, badgeW-span), max(0, cellMax-base-span))
+	badgeW = min(badgeW, stateW+span)
 	fixed := base + stateW + span
 	area := max(0, min(cellMax-fixed, titleW+1+minLeader))
 	out := make([]line, len(entries))
@@ -317,7 +338,11 @@ func column(entries []entry, cellMax int, now time.Time, p painter) []line {
 		if st.urgent && p.noColor {
 			rail = "▌"
 		}
-		state := p.fg(st.rgb, e.state)
+		text := truncate(e.state, stateW)
+		if st.urgent {
+			text = truncate(e.state, badgeW)
+		}
+		state := p.fg(st.rgb, text)
 		if st.urgent {
 			state.sgr = "1;38;2;20;20;20;48;2;" + st.rgb
 			if p.noColor {
@@ -338,11 +363,11 @@ func column(entries []entry, cellMax int, now time.Time, p painter) []line {
 		}
 		l = append(l, segment{title, titleSgr}, segment{"  ", ""}, state)
 		if cell := usageCell(e, usageW, now, p); cell != nil {
-			l = append(l, segment{strings.Repeat(" ", stateW-width(e.state)+1), ""})
+			l = append(l, segment{strings.Repeat(" ", stateW-width(text)+1), ""})
 			l = append(l, cell...)
 			l = append(l, segment{" ", ""})
 		} else {
-			l = append(l, segment{strings.Repeat(" ", stateW+span-width(e.state)+1), ""})
+			l = append(l, segment{strings.Repeat(" ", stateW+span-width(text)+1), ""})
 		}
 		l = append(l, segment{padLeft(Age(e.t.Since, now), 5), "2"})
 		out[i] = l

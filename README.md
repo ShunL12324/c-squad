@@ -361,7 +361,10 @@ usage: 51.8k fresh · +0 since the last refresh (0 s) · last activity 13s ago
   3 from 187 and 4 from 250.
 - It uses at most 4 rows. When more tasks exist, the last row shows `+N more` with the glyph and
   ID of each other task.
-- In a narrow terminal, the title gets shorter first. Then the usage trail gets shorter.
+- A row is at most 4 cells narrower than the terminal: Claude Code indents the status line and
+  cuts longer rows.
+- In a narrow terminal, the title gets shorter first. Then the usage trail and the reason of a
+  `needs you` badge get shorter. The age is never cut.
 - `NO_COLOR` removes the colors. The glyphs, bold, faint and reverse video stay.
 
 ### Which tasks show

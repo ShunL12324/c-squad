@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -154,17 +155,93 @@ func TestEveryTaskNamedAtEverySize(t *testing.T) {
 	}
 }
 
-func TestNeverReachesTheLastColumn(t *testing.T) {
+// Claude Code shows COLUMNS-4 cells of a status line row and cuts the rest
+// with "…".
+func TestFitsWhatClaudeCodeShows(t *testing.T) {
 	long := append(twelve(), T(13, strings.Repeat("很长的标题", 30), Working, 1))
 	for c := 1; c <= 300; c++ {
-		for _, tasks := range [][]Task{twelve(), twelve()[:1], twelve()[:3], long} {
+		for _, tasks := range [][]Task{twelve(), twelve()[:1], twelve()[:3], long, longBadge()} {
 			for _, noColor := range []bool{true, false} {
 				for _, r := range Layout(tasks, c, now, noColor) {
-					if w := width(strip(r)); w > c-1 {
+					if w := width(strip(r)); w > c-4 { // observed on Claude Code 2.1.295
 						t.Fatalf("width %d: row of %d cells: %q", c, w, strip(r))
 					}
 				}
 			}
+		}
+	}
+}
+
+// longBadge are seven tasks with a needs-you badge, usage cells and engine
+// marks: at 140 columns the ages of the 3.0.0 ledger were cut.
+func longBadge() []Task {
+	tasks := usageTasks()[:7]
+	tasks[1].Note = "max rounds: the check failed in 3 rounds"
+	return tasks
+}
+
+// The age is never cut: the title shrinks first, then the usage cell steps
+// down and the badge text is cut, then the title gives the rest.
+func TestAgeNeverCut(t *testing.T) {
+	wide := longBadge()
+	for i := range wide {
+		wide[i].ID += 100
+		wide[i].Title = strings.Repeat("Long title ", 8)
+	}
+	wide[0].Text = "needs input · a question about the release notes"
+	wide[2].State, wide[2].Text = Waiting, "waiting T101,T102,T103"
+	gap := regexp.MustCompile(`   [▎▌] `)
+	id := regexp.MustCompile(`T(\d+)`)
+	for c := 40; c <= 300; c++ {
+		for _, tasks := range [][]Task{longBadge(), wide, usageTasks(), twelve()} {
+			ages := map[string]string{}
+			for _, tk := range tasks {
+				ages["T"+strconv.Itoa(tk.ID)] = Age(tk.Since, now)
+			}
+			rows := Layout(tasks, c, now, true)
+			for _, r := range rows {
+				plain := strip(r)
+				if strings.HasPrefix(plain, "  +") {
+					continue // the overflow row
+				}
+				for _, cell := range gap.Split(plain, -1) {
+					m := id.FindString(cell)
+					if !strings.HasSuffix(cell, " "+ages[m]) {
+						t.Fatalf("%d columns: the age of %s (%s) is cut: %q", c, m, ages[m], plain)
+					}
+				}
+			}
+		}
+	}
+}
+
+// TestGoldenLongBadge pins the ledger of longBadge at the widths where the
+// columns change and at 140 (-update rewrites it).
+func TestGoldenLongBadge(t *testing.T) {
+	for _, noColor := range []bool{true, false} {
+		var b strings.Builder
+		for _, c := range []int{80, 123, 124, 140, 186, 187, 249, 250} {
+			fmt.Fprintf(&b, "=== %d columns\n", c)
+			for _, l := range Layout(longBadge(), c, now, noColor) {
+				b.WriteString(strings.ReplaceAll(l, "\x1b", `\e`) + "\n")
+			}
+		}
+		name := "ledger-badge-color.golden"
+		if noColor {
+			name = "ledger-badge-nocolor.golden"
+		}
+		file := filepath.Join("testdata", name)
+		if *update {
+			if err := os.WriteFile(file, []byte(b.String()), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		want, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(want) != b.String() {
+			t.Errorf("%s differs (go test -run TestGoldenLongBadge -update rewrites it):\n%s", file, b.String())
 		}
 	}
 }

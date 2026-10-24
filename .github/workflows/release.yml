@@ -1,7 +1,7 @@
 name: Release
 # A v* tag publishes csquad to npm: the per-platform binary packages first,
-# then the main `csquad` package that depends on them. The GitHub release is
-# created by hand once this is green.
+# then the main `csquad` package that depends on them, then the GitHub
+# release.
 on:
   push:
     tags: ['v*']
@@ -29,7 +29,7 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write # the GitHub release
       id-token: write # npm trusted publishing (OIDC)
     steps:
       - uses: actions/checkout@v7
@@ -52,6 +52,17 @@ jobs:
       - run: node scripts/build-npm.js "$VERSION"
       # Trusted publishing needs npm >= 11.5.1.
       - run: npm install --global npm@11.6.2
+      # Trusted publishing cannot create a package: a new package name needs
+      # its first version published by hand. Stop before publishing anything.
+      - name: Check that every package exists on npm
+        run: |
+          for dir in dist/npm/csquad-* dist/npm/csquad; do
+            name=$(node -p "require('./$dir/package.json').name")
+            if ! npm view "$name" name >/dev/null 2>&1; then
+              echo "::error::$name is not on npm yet. Publish its first version by hand, add the trusted publisher (ShunL12324/c-squad, release.yml) on npmjs.com, then re-run this job."
+              exit 1
+            fi
+          done
       # The main package's optional dependencies must exist before it does.
       # A version already on npm (a re-run after a partial publish) is skipped.
       - name: Publish the platform packages, then csquad
@@ -64,3 +75,16 @@ jobs:
             fi
             (cd "$dir" && npm publish --provenance --access public --tag "$NPM_TAG")
           done
+      # The release notes are the version's CHANGELOG section.
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          awk -v h="## $VERSION " 'index($0, h) == 1 {f=1; next} /^## / {if (f) exit} f' CHANGELOG.md > notes.md
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "$GITHUB_REF_NAME already has a release"
+          else
+            pre=""
+            case "$VERSION" in *-*) pre=--prerelease ;; esac
+            gh release create "$GITHUB_REF_NAME" --title "csquad $VERSION" --notes-file notes.md $pre
+          fi

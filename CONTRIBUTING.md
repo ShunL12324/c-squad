@@ -52,23 +52,25 @@ before running `install` from there.
 
 ## Release
 
-1. Move "Unreleased" in `CHANGELOG.md` under the new version and commit.
-2. Tag and push the tag: `git tag v3.0.0 && git push origin v3.0.0`.
+1. Change `## X.Y.Z - unreleased` in `CHANGELOG.md` to the date and commit.
+2. Tag and push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. `.github/workflows/release.yml` runs `go vet` and `go test` on Linux,
    macOS and Windows, builds the packages for the tag's version, and
    publishes the six platform packages, then `csquad`, with npm trusted
    publishing (`npm publish --provenance --access public`; a version with a
    `-` goes to the `next` dist-tag). A package version already on npm is
-   skipped, so a failed run can be re-run.
-4. When it is green, create the GitHub release for the tag by hand; the
-   workflow does not.
+   skipped, so a failed run can be re-run. It stops before publishing
+   anything if a package name is not on npm yet.
+4. Then it creates the GitHub release for the tag, with the version's
+   CHANGELOG section as the notes.
 
-One-time npm setup: every package name (`csquad` and each
-`@shunl12324/csquad-<platform>`) needs a trusted publisher on npmjs.com for
-this repository and `release.yml`. npm offers that only for a package that
-exists, so publish each new platform package once by hand (`npm publish
+Every package name (`csquad` and each `@shunl12324/csquad-<platform>`) has a
+trusted publisher on npmjs.com for this repository and `release.yml`. Only a
+new package name needs work by hand: npm offers a trusted publisher only for a
+package that exists, so publish its first version by hand (`npm publish
 --access public` in its `dist/npm` directory), then add the trusted
-publisher.
+publisher (package → Settings → Trusted Publisher → GitHub Actions, with
+"Allow npm publish").
 
 ## Test
 

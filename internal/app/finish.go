@@ -201,7 +201,7 @@ func (a *App) finishOne(ctx context.Context, label, into string, all bool) error
 	}
 	final := ""
 	if msgs, err := eng.Last(ctx, t.SessionID, 0); err == nil {
-		final = claude.LastAssistant(msgs)
+		final = engine.LastAssistant(msgs)
 	}
 	left := ""
 	if t.SessionID != "" && l.State != engine.Gone {

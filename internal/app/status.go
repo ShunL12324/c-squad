@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/ShunL12324/c-squad/internal/engine"
-	"github.com/ShunL12324/c-squad/internal/engine/claude"
 	"github.com/ShunL12324/c-squad/internal/store"
 )
 
@@ -92,7 +91,7 @@ func (a *App) Status(ctx context.Context, all, asJSON bool) error {
 		latest := ""
 		if eng, err := a.Engine(t.Engine); err == nil && t.SessionID != "" {
 			if msgs, err := eng.Last(ctx, t.SessionID, 0); err == nil {
-				latest = claude.LastAssistant(msgs)
+				latest = engine.LastAssistant(msgs)
 			}
 		}
 		e := statusEntry{

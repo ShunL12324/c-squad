@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -253,11 +252,6 @@ func parse(c *command, argv []string) (*parsed, error) {
 
 func help(w io.Writer) {
 	fmt.Fprintf(w, "csquad %s - background coding tasks (T1, T2, ...) for Claude Code\n\nUsage: csquad <command>\n\n", app.Version)
-	names := make([]string, 0, len(commands))
-	for _, c := range commands {
-		names = append(names, c.name)
-	}
-	sort.Strings(names)
 	for _, c := range commands {
 		fmt.Fprintf(w, "  %s\n", c.usage)
 	}

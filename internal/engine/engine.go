@@ -65,6 +65,16 @@ type ToolCount struct {
 	Count int
 }
 
+// LastAssistant is the newest assistant text of msgs.
+func LastAssistant(msgs []Message) string {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == "assistant" {
+			return msgs[i].Text
+		}
+	}
+	return ""
+}
+
 // Engine runs tasks.
 type Engine interface {
 	Name() string

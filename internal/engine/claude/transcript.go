@@ -150,13 +150,3 @@ func (e *Engine) Last(_ context.Context, id string, n int) ([]engine.Message, er
 	}
 	return msgs, nil
 }
-
-// LastAssistant is the newest assistant text of msgs.
-func LastAssistant(msgs []engine.Message) string {
-	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i].Role == "assistant" {
-			return msgs[i].Text
-		}
-	}
-	return ""
-}

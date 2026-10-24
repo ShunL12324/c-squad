@@ -47,7 +47,7 @@ func TestStatuslineShowsOnlyThisSessionsTasks(t *testing.T) {
 	launchAs(t, h, "ffffffff-0000-4000-8000-000000000000", "theirs")
 	setState(h, "1", func(s *testutil.Session) { s.State, s.Status = "blocked", "" })
 	rows := statusline(t, h, sid)
-	if len(rows) != 1 || !regexp.MustCompile(`^▎ ◆ T1 ✻ mine ··· +needs input +now$`).MatchString(rows[0]) {
+	if len(rows) != 1 || !regexp.MustCompile(`^▎ ◆ T1 ✻ mine +needs input +now$`).MatchString(rows[0]) {
 		t.Errorf("%q", rows)
 	}
 	// A session that dispatched nothing never asks claude.
@@ -108,7 +108,7 @@ func TestStatuslineAgeIsTimeInState(t *testing.T) {
 	launchAs(t, h, sid, "job")
 	setState(h, "1", func(s *testutil.Session) { s.StartedAt = time.Now().Add(-2 * time.Hour).UnixMilli() })
 	for i := 0; i < 2; i++ {
-		if rows := statusline(t, h, sid); !strings.HasSuffix(rows[0], "working 2h00m") {
+		if rows := statusline(t, h, sid); !regexp.MustCompile(`working +2h00m$`).MatchString(rows[0]) {
 			t.Errorf("first seen working: since its start: %q", rows)
 		}
 	}

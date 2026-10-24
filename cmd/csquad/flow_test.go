@@ -530,7 +530,7 @@ func TestDependencyRelease(t *testing.T) {
 	if task := getTask(t, h, 2); task.Phase != store.Waiting || task.SessionID != "" || len(h.Sessions()) != 1 {
 		t.Fatalf("%s", brief(task))
 	}
-	if rows := statusline(t, h, sid); !regexp.MustCompile(`◌ T2 (✻ )?second ·+ +waiting T1`).MatchString(strings.Join(rows, "\n")) {
+	if rows := statusline(t, h, sid); !regexp.MustCompile(`◌ T2 (✻ )?second[ ·]+waiting T1`).MatchString(strings.Join(rows, "\n")) {
 		t.Errorf("ledger %q", rows)
 	}
 	work(t, h, repo, t1, map[string]string{"b.txt": "b\n"})
@@ -750,8 +750,8 @@ func TestLedgerRowsForFlowPhases(t *testing.T) {
 	})
 	rows := statusline(t, h, sid, "COLUMNS=240", "CSQUAD_CHECK_GRACE_MS=600000")
 	text := strings.Join(rows, "\n")
-	for _, want := range []string{`◆ T4 +(✻ )?needs ·+ +needs you · merge conflict `, `◐ T1 +(✻ )?checking ·+ +checking 1/3`, `◑ T2 +(✻ )?fixing ·+ +fixing 2/3`,
-		`⇡ T3 +(✻ )?merging ·+ +merging`, `◌ T6 +(✻ )?queued ·+ +waiting T1,T2`, `● T5 +(✻ )?plain ·+ +working`} {
+	for _, want := range []string{`◆ T4 +(✻ )?needs[ ·]+needs you · merge conflict `, `◐ T1 +(✻ )?checking[ ·]+checking 1/3`, `◑ T2 +(✻ )?fixing[ ·]+fixing 2/3`,
+		`⇡ T3 +(✻ )?merging[ ·]+merging`, `◌ T6 +(✻ )?queued[ ·]+waiting T1,T2`, `● T5 +(✻ )?plain[ ·]+working`} {
 		if !regexp.MustCompile(want).MatchString(text) {
 			t.Errorf("no row %q in\n%s", want, text)
 		}

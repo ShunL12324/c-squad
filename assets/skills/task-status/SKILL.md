@@ -5,6 +5,11 @@ description: Report the progress of background tasks (T1, T2, ...). Use when the
 
 # Task status
 
+<!-- codex -->
+Run every csquad command outside Codex's sandbox (ask for escalated
+permissions): it writes `~/.csquad` and talks to Codex's app-server.
+
+<!-- /codex -->
 Gather the facts:
 
 ```bash
@@ -24,7 +29,9 @@ tool calls.
 Report in this order, briefly:
 
 1. **Needs input**: the question the task is waiting on (peek it if the latest
-   message does not make it clear), so the user can answer in agent view.
+   message does not make it clear), so the user can answer it (in agent view
+   for a Claude task, `codex resume THREAD` for a Codex task, or through
+   message-task).
 2. **Failed**: what went wrong.
 3. **Done or idle**: the result in a line or two (branch, verification,
    anything left unresolved), and that it is ready to merge and finish.

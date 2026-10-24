@@ -349,7 +349,7 @@ func TestModelsTriggersExtendTheDescription(t *testing.T) {
 			break
 		}
 	}
-	want := `description: "Dispatch work to background Claude Code sessions (\"tasks\" named T1, T2, ...). Use when the user asks to create, publish, queue, dispatch or start a task, or to hand work to background agents. Also when the user says \"派活\": or #ship it. Or \\ backslash."`
+	want := `description: "Dispatch work to background Claude Code sessions or Codex threads (\"tasks\" named T1, T2, ...). Use when the user asks to create, publish, queue, dispatch or start a task, or to hand work to background agents. Also when the user says \"派活\": or #ship it. Or \\ backslash."`
 	if line != want {
 		t.Errorf("got  %s\nwant %s", line, want)
 	}

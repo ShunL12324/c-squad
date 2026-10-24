@@ -1,5 +1,5 @@
 // Command csquad dispatches coding tasks (T1, T2, ...) to background Claude
-// Code sessions and shows them in the status line.
+// Code sessions and Codex threads and shows them in the status line.
 package main
 
 import (
@@ -47,7 +47,7 @@ func later(name string) func(context.Context, *app.App, *parsed) error {
 var commands = []command{
 	{
 		name:  "launch",
-		usage: "launch --title T [--cwd DIR] [--engine claude] [--model M] [--isolation none] [--prompt-file F [--rm-prompt]] [--no-worker-rules] [-- ENGINE_ARGS...]  (prompt on stdin)",
+		usage: "launch --title T [--cwd DIR] [--engine claude|codex] [--model M] [--isolation none] [--prompt-file F [--rm-prompt]] [--no-worker-rules] [-- ENGINE_ARGS...]  (prompt on stdin)",
 		flags: []string{"--title=", "--cwd=", "--engine=", "--model=", "--isolation=", "--prompt-file=", "--rm-prompt", "--no-worker-rules", "--after=", "--check=", "--max=", "--merge?"},
 		run: func(ctx context.Context, a *app.App, p *parsed) error {
 			for _, f := range []string{"after", "check", "max", "merge"} {

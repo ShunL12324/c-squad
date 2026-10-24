@@ -250,10 +250,10 @@ func NewHome(t testing.TB) *Home {
 	return h
 }
 
-var providerVar = regexp.MustCompile(`^(ANTHROPIC_|CLAUDE_CODE_|CLAUDECODE|CLAUDE_CONFIG_DIR=|CSQUAD_|HOME=|USERPROFILE=|PATH=|NO_COLOR=|COLUMNS=|TMPDIR=)`)
+var providerVar = regexp.MustCompile(`^(ANTHROPIC_|CLAUDE_CODE_|CODEX_|CLAUDECODE|CLAUDE_CONFIG_DIR=|CSQUAD_|HOME=|USERPROFILE=|PATH=|NO_COLOR=|COLUMNS=|TMPDIR=)`)
 
 // Env is the environment for csquad and the fake: the process environment
-// without anything of the developer's Claude Code session or provider, plus
+// without anything of the developer's Claude Code or Codex session or provider, plus
 // the temporary homes.
 func (h *Home) Env(extra ...string) []string {
 	var env []string

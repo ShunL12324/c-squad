@@ -1,6 +1,7 @@
 // Package install installs, updates, removes and inspects csquad for Claude
 // Code: the binary in $CSQUAD_HOME/bin, the skills in
-// $CLAUDE_CONFIG_DIR/skills, and the status line wrapper in settings.json.
+// $CLAUDE_CONFIG_DIR/skills, and the status line wrapper in settings.json;
+// and for Codex, when $CODEX_HOME exists: the skills in ~/.agents/skills.
 package install
 
 import (
@@ -39,6 +40,8 @@ type Options struct {
 	Version   string
 	Source    string // the binary to install; "" = this executable
 	Cwd       string // for the project-override warning
+	CodexHome string // $CODEX_HOME; "" = from Env
+	AgentsDir string // ~/.agents, where Codex reads skills; "" = from Env
 	Env       proc.Env
 	Log       func(string)
 }
@@ -65,6 +68,9 @@ type Manifest struct {
 	Binary    string            `json:"binary"`
 	Files     map[string]string `json:"files"`        // claude-dir relative path → sha256
 	Settings  string            `json:"settingsHash"` // sha256 of settings.json as csquad last wrote it
+	// Codex: what install wrote below AgentsDir, when $CODEX_HOME existed.
+	AgentsDir  string            `json:"agentsDir,omitempty"`
+	CodexFiles map[string]string `json:"codexFiles,omitempty"` // agents-dir relative path → sha256
 }
 
 // Saved is the user's own status line, kept in $CSQUAD_HOME/statusline.json.
@@ -204,13 +210,14 @@ func (o Options) checkPaths(rels []string) error {
 	return nil
 }
 
-// skillFiles returns relative path → rendered content of the skills.
-func (o Options) skillFiles() map[string][]byte {
+// skillFiles returns relative path → rendered content of the skills for a
+// host (claude or codex).
+func (o Options) skillFiles(host string) map[string][]byte {
 	binary := BinaryPath(o.Home)
 	win := runtime.GOOS == "windows"
 	triggers := Triggers(filepath.Join(o.Home, "models.md"))
 	out := map[string][]byte{}
-	for name, text := range assets.Skills() {
+	for name, text := range assets.SkillsFor(host) {
 		text = assets.Render(text, binary, win)
 		if name == "create-task" && triggers != "" {
 			text = extendDescription(text, triggers)
@@ -235,13 +242,12 @@ func Install(o Options, update bool) error {
 	if err := o.legacy(d); err != nil {
 		return err
 	}
-	files := o.skillFiles()
-	rels := make([]string, 0, len(files))
-	for rel := range files {
-		rels = append(rels, rel)
+	files := o.skillFiles("claude")
+	if err := o.checkPaths(sorted(files)); err != nil {
+		return err
 	}
-	sort.Strings(rels)
-	if err := o.checkPaths(rels); err != nil {
+	codex, err := o.planCodex()
+	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(o.Home, 0o755); err != nil {
@@ -250,35 +256,12 @@ func Install(o Options, update bool) error {
 	if err := o.installBinary(); err != nil {
 		return err
 	}
-	m := Manifest{Version: o.Version, ClaudeDir: o.ClaudeDir, Binary: BinaryPath(o.Home), Files: map[string]string{}, Settings: old.Settings}
-	for _, rel := range rels {
-		content := files[rel]
-		dest := filepath.Join(o.ClaudeDir, filepath.FromSlash(rel))
-		hash := sha(content)
-		current, err := os.ReadFile(dest)
-		exists := err == nil
-		if exists && sha(current) != hash && sha(current) != old.Files[rel] {
-			// Not what csquad installed last time: keep the user's version.
-			if err := os.WriteFile(dest+".bak", current, 0o644); err != nil {
-				return err
-			}
-			o.log("%s was edited; saved your version as %s.bak", rel, rel)
-		}
-		if !exists || sha(current) != hash {
-			if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-				return err
-			}
-			if err := os.WriteFile(dest, content, 0o644); err != nil {
-				return err
-			}
-		}
-		m.Files[rel] = hash
+	m := Manifest{Version: o.Version, ClaudeDir: o.ClaudeDir, Binary: BinaryPath(o.Home), Settings: old.Settings}
+	if m.Files, err = o.writeManaged(o.ClaudeDir, files, old.Files); err != nil {
+		return err
 	}
-	// Files an older version shipped that this one no longer does.
-	for rel, hash := range old.Files {
-		if _, ok := m.Files[rel]; !ok {
-			o.removeManaged(rel, hash)
-		}
+	if err := o.installCodex(codex, &m, old); err != nil {
+		return err
 	}
 	hash, err := o.wrapStatusLine(m.Settings)
 	if err != nil {
@@ -424,10 +407,58 @@ func statusLineValue(command string, refresh *float64) orderedObject {
 	return orderedObject{{"type", "command"}, {"command", command}, {"refreshInterval", r}}
 }
 
+func sorted(files map[string][]byte) []string {
+	rels := make([]string, 0, len(files))
+	for rel := range files {
+		rels = append(rels, rel)
+	}
+	sort.Strings(rels)
+	return rels
+}
+
+// writeManaged writes files (relative path → content) below root and
+// returns their hashes. A file that is not what csquad installed last time
+// (old) is saved as .bak first; files of old that are no longer shipped go.
+func (o Options) writeManaged(root string, files map[string][]byte, old map[string]string) (map[string]string, error) {
+	hashes := map[string]string{}
+	for _, rel := range sorted(files) {
+		content := files[rel]
+		dest := filepath.Join(root, filepath.FromSlash(rel))
+		hash := sha(content)
+		current, err := os.ReadFile(dest)
+		exists := err == nil
+		if exists && sha(current) != hash && sha(current) != old[rel] {
+			// Not what csquad installed last time: keep the user's version.
+			if err := os.WriteFile(dest+".bak", current, 0o644); err != nil {
+				return hashes, err
+			}
+			o.log("%s was edited; saved your version as %s.bak", rel, rel)
+		}
+		if !exists || sha(current) != hash {
+			if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+				return hashes, err
+			}
+			if err := os.WriteFile(dest, content, 0o644); err != nil {
+				return hashes, err
+			}
+		}
+		hashes[rel] = hash
+	}
+	// Files an older version shipped that this one no longer does.
+	for rel, hash := range old {
+		if _, ok := hashes[rel]; !ok {
+			o.removeFrom(root, rel, hash)
+		}
+	}
+	return hashes, nil
+}
+
 // removeManaged deletes a file csquad installed; an edited one is renamed to
 // .bak.
-func (o Options) removeManaged(rel, hash string) {
-	file := filepath.Join(o.ClaudeDir, filepath.FromSlash(rel))
+func (o Options) removeManaged(rel, hash string) { o.removeFrom(o.ClaudeDir, rel, hash) }
+
+func (o Options) removeFrom(root, rel, hash string) {
+	file := filepath.Join(root, filepath.FromSlash(rel))
 	b, err := os.ReadFile(file)
 	if err != nil {
 		return
@@ -440,7 +471,7 @@ func (o Options) removeManaged(rel, hash string) {
 		os.Remove(file)
 	}
 	// Drop the skill directory once it is empty.
-	if parent := filepath.Dir(file); parent != o.ClaudeDir && parent != filepath.Join(o.ClaudeDir, "skills") {
+	if parent := filepath.Dir(file); parent != root && parent != filepath.Join(root, "skills") {
 		rmdirIfEmpty(parent)
 	}
 }
@@ -471,6 +502,7 @@ func Uninstall(o Options) error {
 		o.removeManaged(rel, hash)
 	}
 	rmdirIfEmpty(filepath.Join(o.ClaudeDir, "skills"))
+	o.uninstallCodex(m)
 	for _, f := range []string{o.manifestFile(), o.savedFile(), o.backupFile()} {
 		os.Remove(f)
 	}
@@ -585,6 +617,7 @@ func Status(o Options) {
 		}
 		o.log("  %-8s %s", state, rel)
 	}
+	o.statusCodex(m)
 	d, exists, err := loadDocument(o.settingsFile())
 	if err != nil {
 		o.log("Status line: unknown (%v)", err)

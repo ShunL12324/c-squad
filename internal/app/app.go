@@ -18,6 +18,7 @@ import (
 
 	"github.com/ShunL12324/c-squad/internal/engine"
 	_ "github.com/ShunL12324/c-squad/internal/engine/claude" // registers the engine
+	_ "github.com/ShunL12324/c-squad/internal/engine/codex"  // registers the engine
 	"github.com/ShunL12324/c-squad/internal/proc"
 	"github.com/ShunL12324/c-squad/internal/store"
 )
@@ -35,6 +36,7 @@ type App struct {
 	Stdout    io.Writer
 	Stderr    io.Writer
 	Now       func() time.Time
+	NoStart   bool // engines start no service (the status line)
 
 	db      *store.Store
 	engines map[string]engine.Engine
@@ -89,7 +91,7 @@ func (a *App) Engine(name string) (engine.Engine, error) {
 	if e, ok := a.engines[name]; ok {
 		return e, nil
 	}
-	e, err := engine.New(name, engine.Config{Home: a.Home, ClaudeDir: a.ClaudeDir, Env: a.Env})
+	e, err := engine.New(name, engine.Config{Home: a.Home, ClaudeDir: a.ClaudeDir, Env: a.Env, NoStart: a.NoStart})
 	if err != nil {
 		return nil, err
 	}
@@ -104,10 +106,14 @@ func (a *App) printf(format string, args ...any) { fmt.Fprintf(a.Stdout, format,
 func (a *App) warnf(format string, args ...any)  { fmt.Fprintf(a.Stderr, format, args...) }
 
 // SessionKey is the dispatching session: "claude:<id>" from
-// CLAUDE_CODE_SESSION_ID, "" outside a session.
+// CLAUDE_CODE_SESSION_ID, "codex:<thread id>" from CODEX_THREAD_ID (set in
+// every command a Codex thread runs), "" outside a session.
 func (a *App) SessionKey() string {
 	if id := a.Env.Get("CLAUDE_CODE_SESSION_ID"); id != "" {
 		return "claude:" + id
+	}
+	if id := a.Env.Get("CODEX_THREAD_ID"); id != "" {
+		return "codex:" + id
 	}
 	return ""
 }
@@ -115,7 +121,10 @@ func (a *App) SessionKey() string {
 // Owners are the parent_session values that count as this session; nil
 // (outside a session) means every task.
 func (a *App) Owners() []string {
-	return a.owners(a.Env.Get("CLAUDE_CODE_SESSION_ID"))
+	if k := a.SessionKey(); k != "" {
+		return []string{k}
+	}
+	return nil
 }
 
 func (a *App) owners(sid string) []string {

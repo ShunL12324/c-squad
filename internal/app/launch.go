@@ -71,7 +71,7 @@ func (a *App) Launch(ctx context.Context, la LaunchArgs) error {
 	inPlace := la.Isolation == "none"
 	rules := ""
 	if !la.NoWorkerRules {
-		rules = assets.WorkerRules(inPlace)
+		rules = assets.WorkerRulesFor(la.Engine, inPlace)
 	}
 	db, err := a.Store()
 	if err != nil {

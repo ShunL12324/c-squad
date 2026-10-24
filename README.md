@@ -165,12 +165,33 @@ so it sees commits you have not pushed yet. Set `worktree.baseRef` yourself
 If a launch fails because the workspace is not trusted, open `claude` in that
 directory once and accept the trust prompt.
 
+## Codex
+
+"Run it in codex" makes create-task add `--engine codex`: the task is then a
+Codex thread named `T12 · title` on Codex's shared app-server daemon (csquad
+starts it with `codex app-server daemon start` when it is not running).
+`codex resume THREAD` opens it; `csquad status`, `peek`, `send`, `wait`,
+`finish` and `cancel` work as for Claude tasks. The thread runs with the
+worker rules as developer instructions, `danger-full-access` and approval
+`never` by default; it creates its own worktree,
+`<repo>-wt/t12-slug` on `task/t12-slug`, which `finish` finds by that name.
+After `--` a Codex task takes thread options: `-m/--model`, `--effort`,
+`-s/--sandbox`, `-a/--ask-for-approval` and `-c/--config KEY=VALUE`.
+
+Codex sessions can dispatch too: when `$CODEX_HOME` (default `~/.codex`)
+exists, install also puts the skills into `~/.agents/skills`, and tasks
+launched from a Codex thread belong to it (`CODEX_THREAD_ID`). Codex must run
+`csquad` outside its sandbox. Codex has no status line, so there are no task
+chips there.
+
 ## Requirements
 
 - Claude Code with background sessions (`claude --bg`, `claude agents`);
   2.1.260 or newer for `claude rm --discard-unpushed`, which `csquad finish`
   uses for a worktree it verified merged (`install` and `status-install` warn
   on older versions)
+- For Codex tasks: codex-cli with the app-server daemon (verified with
+  0.163.0)
 - Linux, macOS or Windows (amd64, arm64). On Windows, Claude Code runs status
   line commands through Git Bash, so csquad does too for your original status
   line (without Git it falls back to `cmd.exe`); a native `claude.exe` or the

@@ -104,6 +104,9 @@ type Config struct {
 	Home      string   // $CSQUAD_HOME
 	ClaudeDir string   // $CLAUDE_CONFIG_DIR
 	Env       proc.Env // the environment csquad runs in
+	// NoStart: never start a service an engine needs (the Codex daemon);
+	// for the status line, which must stay fast.
+	NoStart bool
 }
 
 var factories = map[string]func(Config) Engine{}

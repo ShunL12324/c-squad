@@ -1,34 +1,53 @@
 ---
 name: create-task
-description: Dispatch work to background Claude Code sessions ("tasks" named T1, T2, ...). Use when the user asks to create, publish, queue, dispatch or start a task, or to hand work to background agents.
+description: Dispatch work to background Claude Code sessions or Codex threads ("tasks" named T1, T2, ...). Use when the user asks to create, publish, queue, dispatch or start a task, or to hand work to background agents.
 ---
 
 # Create tasks
 
-Each task runs as its own background Claude Code session, named `T12 · title`,
-that the user watches in agent view (`claude agents`). Start one with the
-prompt on stdin, in a quoted heredoc so nothing in it is expanded:
+Each task runs as its own background session named `T12 · title`: a Claude
+Code background session by default, which the user watches in agent view
+(`claude agents`), or a Codex thread with `--engine codex` (for "run it in
+codex"), which `codex resume THREAD` opens. Start one with the prompt on
+stdin, in a quoted heredoc so nothing in it is expanded:
 
 ```bash
-{{CSQUAD}} launch --title "retry sqlite busy on open" [--cwd DIR] [--model MODEL] [-- CLAUDE_ARGS...] <<'PROMPT'
+{{CSQUAD}} launch --title "retry sqlite busy on open" [--cwd DIR] [--engine claude|codex] [--model MODEL] [-- ENGINE_ARGS...] <<'PROMPT'
 The full task prompt.
 PROMPT
 ```
 
 In PowerShell, pipe a here-string instead: `@'` on its own line, the prompt,
 `'@` on its own line, then `| & {{CSQUAD}} launch --title "..."`.
+<!-- claude -->
 `--prompt-file FILE [--rm-prompt]` reads the prompt from a file instead.
+<!-- /claude -->
+<!-- codex -->
+Pass the prompt this way only; do not write it to a file.
+
+Run every csquad command outside Codex's sandbox (ask for escalated
+permissions): it writes `~/.csquad` and talks to Codex's app-server, so
+inside the sandbox it fails.
+<!-- /codex -->
 
 Before the first launch in a conversation, read `~/.csquad/models.md` if it
-exists: it is the user's own routing (which model or arguments for which kind
-of work). Follow it, and pass a model it names explicitly with `--model`.
+exists: it is the user's own routing (which engine, model or arguments for
+which kind of work). Follow it, and pass a model it names explicitly with
+`--model`.
 
-Anything after `--` is passed to `claude --bg` unchanged, for options the user
-asks for, e.g. `-- --model opus --effort high` or
-`-- --settings '{"model":"sonnet"}'`. It overrides csquad's defaults (model,
-`--permission-mode bypassPermissions`). `--bg`, `--name`, `--print`,
-`--resume`, `--continue` and `--append-system-prompt` are set by csquad and
-are refused.
+Anything after `--` goes to the engine, for options the user asks for:
+
+- Claude (default): passed to `claude --bg` unchanged, e.g.
+  `-- --model opus --effort high` or `-- --settings '{"model":"sonnet"}'`. It
+  overrides csquad's defaults (model, `--permission-mode bypassPermissions`).
+  `--bg`, `--name`, `--print`, `--resume`, `--continue` and
+  `--append-system-prompt` are set by csquad and are refused.
+- Codex: thread options named as the `codex` command names them,
+  `-m/--model M`, `--effort low|medium|high|xhigh`,
+  `-s/--sandbox read-only|workspace-write|danger-full-access`,
+  `-a/--ask-for-approval untrusted|on-request|never` and
+  `-c/--config KEY=VALUE` (repeatable). Defaults: `danger-full-access` and
+  `never`. Anything else is refused before the task starts.
 
 If the user wants a task to edit the main checkout in place, for example to see
 its changes live through a running dev server, add `--isolation none`: the
@@ -38,7 +57,7 @@ on a checkout at a time. `--no-worker-rules` leaves out the worker rules, for a
 prompt that brings its own.
 
 It assigns the next task number, starts the session in `--cwd` (default: the
-current directory) with the worker rules appended to its system prompt, and
+current directory) with the worker rules added to its instructions, and
 prints `launched T12 · title · session ID · dir`. Tell the user the task IDs.
 
 Writing a task:
@@ -58,8 +77,13 @@ Writing a task:
   sessions' tasks), mention it rather than holding tasks back yourself.
 
 After launching, do not poll or wait: workers never report back. The user
+<!-- claude -->
 checks progress in agent view, in the status line, or by asking you
 (task-status).
+<!-- /claude -->
+<!-- codex -->
+checks progress by asking you (task-status) or with `{{CSQUAD}} status`.
+<!-- /codex -->
 
 Only if the user explicitly asks to be told when the tasks finish or need input
 (e.g. "dispatch X and let me know when it's done"), or to accept them
@@ -67,5 +91,8 @@ yourself (e.g. "dispatch X and accept it yourself", "merge it when it's
 done"), follow the watch-task skill for the tasks just launched; in the second
 case it finishes them when done. Otherwise do not monitor.
 
-If the launch fails because the workspace is not trusted, ask the user to open
-`claude` in that directory once and accept the trust prompt.
+If a Claude launch fails because the workspace is not trusted, ask the user to
+open `claude` in that directory once and accept the trust prompt. If a Codex
+launch cannot reach the app-server, csquad starts it
+(`codex app-server daemon start`); if that fails too, show the user the
+error.

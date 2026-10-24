@@ -10,8 +10,19 @@ never report back, so this is a plain background command, not polling by you.
 
 ## Start
 
+<!-- codex -->
+Run every csquad command outside Codex's sandbox (ask for escalated
+permissions): it writes `~/.csquad` and talks to Codex's app-server.
+
+<!-- /codex -->
+<!-- claude -->
 Run, with the shell tool's (Bash or PowerShell) `run_in_background` option,
 naming only the tasks the user asked about:
+<!-- /claude -->
+<!-- codex -->
+Run, as a long-running command (it returns when a task changes), naming only
+the tasks the user asked about:
+<!-- /codex -->
 
 ```bash
 {{CSQUAD}} wait T12 T13
@@ -22,14 +33,14 @@ For "watch my tasks", name this session's tasks that are still working (see
 model, and exits when a named task needs input, finishes, fails, is stopped or
 is removed, or after 4 hours. Pass `--timeout MINUTES` to change that.
 
-## When the background command completes
+## When the command completes
 
 Read its output: one line per task, `T12 · title · done`. Act on each line with
 as few tokens as possible:
 
 - **needs input**: `{{CSQUAD}} peek T12 -n 2`, then relay the task's exact
-  question. The user can answer in agent view, or ask you to send it with
-  message-task.
+  question. The user can answer in agent view (Claude tasks), or ask you to
+  send it with message-task.
 - **done** or **idle** (or `already done`): one or two sentences on the
   result, from the task's last message (`peek T12 -n 1`). Then ask whether to
   finish it, unless the user authorized finishing (below). Never finish or
@@ -52,5 +63,10 @@ authorization covers only the tasks it was given for.
 
 ## Stop
 
-When the user says to stop watching, kill the background command with the
-harness's stop/kill tool for background shells.
+When the user says to stop watching, kill the running `wait` command
+<!-- claude -->
+with the harness's stop/kill tool for background shells.
+<!-- /claude -->
+<!-- codex -->
+(interrupt it, or end its process).
+<!-- /codex -->

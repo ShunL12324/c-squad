@@ -46,7 +46,7 @@ func TestStatuslineShowsOnlyThisSessionsTasks(t *testing.T) {
 	launchAs(t, h, "ffffffff-0000-4000-8000-000000000000", "theirs")
 	setState(h, "1", func(s *testutil.Session) { s.State, s.Status = "blocked", "" })
 	rows := statusline(t, h, sid)
-	if len(rows) != 1 || !regexp.MustCompile(`^▎ ◆ T1 mine ··· +needs input +now$`).MatchString(rows[0]) {
+	if len(rows) != 1 || !regexp.MustCompile(`^▎ ◆ T1 ✻ mine ··· +needs input +now$`).MatchString(rows[0]) {
 		t.Errorf("%q", rows)
 	}
 	// A session that dispatched nothing never asks claude.
@@ -77,13 +77,13 @@ func TestStatuslineOwnLineFirstAndFallback(t *testing.T) {
 	flag := filepath.Join(h.Root, "own-fails")
 	saveOwnLine(t, h, "test -e '"+flag+"' && exit 1; grep -o session_id | tr a-z A-Z")
 	rows := statusline(t, h, sid)
-	if len(rows) != 2 || rows[0] != "SESSION_ID" || !strings.Contains(rows[1], "T1 job") {
+	if len(rows) != 2 || rows[0] != "SESSION_ID" || !strings.Contains(rows[1], "T1 ✻ job") {
 		t.Fatalf("%q", rows)
 	}
 	// Both the user's command and claude agents fail: the last good output stays.
 	os.WriteFile(flag, nil, 0o644)
 	rows = statusline(t, h, sid, "FAKE_AGENTS_FAIL=1")
-	if len(rows) != 2 || rows[0] != "SESSION_ID" || !strings.Contains(rows[1], "T1 job") {
+	if len(rows) != 2 || rows[0] != "SESSION_ID" || !strings.Contains(rows[1], "T1 ✻ job") {
 		t.Errorf("fallback: %q", rows)
 	}
 }

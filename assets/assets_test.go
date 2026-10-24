@@ -10,11 +10,17 @@ import (
 // contain ": " or " #", or the skill does not load. Inline code must not wrap
 // across lines either.
 func TestSkillsHaveValidFrontmatterAndUnbrokenInlineCode(t *testing.T) {
-	skills := Skills()
-	if len(skills) != 5 {
+	if len(Skills()) != 5 {
 		t.Fatalf("skills: %v", SkillNames())
 	}
-	files := map[string]string{"worker.md": WorkerRules(false) + WorkerRules(true)}
+	files := map[string]string{"worker.md": WorkerRules(false) + WorkerRules(true),
+		"worker-codex.md": WorkerRulesFor("codex", false) + WorkerRulesFor("codex", true)}
+	skills := map[string]string{}
+	for _, host := range Hosts {
+		for name, text := range SkillsFor(host) {
+			skills[host+"/"+name] = text
+		}
+	}
 	for name, text := range skills {
 		files[name] = text
 		fm := regexp.MustCompile(`(?s)^---\n(.*?)\n---\n`).FindStringSubmatch(text)
@@ -82,5 +88,46 @@ func TestRenderQuotesThePath(t *testing.T) {
 		if got := Render(text, c.bin, c.win); got != c.want {
 			t.Errorf("Render(%q) = %q, want %q", c.bin, got, c.want)
 		}
+	}
+}
+
+func TestSkillsPerHost(t *testing.T) {
+	claude, codex := SkillsFor("claude"), SkillsFor("codex")
+	for name := range Skills() {
+		for host, text := range map[string]string{"claude": claude[name], "codex": codex[name]} {
+			if strings.Contains(text, "<!--") {
+				t.Errorf("%s/%s keeps a block marker", host, name)
+			}
+		}
+		if !strings.Contains(codex[name], "outside Codex's sandbox") {
+			t.Errorf("codex/%s does not say to run csquad outside the sandbox", name)
+		}
+		if strings.Contains(claude[name], "Codex's sandbox") {
+			t.Errorf("claude/%s carries the Codex sandbox note", name)
+		}
+	}
+	if !strings.Contains(claude["message-task"], "SendMessage") || strings.Contains(codex["message-task"], "SendMessage") {
+		t.Error("SendMessage belongs to the Claude message-task only")
+	}
+	if strings.Contains(codex["create-task"], "--prompt-file") || !strings.Contains(codex["create-task"], "<<'PROMPT'") {
+		t.Error("Codex create-task passes the prompt on stdin only")
+	}
+}
+
+func TestCodexWorkerRules(t *testing.T) {
+	wt, ip := WorkerRulesFor("codex", false), WorkerRulesFor("codex", true)
+	if !strings.Contains(wt, "-C REPO worktree add ../NAME-wt/t12-retry-sqlite-busy -b task/t12-retry-sqlite-busy") || strings.Contains(wt, "launched to work in place") || strings.Contains(wt, "<!--") {
+		t.Errorf("worktree rules:\n%s", wt)
+	}
+	if !strings.Contains(ip, "launched to work in place") || strings.Contains(ip, "worktree add") || strings.Contains(ip, "<!--") {
+		t.Errorf("in-place rules:\n%s", ip)
+	}
+	for _, r := range []string{wt, ip} {
+		if !strings.Contains(r, "ending with `?`") || strings.Contains(r, "Claude Code") {
+			t.Error("Codex rules: end with the question, nothing about Claude Code")
+		}
+	}
+	if WorkerRulesFor("claude", false) != WorkerRules(false) {
+		t.Error("claude rules")
 	}
 }

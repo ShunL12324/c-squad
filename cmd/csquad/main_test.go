@@ -15,13 +15,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ShunL12324/c-squad/internal/engine/codex/codextest"
 	"github.com/ShunL12324/c-squad/internal/testutil"
 )
 
 // The test binary is csquad (CSQUAD_TEST_MAIN=1) and the fake claude (when
-// started through its `claude` link).
+// started through its `claude` link), and the fake codex likewise.
 func TestMain(m *testing.M) {
 	testutil.MaybeFakeClaude()
+	codextest.MaybeFakeCodex()
 	if os.Getenv("CSQUAD_TEST_MAIN") == "1" {
 		os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 	}

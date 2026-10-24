@@ -21,6 +21,7 @@ func (a *App) Statusline() {
 		input, _ = io.ReadAll(a.Stdin)
 	}
 	saved, _ := install.LoadSaved(a.Home)
+	a.NoStart = true // starting the Codex daemon does not fit the status line's budget
 	columns, err := strconv.Atoi(a.Env.Get("COLUMNS"))
 	if err != nil || columns <= 0 {
 		columns = 120

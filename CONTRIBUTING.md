@@ -37,6 +37,14 @@ go test ./...
   and `HOME` point into `t.TempDir()`, and `claude` on `PATH` is a fake (the
   test binary itself, see `internal/testutil`). Never point them at a real
   `~/.claude` or `~/.csquad`, and never start the real `claude`.
+- Codex tests use `internal/engine/codex/codextest`: an in-process fake
+  app-server on a Unix socket in a temporary directory, a temporary
+  `CODEX_HOME`, and a fake `codex` (the test binary) whose
+  `app-server daemon start` links the control socket to it. Never point them
+  at the real `~/.codex` or start the real `codex`.
+- Opt-in live tests: `CSQUAD_CODEX_LIVE=1 go test ./internal/engine/codex
+  -run Live` runs one trivial thread on the real Codex daemon (your login and
+  configuration) and deletes it afterwards.
 - The status line ledger has golden files in `internal/statusline/testdata`;
   after a deliberate layout change, `go test ./internal/statusline -run
   TestGolden -update` rewrites them; read the diff.

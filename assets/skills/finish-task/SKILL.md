@@ -5,6 +5,11 @@ description: Merge and clean up finished background tasks (T1, T2, ...) by mergi
 
 # Finish tasks
 
+<!-- codex -->
+Run every csquad command outside Codex's sandbox (ask for escalated
+permissions): it writes `~/.csquad` and talks to Codex's app-server.
+
+<!-- /codex -->
 Only finish tasks this session launched (`{{CSQUAD}} status` lists them).
 Touch another session's task only if the user names it explicitly (then pass
 `--all`).
@@ -32,8 +37,9 @@ on with the others.
    (`git merge-base --is-ancestor`), a detached worktree's `HEAD` too, and its
    worktree has no uncommitted changes. Then, in this order, it removes the
    verified worktrees and merged branches with git, then the session
-   (`claude rm`), and deletes the task's settings file, which can hold a
-   provider token.
+   (`claude rm`, or archiving a Codex task's thread), and deletes the task's
+   settings file, which can hold a provider token. A Codex task's worktree is
+   `<repo>-wt/t12-slug` next to the repository, on `task/t12-slug`.
 4. If it refuses, it names what is unmerged or uncommitted: report that to the
    user and stop on that task. Never work around it by deleting branches or
    worktrees yourself.
@@ -47,8 +53,10 @@ Hard rules: never delete unmerged branches or uncommitted work, never use
 on any doubt, report what you found and ask. Leave branches and worktrees the
 task did not create alone. Report what was merged and removed.
 
+<!-- claude -->
 When deleting, use literal absolute paths: `rm -rf` on a path built from a
 variable (`"$D"/*`) needs a human's approval even in bypass mode; if you must
 use a variable, write `"${D:?}"`. In PowerShell, use
 `Remove-Item -LiteralPath 'C:\full\path' -Recurse -Force`, again with a literal
 path.
+<!-- /claude -->

@@ -45,25 +45,26 @@ func rank(key string) int {
 }
 
 type statusEntry struct {
-	ID        string   `json:"id"`
-	Title     string   `json:"title"`
-	Engine    string   `json:"engine"`
-	Model     string   `json:"model,omitempty"`
-	Phase     string   `json:"phase"`
-	State     string   `json:"state"`
-	Session   string   `json:"session"`
-	Cwd       string   `json:"cwd"`
-	InPlace   bool     `json:"inPlace,omitempty"`
-	Parent    string   `json:"parentSession,omitempty"`
-	StartedAt string   `json:"startedAt"`
-	Latest    string   `json:"latest"`
-	Attach    string   `json:"attach,omitempty"`
-	Note      string   `json:"note,omitempty"`
-	After     []string `json:"after,omitempty"`
-	Check     string   `json:"check,omitempty"`
-	Round     int      `json:"round,omitempty"`
-	MaxRounds int      `json:"maxRounds,omitempty"`
-	MergeInto string   `json:"mergeInto,omitempty"`
+	ID        string      `json:"id"`
+	Title     string      `json:"title"`
+	Engine    string      `json:"engine"`
+	Model     string      `json:"model,omitempty"`
+	Phase     string      `json:"phase"`
+	State     string      `json:"state"`
+	Session   string      `json:"session"`
+	Cwd       string      `json:"cwd"`
+	InPlace   bool        `json:"inPlace,omitempty"`
+	Parent    string      `json:"parentSession,omitempty"`
+	StartedAt string      `json:"startedAt"`
+	Latest    string      `json:"latest"`
+	Attach    string      `json:"attach,omitempty"`
+	Note      string      `json:"note,omitempty"`
+	After     []string    `json:"after,omitempty"`
+	Check     string      `json:"check,omitempty"`
+	Round     int         `json:"round,omitempty"`
+	MaxRounds int         `json:"maxRounds,omitempty"`
+	MergeInto string      `json:"mergeInto,omitempty"`
+	Usage     *usageEntry `json:"usage,omitempty"` // working tasks
 }
 
 // Status lists this session's tasks (all: every task) with their state, age,
@@ -118,6 +119,10 @@ func (a *App) Status(ctx context.Context, all, asJSON bool) error {
 			e.Check, e.Round, e.MaxRounds = t.CheckSpec, t.Round, t.MaxRounds
 		}
 		e.MergeInto = t.MergeInto
+		var usage []string
+		if working(views[t.ID].Key) {
+			e.Usage, usage = a.usageOf(ctx, t)
+		}
 		entries = append(entries, e)
 		if !asJSON {
 			if latest == "" {
@@ -125,6 +130,9 @@ func (a *App) Status(ctx context.Context, all, asJSON bool) error {
 			}
 			a.printf("## %s · %s\n", t.Label(), t.Title)
 			a.printf("state: %s · started %s ago · session %s · %s\n", views[t.ID].Text, ago(a.Now().Sub(started)), t.SessionID, a.shortDir(t.Cwd))
+			for _, l := range usage {
+				a.printf("%s\n", l)
+			}
 			if e.Note != "" {
 				a.printf("note: %s\n", e.Note)
 			}

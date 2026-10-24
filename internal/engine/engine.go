@@ -82,6 +82,28 @@ func LastAssistant(msgs []Message) string {
 	return ""
 }
 
+// Usage is a session's token usage as its engine recorded it. Fresh work is
+// input + cache writes + output; cache reads are shown apart, never counted.
+type Usage struct {
+	Known      bool // the session recorded usage (a gateway may record none)
+	Input      int64
+	CacheWrite int64
+	Output     int64
+	CacheRead  int64
+	Context    int64     // the newest request's size: what the context window holds
+	ContextMax int64     // the context window; 0 = unknown
+	Activity   time.Time // the session's last write; zero = unknown
+}
+
+// Fresh is the work the session did: input + cache writes + output.
+func (u Usage) Fresh() int64 { return u.Input + u.CacheWrite + u.Output }
+
+// UsageReader is an engine that reads a session's usage. state is a file the
+// engine may keep its reading position in between calls.
+type UsageReader interface {
+	Usage(ctx context.Context, sessionID, state string) (Usage, error)
+}
+
 // Engine runs tasks.
 type Engine interface {
 	Name() string

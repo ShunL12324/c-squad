@@ -351,11 +351,14 @@ func (a *App) printIgnored(refs []string) {
 	}
 }
 
-// removeFiles deletes a finished task's settings, prompt and lock files.
+// removeFiles deletes a finished task's settings, prompt, lock and usage
+// files.
 func (a *App) removeFiles(id int) {
 	os.Remove(claude.SettingsFile(a.Home, id))
 	os.Remove(claude.PromptFile(a.Home, id))
 	os.Remove(a.TaskLock(id))
+	os.Remove(a.usageState(id))
+	os.Remove(filepath.Join(a.cacheDir(), fmt.Sprintf("T%d.usage.json", id)))
 	locks, _ := filepath.Glob(filepath.Join(a.logsDir(), fmt.Sprintf("T%d-check-*.lock", id)))
 	for _, l := range locks {
 		os.Remove(l)

@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -40,6 +42,12 @@ func (a *App) Statusline() {
 }
 
 func (a *App) cacheDir() string { return a.Home + string(os.PathSeparator) + "cache" }
+
+// usageState is where the engine keeps its reading position in a task's
+// session (the status line's samples are cache/T12.usage.json).
+func (a *App) usageState(id int) string {
+	return filepath.Join(a.cacheDir(), fmt.Sprintf("T%d.read.json", id))
+}
 
 // statusQuery returns this session's unfinished tasks. Most sessions never
 // dispatch a task: then no engine is asked.
@@ -91,15 +99,22 @@ func (a *App) statusQuery(ctx context.Context, in statusline.Input) ([]statuslin
 				o.Mark = e.Mark()
 			}
 		}
-		if e, err := a.Engine(t.Engine); err == nil {
+		if e, err := a.Engine(t.Engine); err == nil && t.SessionID != "" {
+			sid := t.SessionID
+			if l.SessionID != "" {
+				sid = l.SessionID
+			}
 			if act, ok := e.(interface {
 				Activity(string) (time.Time, bool)
 			}); ok {
-				sid := t.SessionID
-				if l.SessionID != "" {
-					sid = l.SessionID
-				}
 				o.Activity = func() (time.Time, bool) { return act.Activity(sid) }
+			}
+			if ur, ok := e.(engine.UsageReader); ok {
+				state := a.usageState(t.ID)
+				o.ReadUsage = func(ctx context.Context) (statusline.Reading, error) {
+					u, err := ur.Usage(ctx, sid, state)
+					return statusline.Reading{Known: u.Known, Fresh: u.Fresh(), Activity: u.Activity}, err
+				}
 			}
 		}
 		out = append(out, o)

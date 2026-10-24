@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,13 +35,27 @@ func (in Input) Key() string {
 	return ""
 }
 
-// Observed is a task as the query sees it; Run adds the time in its state.
+// Observed is a task as the query sees it; Run adds the time in its state
+// and the usage cell.
 type Observed struct {
 	Task
 	SessionID string
 	StartedAt time.Time // when the session started
 	Activity  func() (time.Time, bool)
+	// ReadUsage reads the session's usage; nil when there is no session.
+	ReadUsage func(ctx context.Context) (Reading, error)
 }
+
+// Reading is one reading of a session's usage.
+type Reading struct {
+	Known    bool  // the session recorded usage
+	Fresh    int64 // input + cache writes + output
+	Activity time.Time
+}
+
+// UsageBudget is the part of the budget reading usage may take; a reading
+// that does not finish in time leaves its row without the cell.
+const UsageBudget = time.Second
 
 // Options are what Run needs; Query returns this session's tasks.
 type Options struct {
@@ -104,6 +119,7 @@ func Run(o Options) string {
 		}()
 	}
 	var observed []Observed
+	var readings map[int]Reading
 	var qerr error
 	if o.Query != nil {
 		wg.Add(1)
@@ -111,7 +127,9 @@ func Run(o Options) string {
 			defer wg.Done()
 			ctx, cancel := context.WithTimeout(context.Background(), o.Budget)
 			defer cancel()
-			observed, qerr = o.Query(ctx, in)
+			if observed, qerr = o.Query(ctx, in); qerr == nil {
+				readings = readUsage(ctx, observed)
+			}
 		}()
 	}
 	wg.Wait()
@@ -130,6 +148,7 @@ func Run(o Options) string {
 	var tasks []Task
 	if qerr == nil {
 		tasks = withSince(observed, &c, now)
+		withUsage(tasks, observed, readings, o.CacheDir, now)
 		c.Tasks, c.TasksAt = tasks, now.UnixMilli()
 	} else if now.UnixMilli()-c.TasksAt < Stale.Milliseconds() {
 		tasks = c.Tasks
@@ -180,6 +199,65 @@ func withSince(list []Observed, c *cache, now time.Time) []Task {
 	}
 	c.Since = next
 	return out
+}
+
+// readUsage reads the tasks' usage in parallel, within UsageBudget of ctx;
+// a reading that fails or is late is missing from the result.
+func readUsage(ctx context.Context, list []Observed) map[int]Reading {
+	ctx, cancel := context.WithTimeout(ctx, UsageBudget)
+	defer cancel()
+	type result struct {
+		id int
+		r  Reading
+	}
+	ch := make(chan result, len(list))
+	n := 0
+	for _, o := range list {
+		if o.ReadUsage == nil {
+			continue
+		}
+		n++
+		go func(o Observed) {
+			r, err := o.ReadUsage(ctx)
+			if err != nil {
+				o.ID = -1
+			}
+			ch <- result{o.ID, r}
+		}(o)
+	}
+	out := map[int]Reading{}
+	for ; n > 0; n-- {
+		select {
+		case res := <-ch:
+			if res.id >= 0 {
+				out[res.id] = res.r
+			}
+		case <-ctx.Done():
+			return out
+		}
+	}
+	return out
+}
+
+// withUsage gives each task with a reading its usage cell, adding the
+// reading to the samples kept for it.
+func withUsage(tasks []Task, list []Observed, readings map[int]Reading, dir string, now time.Time) {
+	for i, o := range list {
+		r, ok := readings[o.ID]
+		if !ok {
+			continue
+		}
+		s := Sample{At: now.UnixMilli(), Fresh: r.Fresh, Known: r.Known}
+		if !r.Activity.IsZero() {
+			s.Activity = r.Activity.UnixMilli()
+		}
+		samples := LoadSamples(dir, o.ID, o.SessionID)
+		next := AddSample(samples, s)
+		if dir != "" && !slices.Equal(next, samples) {
+			saveSamples(dir, o.ID, o.SessionID, next)
+		}
+		tasks[i].Usage = &Usage{Samples: next, Known: r.Known, Total: r.Fresh, Activity: r.Activity}
+	}
 }
 
 // runOwn runs the user's status line command as Claude Code does, feeding it

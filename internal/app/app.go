@@ -306,14 +306,14 @@ func stateText(s string) string {
 
 // prune removes the settings and prompt files of tasks that are finished or
 // not in the table (a failed launch), and of tasks observed gone: the
-// settings can hold a provider token. The lock files of finished tasks go
-// too. Files are listed before the table is read, so a launch in flight (its
-// row is written first) is never judged.
+// settings can hold a provider token. The lock and usage files of finished
+// tasks go too. Files are listed before the table is read, so a launch in
+// flight (its row is written first) is never judged.
 func (a *App) prune(ctx context.Context, gone []int) {
 	type file struct {
-		path string
-		id   int
-		lock bool
+		path          string
+		id            int
+		untilFinished bool // kept while the task is unfinished, gone or not
 	}
 	var files []file
 	for _, d := range []struct {
@@ -323,12 +323,13 @@ func (a *App) prune(ctx context.Context, gone []int) {
 		{"settings", taskFileRe},
 		{"prompts", taskFileRe},
 		{"logs", lockFileRe},
+		{"cache", cacheFileRe},
 	} {
 		entries, _ := os.ReadDir(filepath.Join(a.Home, d.dir))
 		for _, e := range entries {
 			if m := d.re.FindStringSubmatch(e.Name()); m != nil {
 				id, _ := strconv.Atoi(m[1])
-				files = append(files, file{filepath.Join(a.Home, d.dir, e.Name()), id, d.dir == "logs"})
+				files = append(files, file{filepath.Join(a.Home, d.dir, e.Name()), id, d.dir == "logs" || d.dir == "cache"})
 			}
 		}
 	}
@@ -347,20 +348,21 @@ func (a *App) prune(ctx context.Context, gone []int) {
 	for _, t := range all {
 		keep[t.ID] = !store.Finished(t.Phase)
 	}
-	keepLock := maps.Clone(keep)
+	untilFinished := maps.Clone(keep)
 	for _, id := range gone {
 		keep[id] = false
 	}
 	for _, f := range files {
-		if f.lock && !keepLock[f.id] || !f.lock && !keep[f.id] {
+		if f.untilFinished && !untilFinished[f.id] || !f.untilFinished && !keep[f.id] {
 			os.Remove(f.path)
 		}
 	}
 }
 
 var (
-	taskFileRe = regexp.MustCompile(`^T(\d+)\.(json|md)$`)
-	lockFileRe = regexp.MustCompile(`^T(\d+)(-check-\d+)?\.lock$`)
+	taskFileRe  = regexp.MustCompile(`^T(\d+)\.(json|md)$`)
+	lockFileRe  = regexp.MustCompile(`^T(\d+)(-check-\d+)?\.lock$`)
+	cacheFileRe = regexp.MustCompile(`^T(\d+)\.(usage|read)\.json$`)
 )
 
 // gone lists the tasks whose session the engine no longer lists.

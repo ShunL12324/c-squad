@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -135,5 +136,66 @@ func TestStatuslineCleansTitlesAndPrunesGoneTasks(t *testing.T) {
 	statusline(t, h, sid)
 	if exists(settings) {
 		t.Error("a removed task's settings file (possibly a token) is left")
+	}
+}
+
+// The usage cell: the status line reads the transcript's usage, keeps the
+// reading with the earlier ones and shows the trail; status shows the block.
+func TestUsageInTheStatusLineAndStatus(t *testing.T) {
+	h := testutil.NewHome(t)
+	launchAs(t, h, sid, "busy job")
+	short := getTask(t, h, 1).SessionID
+	writeTranscript(t, h, "1",
+		`{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":4,"cache_creation_input_tokens":51100,"cache_read_input_tokens":0,"output_tokens":300}}}`,
+		`{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":4,"cache_creation_input_tokens":51100,"cache_read_input_tokens":0,"output_tokens":622}}}`,
+		`{"type":"assistant","message":{"id":"m2","usage":{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":50500,"output_tokens":0}}}`)
+	ms := time.Now().UnixMilli()
+	seed := fmt.Sprintf(`{"session":%q,"samples":[{"at":%d,"fresh":0,"known":true},{"at":%d,"fresh":100,"known":true}]}`, short, ms-20_000, ms-10_000)
+	os.MkdirAll(filepath.Join(h.Csquad, "cache"), 0o700)
+	os.WriteFile(filepath.Join(h.Csquad, "cache", "T1.usage.json"), []byte(seed), 0o600)
+
+	rows := statusline(t, h, sid)
+	if len(rows) != 1 || !regexp.MustCompile(`working +▁█ +now$`).MatchString(rows[0]) {
+		t.Errorf("status line %q", rows)
+	}
+	b, _ := os.ReadFile(filepath.Join(h.Csquad, "cache", "T1.usage.json"))
+	if !strings.Contains(string(b), `"fresh":51726`) {
+		t.Errorf("the reading was not kept: %s", b)
+	}
+	// A reading less than 8 s later is not kept.
+	statusline(t, h, sid)
+	if b2, _ := os.ReadFile(filepath.Join(h.Csquad, "cache", "T1.usage.json")); string(b2) != string(b) {
+		t.Errorf("kept a reading 0 s after the last: %s", b2)
+	}
+
+	out := ok(t, csq(t, h, opts{env: mine()}, "status")).stdout
+	for _, want := range []string{
+		"usage: 51.7k fresh · +0 since the last refresh (0 s) · last activity ",
+		"       input 4 · cache write 51.1k · output 622  cache read 50.5k (not counted)",
+		"       context 25% (50k of 200k) · last 20 s ▁█",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("no %q in\n%s", want, out)
+		}
+	}
+	var list []struct {
+		Usage *struct {
+			Fresh, CacheRead, ContextMax int64
+			Trail                        string
+			SinceRefresh                 *int64
+		} `json:"usage"`
+	}
+	r := ok(t, csq(t, h, opts{env: mine()}, "status", "--json"))
+	if json.Unmarshal([]byte(r.stdout), &list) != nil || len(list) != 1 || list[0].Usage == nil || list[0].Usage.Fresh != 51726 ||
+		list[0].Usage.CacheRead != 50500 || list[0].Usage.ContextMax != 200_000 || list[0].Usage.Trail != "▁█" || list[0].Usage.SinceRefresh == nil {
+		t.Errorf("status --json %s", r.stdout)
+	}
+	// Not working: the total, faint, instead of a trail; no block in status.
+	setState(h, "1", func(s *testutil.Session) { s.State, s.Status = "done", "" })
+	if rows := statusline(t, h, sid); !regexp.MustCompile(`done +52k +now$`).MatchString(rows[0]) {
+		t.Errorf("done: %q", rows)
+	}
+	if out := ok(t, csq(t, h, opts{env: mine()}, "status")).stdout; strings.Contains(out, "usage:") {
+		t.Errorf("a task that is not working shows the block:\n%s", out)
 	}
 }

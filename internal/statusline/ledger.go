@@ -19,6 +19,7 @@ type Task struct {
 	Text  string // the state as shown; "" = the key's own text
 	Note  string // for needs_you: why
 	Since time.Time
+	Usage *Usage // nil: no usage cell (no session, or no reading)
 }
 
 // State keys.
@@ -86,8 +87,13 @@ const (
 	columnGap    = 3
 	maxColumns   = 4
 	maxRows      = 4
-	minLeader    = 3 // dots after the longest title of a column
+	minLeader    = 3  // dots after the longest title of a column
+	minTitle     = 12 // below this the usage cell steps down before the title shrinks further
 )
+
+// usageWidths are the usage cell's widths, widest first: the whole trail,
+// then a short one, then the newest change alone.
+var usageWidths = []int{trailCells, 4, 1}
 
 // Age is the time since since, at most five columns: now, 42m, 1h05m, 12h.
 func Age(since, now time.Time) string {
@@ -263,22 +269,40 @@ func Layout(tasks []Task, columns int, now time.Time, noColor bool) []string {
 	return out
 }
 
-// column lays out the cells of one column. Ids, states and ages are aligned
-// within it; the title area is as wide as the column's longest title plus a
-// short leader, and no wider than the cell allows, so a short title in a wide
-// terminal does not trail dozens of dots.
+// column lays out the cells of one column. Ids, states, usage and ages are
+// aligned within it; the title area is as wide as the column's longest title
+// plus a short leader, and no wider than the cell allows, so a short title in
+// a wide terminal does not trail dozens of dots. An urgent badge runs across
+// the usage cell. In a narrow cell titles shrink first, down to minTitle,
+// then the usage cell steps down.
 func column(entries []entry, cellMax int, now time.Time, p painter) []line {
-	idW, stateW, titleW, marks := 0, 0, 0, false
+	idW, stateW, urgentW, titleW, marks, usage := 0, 0, 0, 0, false, false
 	for _, e := range entries {
 		idW = max(idW, width(e.label()))
-		stateW = max(stateW, width(e.state))
+		if e.st.urgent {
+			urgentW = max(urgentW, width(e.state))
+		} else {
+			stateW = max(stateW, width(e.state))
+		}
 		titleW = max(titleW, width(e.title))
 		marks = marks || e.t.Mark != ""
+		usage = usage || showsUsage(e)
 	}
-	fixed := 4 + idW + 1 + 2 + stateW + 1 + 5 // rail glyph id … state age
+	base := 4 + idW + 1 + 2 + 1 + 5 // rail glyph id … state age
 	if marks {
-		fixed += 2
+		base += 2
 	}
+	usageW, span := 0, 0
+	if usage {
+		for _, w := range usageWidths {
+			if cellMax-(base+max(stateW, urgentW-w-1)+w+1) >= minTitle {
+				usageW, span = w, w+1
+				break
+			}
+		}
+	}
+	stateW = max(stateW, urgentW-span)
+	fixed := base + stateW + span
 	area := max(0, min(cellMax-fixed, titleW+1+minLeader))
 	out := make([]line, len(entries))
 	for i, e := range entries {
@@ -312,8 +336,15 @@ func column(entries []entry, cellMax int, now time.Time, p painter) []line {
 			}
 			l = append(l, segment{mark, ""}, segment{" ", ""})
 		}
-		l = append(l, segment{title, titleSgr}, segment{"  ", ""}, state,
-			segment{strings.Repeat(" ", stateW-width(e.state)+1), ""}, segment{padLeft(Age(e.t.Since, now), 5), "2"})
+		l = append(l, segment{title, titleSgr}, segment{"  ", ""}, state)
+		if cell := usageCell(e, usageW, now, p); cell != nil {
+			l = append(l, segment{strings.Repeat(" ", stateW-width(e.state)+1), ""})
+			l = append(l, cell...)
+			l = append(l, segment{" ", ""})
+		} else {
+			l = append(l, segment{strings.Repeat(" ", stateW+span-width(e.state)+1), ""})
+		}
+		l = append(l, segment{padLeft(Age(e.t.Since, now), 5), "2"})
 		out[i] = l
 	}
 	return out

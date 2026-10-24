@@ -25,8 +25,11 @@ func detach(cmd *exec.Cmd) {
 	if cmd.SysProcAttr == nil {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
-	// DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
-	cmd.SysProcAttr.CreationFlags |= 0x00000008 | 0x00000200 | 0x08000000
+	// CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW: a console of its own
+	// without a window, which the git, shells and agents it starts share. Not
+	// DETACHED_PROCESS: Windows ignores CREATE_NO_WINDOW with it, and each
+	// console program the process starts then opens a new console window.
+	cmd.SysProcAttr.CreationFlags |= 0x00000200 | 0x08000000
 	cmd.SysProcAttr.HideWindow = true
 }
 

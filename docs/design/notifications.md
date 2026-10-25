@@ -143,7 +143,7 @@ csquad selects one backend at run time.
 - Only an app bundle can use `UNUserNotificationCenter`. `install` writes
   `~/.csquad/csquad.app`:
   - `Contents/Info.plist`: `CFBundleIdentifier` =
-    `io.github.shunl12324.csquad`, `CFBundleName` = `csquad`,
+    `io.github.shunl12324.csquad.app`, `CFBundleName` = `csquad`,
     `LSUIElement` = true.
   - `Contents/Resources/csquad.icns`: the icon (PNG data in an icns file:
     `ic07`, `ic08`, `ic09`).

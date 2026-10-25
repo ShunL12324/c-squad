@@ -39,7 +39,7 @@ const (
 const AppID = "csquad"
 
 // BundleID is the macOS bundle identifier of csquad.app.
-const BundleID = "io.github.shunl12324.csquad"
+const BundleID = "io.github.shunl12324.csquad.app"
 
 // ModeFile is where `csquad notify on|input|off` keeps the setting.
 func ModeFile(home string) string { return filepath.Join(home, "notify") }

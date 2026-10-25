@@ -404,9 +404,27 @@ func (h *Home) Env(extra ...string) []string {
 		}
 	}
 	env = append(env, "HOME="+h.Home, "USERPROFILE="+h.Home, "CSQUAD_HOME="+h.Csquad, "CLAUDE_CONFIG_DIR="+h.Claude,
-		"PATH="+h.Bin+string(os.PathListSeparator)+os.Getenv("PATH"), "FAKE_STATE="+h.State, "TMPDIR="+h.Root)
+		"PATH="+h.Bin+string(os.PathListSeparator)+os.Getenv("PATH"), "FAKE_STATE="+h.State, "TMPDIR="+h.Root,
+		// Notifications go to a file: no test shows one or registers anything.
+		"CSQUAD_NOTIFY_FILE="+h.NotifyFile())
 	env = append(env, h.ExtraEnv...)
 	return append(env, extra...)
+}
+
+// NotifyFile is where the notifications of csquad runs with Env go.
+func (h *Home) NotifyFile() string { return filepath.Join(h.Root, "notifications.jsonl") }
+
+// Notifications are the notifications sent so far: title and body.
+func (h *Home) Notifications() [][2]string {
+	b, _ := os.ReadFile(h.NotifyFile())
+	var out [][2]string
+	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+		var m struct{ Title, Body string }
+		if json.Unmarshal([]byte(line), &m) == nil {
+			out = append(out, [2]string{m.Title, m.Body})
+		}
+	}
+	return out
 }
 
 // SetSessions replaces the fake's session list.

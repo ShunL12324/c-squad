@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/ShunL12324/c-squad/assets"
+	"github.com/ShunL12324/c-squad/internal/notify"
 	"github.com/ShunL12324/c-squad/internal/proc"
 )
 
@@ -85,6 +86,9 @@ type Manifest struct {
 	// Npm is the version of the npm package that installed csquad; "" for a
 	// build from source. See npm.go.
 	Npm string `json:"npm,omitempty"`
+	// Notify is what install set up for the notifications: the icon,
+	// csquad.app (macOS), the app ID (Windows, WSL).
+	Notify *notify.Installed `json:"notify,omitempty"`
 }
 
 // Saved is the user's own status line, kept in $CSQUAD_HOME/statusline.json.
@@ -292,6 +296,9 @@ func Install(o Options, update bool) error {
 	if err := o.installCodexHook(&m, old); err != nil {
 		return err
 	}
+	// Notifications never stop an install: a failed step is a warning.
+	nm, nerr := o.notifySetup().Install()
+	m.Notify = &nm
 	if err := writeJSON(o.manifestFile(), m); err != nil {
 		return err
 	}
@@ -300,9 +307,17 @@ func Install(o Options, update bool) error {
 		verb = "Updated"
 	}
 	o.log("%s csquad %s: %s, skills in %s", verb, o.Version, BinaryPath(o.Home), filepath.Join(o.ClaudeDir, "skills"))
+	if nerr != nil {
+		o.log("Warning: notifications are not fully set up: %v", nerr)
+	}
+	o.log("Notifications: %s", nm.Backend)
 	o.warnProjectOverride()
 	o.warnClaudeVersion()
 	return nil
+}
+
+func (o Options) notifySetup() notify.Setup {
+	return notify.Setup{Sys: notify.Local(o.Env, o.Home), Version: o.Version, Binary: BinaryPath(o.Home)}
 }
 
 // installBinary copies the running (or given) binary to $CSQUAD_HOME/bin.
@@ -563,6 +578,11 @@ func Uninstall(o Options) error {
 		rmdirIfEmpty(filepath.Join(o.ClaudeDir, "skills"))
 	}
 	o.uninstallCodex(m, known)
+	if m.Notify != nil {
+		for _, note := range o.notifySetup().Uninstall(*m.Notify) {
+			o.log("%s", note)
+		}
+	}
 	for _, f := range []string{o.manifestFile(), o.savedFile(), o.backupFile()} {
 		os.Remove(f)
 	}
@@ -682,6 +702,9 @@ func Status(o Options) {
 		o.log("  %-8s %s", state, rel)
 	}
 	o.statusCodex(m)
+	if m.Notify != nil {
+		o.log("Notifications: %s · %s", notify.Mode(o.Env, o.Home), m.Notify.Backend)
+	}
 	d, exists, err := loadDocument(o.settingsFile())
 	if err != nil {
 		o.log("Status line: unknown (%v)", err)

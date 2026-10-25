@@ -221,7 +221,9 @@ func engineErrors(err error) EngineErrors {
 
 // observe returns the live state of each task with a session, one engine
 // query per engine. Tasks of an engine that failed are missing from the map;
-// the error is then an EngineErrors naming those engines.
+// the error is then an EngineErrors naming those engines. Every observation
+// goes through here, so it is where the notifications of observed states
+// start (observed).
 func (a *App) observe(ctx context.Context, tasks []store.Task) (map[int]engine.Live, error) {
 	byEngine := map[string][]store.Task{}
 	for _, t := range tasks {
@@ -241,6 +243,7 @@ func (a *App) observe(ctx context.Context, tasks []store.Task) (map[int]engine.L
 		for _, t := range list {
 			ids = append(ids, t.SessionID)
 		}
+		at := a.Now()
 		states, err := e.States(ctx, ids)
 		if err != nil {
 			errs[name] = err
@@ -249,6 +252,7 @@ func (a *App) observe(ctx context.Context, tasks []store.Task) (map[int]engine.L
 		for _, t := range list {
 			out[t.ID] = states[t.SessionID]
 		}
+		a.observed(ctx, list, out, at)
 	}
 	if len(errs) > 0 {
 		return out, errs

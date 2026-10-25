@@ -4,6 +4,8 @@ go 1.26.0
 
 require (
 	github.com/coder/websocket v1.8.15
+	github.com/ebitengine/purego v0.11.2
+	github.com/godbus/dbus/v5 v5.2.4
 	golang.org/x/sys v0.49.0
 	modernc.org/sqlite v1.61.0
 )

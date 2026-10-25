@@ -65,6 +65,12 @@ type Task struct {
 	Step          string // where the task is inside its phase: merging "asked" (the worker was asked to rebase); needs_you what retry resumes
 	CreatedAt     int64  // unix milliseconds
 	UpdatedAt     int64  // unix milliseconds; also the compare-and-set version
+	// Notified is the event class last observed for the notifications
+	// ("" for a quiet state); see ClaimNotice.
+	Notified string
+	// NotifiedPhase is the updated_at of the row the last phase event was
+	// for.
+	NotifiedPhase int64
 }
 
 // Label is the task's name in output: T12.
@@ -101,6 +107,13 @@ var migrations = []string{
 );
 CREATE INDEX tasks_parent ON tasks (parent_session, phase);`,
 	`ALTER TABLE tasks ADD COLUMN step TEXT NOT NULL DEFAULT '';`,
+	// The notifications: what the tasks show now counts as announced, so an
+	// update sends nothing for it.
+	`ALTER TABLE tasks ADD COLUMN notified TEXT NOT NULL DEFAULT '';
+ALTER TABLE tasks ADD COLUMN notified_at INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN notified_phase INTEGER NOT NULL DEFAULT 0;
+UPDATE tasks SET notified = phase, notified_phase = updated_at WHERE phase IN ('ready', 'needs_you', 'failed');
+UPDATE tasks SET notified = 'done' WHERE phase = 'running' AND check_spec = '' AND merge_into = '';`,
 }
 
 // Store is an open database.
@@ -160,7 +173,7 @@ func (s *Store) migrate() error {
 }
 
 const columns = `id, title, cwd, engine, model, engine_args, session_id, parent_session, in_place, prompt,
-  worker_rules, after, check_spec, max_rounds, round, merge_into, phase, last_check, note, outcome, created_at, updated_at, step`
+  worker_rules, after, check_spec, max_rounds, round, merge_into, phase, last_check, note, outcome, created_at, updated_at, step, notified, notified_phase`
 
 type scanner interface{ Scan(...any) error }
 
@@ -169,7 +182,7 @@ func scan(r scanner) (Task, error) {
 	var args, after string
 	var inPlace int
 	err := r.Scan(&t.ID, &t.Title, &t.Cwd, &t.Engine, &t.Model, &args, &t.SessionID, &t.ParentSession, &inPlace, &t.Prompt,
-		&t.WorkerRules, &after, &t.CheckSpec, &t.MaxRounds, &t.Round, &t.MergeInto, &t.Phase, &t.LastCheck, &t.Note, &t.Outcome, &t.CreatedAt, &t.UpdatedAt, &t.Step)
+		&t.WorkerRules, &after, &t.CheckSpec, &t.MaxRounds, &t.Round, &t.MergeInto, &t.Phase, &t.LastCheck, &t.Note, &t.Outcome, &t.CreatedAt, &t.UpdatedAt, &t.Step, &t.Notified, &t.NotifiedPhase)
 	if err != nil {
 		return t, err
 	}
@@ -208,9 +221,9 @@ func (s *Store) Insert(ctx context.Context, t Task) (Task, error) {
 	if t.MaxRounds == 0 {
 		t.MaxRounds = 3
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO tasks (`+columns+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	_, err = tx.ExecContext(ctx, `INSERT INTO tasks (`+columns+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		t.ID, t.Title, t.Cwd, t.Engine, t.Model, jsonOf(t.EngineArgs), t.SessionID, t.ParentSession, b2i(t.InPlace), t.Prompt,
-		t.WorkerRules, jsonOf(t.After), t.CheckSpec, t.MaxRounds, t.Round, t.MergeInto, t.Phase, t.LastCheck, t.Note, t.Outcome, t.CreatedAt, t.UpdatedAt, t.Step)
+		t.WorkerRules, jsonOf(t.After), t.CheckSpec, t.MaxRounds, t.Round, t.MergeInto, t.Phase, t.LastCheck, t.Note, t.Outcome, t.CreatedAt, t.UpdatedAt, t.Step, t.Notified, t.NotifiedPhase)
 	if err != nil {
 		return t, err
 	}
@@ -329,3 +342,55 @@ func (s *Store) Transition(ctx context.Context, old, next Task) (Task, error) {
 // Same reports whether t is still the version of the row cur is: the
 // claim a process makes before acting on a task it observed.
 func Same(t, cur Task) bool { return t.Phase == cur.Phase && t.UpdatedAt == cur.UpdatedAt }
+
+// ClaimNotice records that an observation at `at` (unix ms) showed the
+// event class of t ("" for a quiet state), and reports whether this caller
+// must send the notification. It is one compare-and-set in an immediate
+// transaction, so concurrent observers (the status line, a hook, a
+// command) send each change once:
+//   - the row must still be t's version (phase and updated_at): an
+//     observation of an old row does not count;
+//   - the observation must be newer than the one recorded: a late
+//     observation does not overwrite a newer one;
+//   - a live event (needs input, done) is sent when the class changes;
+//   - a phase event (ready, needs you, failed, merged) is sent once per
+//     version of the row: ready, a held message (needs input), then ready
+//     again sends ready once.
+func (s *Store) ClaimNotice(ctx context.Context, t Task, class string, at int64, phaseEvent bool) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	var phase, notified string
+	var updated, notifiedAt, notifiedPhase int64
+	err = tx.QueryRowContext(ctx, `SELECT phase, updated_at, notified, notified_at, notified_phase FROM tasks WHERE id = ?`, t.ID).
+		Scan(&phase, &updated, &notified, &notifiedAt, &notifiedPhase)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if phase != t.Phase || updated != t.UpdatedAt || notifiedAt >= at {
+		return false, nil
+	}
+	var send bool
+	if phaseEvent {
+		if notified == class && notifiedPhase == updated {
+			return false, nil
+		}
+		send = notifiedPhase != updated
+		notifiedPhase = updated
+	} else {
+		if notified == class {
+			return false, nil
+		}
+		send = class != ""
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE tasks SET notified = ?, notified_at = ?, notified_phase = ? WHERE id = ?`,
+		class, at, notifiedPhase, t.ID); err != nil {
+		return false, err
+	}
+	return send, tx.Commit()
+}

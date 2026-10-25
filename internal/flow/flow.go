@@ -431,6 +431,9 @@ type Mover struct {
 	Home string
 	// Run runs an effect for the task as stored.
 	Run func(ctx context.Context, t store.Task, e Effect)
+	// Moved is told of each phase or step change this process wrote (the
+	// task as stored): the notifications.
+	Moved func(ctx context.Context, t store.Task)
 }
 
 // Apply writes m over t (compare-and-set) and runs the effect only when the
@@ -449,6 +452,9 @@ func (mv *Mover) Apply(ctx context.Context, t store.Task, m Move) (store.Task, b
 		}
 		if stored.Phase != t.Phase || stored.Step != t.Step {
 			Event(mv.Home, t, stored, m.Reason)
+			if mv.Moved != nil {
+				mv.Moved(ctx, stored)
+			}
 		}
 	}
 	if m.Effect.Kind != "" && mv.Run != nil {

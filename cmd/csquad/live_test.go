@@ -34,7 +34,7 @@ func TestLive(t *testing.T) {
 			env = append(env, kv)
 		}
 	}
-	env = append(env, "CSQUAD_HOME="+home, "CSQUAD_TEST_MAIN=1", "CSQUAD_WAIT_INTERVAL_MS=3000", "CSQUAD_WAIT_GRACE_MS=1000")
+	env = append(env, "CSQUAD_HOME="+home, "CSQUAD_TEST_MAIN=1", "CSQUAD_WAIT_INTERVAL_MS=3000", "CSQUAD_WAIT_GRACE_MS=1000", "CSQUAD_NOTIFY_FILE="+filepath.Join(root, "notifications.jsonl"))
 	git := func(dir string, args ...string) string {
 		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
 		cmd.Env = append(env, "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com")

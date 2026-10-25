@@ -17,6 +17,7 @@ import (
 	"github.com/ShunL12324/c-squad/internal/flock"
 	"github.com/ShunL12324/c-squad/internal/flow"
 	"github.com/ShunL12324/c-squad/internal/gitx"
+	"github.com/ShunL12324/c-squad/internal/notify"
 	"github.com/ShunL12324/c-squad/internal/proc"
 	"github.com/ShunL12324/c-squad/internal/store"
 )
@@ -49,7 +50,7 @@ func (a *App) grace() time.Duration  { return a.envMs("CSQUAD_CHECK_GRACE_MS", 3
 
 func (a *App) mover() *flow.Mover {
 	db, _ := a.Store()
-	return &flow.Mover{DB: db, Home: a.Home, Run: a.runEffect}
+	return &flow.Mover{DB: db, Home: a.Home, Run: a.runEffect, Moved: a.moved}
 }
 
 // needsObservation: the flow reads these tasks' live session state.
@@ -231,6 +232,7 @@ func (a *App) fail(ctx context.Context, t store.Task, resume, note string) {
 	n.Phase, n.Step, n.Note = store.NeedsYou, resume, note
 	if stored, err := db.Transition(ctx, t, n); err == nil {
 		flow.Event(a.Home, t, stored, note)
+		a.moved(ctx, stored)
 	}
 	a.warnf("csquad: %s needs you: %s\n", t.Label(), note)
 }
@@ -707,8 +709,11 @@ func (a *App) Hook(ctx context.Context, which string) error {
 	if err != nil {
 		return nil
 	}
+	// A task without a flow has nothing to advance, but its end of turn is
+	// a notification (done).
+	notifying := notify.Mode(a.Env, a.Home) != notify.Off
 	for _, t := range tasks {
-		if t.Engine != engineName || t.SessionID == "" || !flow.Orchestrated(t) {
+		if t.Engine != engineName || t.SessionID == "" || !flow.Orchestrated(t) && !notifying {
 			continue
 		}
 		if t.SessionID == in.SessionID || strings.HasPrefix(in.SessionID, t.SessionID) {

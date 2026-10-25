@@ -7,9 +7,11 @@ import (
 
 // baseKeys is what programs csquad starts in the background need: paths,
 // the user and locale, proxies, the SSH agent, the agents' own config
-// directories, csquad's own variables and Windows' system variables.
+// directories, csquad's own variables, the desktop's session bus and WSL's
+// interop (the notifications), and Windows' system variables.
 var baseKeys = regexp.MustCompile(`^(PATH|HOME|USER|LOGNAME|SHELL|TMPDIR|TMP|TEMP|LANG|LANGUAGE|LC_[A-Z_]+|TZ|` +
 	`(?i:http_proxy|https_proxy|no_proxy|all_proxy)|SSH_AUTH_SOCK|XDG_[A-Z_]+|CLAUDE_CONFIG_DIR|CODEX_HOME|CSQUAD_[A-Z0-9_]+|` +
+	`DBUS_SESSION_BUS_ADDRESS|WSL_DISTRO_NAME|WSL_INTEROP|` +
 	`(?i:SystemRoot|SystemDrive|windir|ComSpec|PATHEXT|USERPROFILE|APPDATA|LOCALAPPDATA|ProgramData|ProgramFiles|ProgramFiles\(x86\)|` +
 	`ProgramW6432|CommonProgramFiles|CommonProgramFiles\(x86\)|CommonProgramW6432|HOMEDRIVE|HOMEPATH|USERNAME|USERDOMAIN|COMPUTERNAME|` +
 	`NUMBER_OF_PROCESSORS|PROCESSOR_ARCHITECTURE|OS|CLAUDE_CODE_GIT_BASH_PATH))$`)

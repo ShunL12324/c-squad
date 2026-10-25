@@ -183,6 +183,14 @@ var commands = []command{
 		},
 	},
 	{
+		name:  "notify",
+		usage: "notify [test|on|input|off]   native notifications: the setting and backend, a test, or on / needs-input only / off",
+		flags: []string{"--title=", "--body=", "--wait="},
+		run: func(ctx context.Context, a *app.App, p *parsed) error {
+			return a.Notify(ctx, p.args, p.values["title"], p.values["body"], p.values["wait"])
+		},
+	},
+	{
 		name:  "statusline",
 		usage: "statusline   the status line command (reads Claude Code's JSON on stdin)",
 		run: func(_ context.Context, a *app.App, _ *parsed) error {
@@ -340,7 +348,7 @@ func run(argv []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	case c.name == "statusline":
 		return 0
-	case errors.Is(err, errUsage):
+	case errors.Is(err, errUsage) || app.ErrUsage(err):
 		fmt.Fprintf(stderr, "usage: csquad %s\n", c.usage)
 		return 2
 	case app.ErrSilent(err):

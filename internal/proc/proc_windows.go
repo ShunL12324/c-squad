@@ -3,8 +3,13 @@
 package proc
 
 import (
+	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"syscall"
+	"time"
 )
 
 func setCmdLine(cmd *exec.Cmd, line string) {
@@ -33,4 +38,24 @@ func detach(cmd *exec.Cmd) {
 	cmd.SysProcAttr.HideWindow = true
 }
 
-func killGroup(*exec.Cmd) {}
+// killGroup: cancelling kills cmd's process tree. Windows has no process
+// group a kill reaches; taskkill /T follows the parent ids.
+func killGroup(cmd *exec.Cmd) {
+	cmd.Cancel = func() error {
+		killTree(cmd.Process.Pid)
+		return cmd.Process.Kill()
+	}
+}
+
+// killTree kills pid and every process it started (taskkill /T /F).
+func killTree(pid int) {
+	exe := "taskkill.exe"
+	if root := os.Getenv("SystemRoot"); root != "" {
+		exe = filepath.Join(root, "System32", "taskkill.exe")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, exe, "/T", "/F", "/PID", strconv.Itoa(pid))
+	hideWindow(cmd)
+	_ = cmd.Run()
+}

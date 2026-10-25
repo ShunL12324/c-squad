@@ -69,6 +69,9 @@ func (a *App) statusQuery(ctx context.Context, in statusline.Input) ([]statuslin
 	}
 	live, err := a.observe(ctx, tasks)
 	if err != nil && len(live) == 0 {
+		for _, na := range notAnswering(err) {
+			return nil, na // the ledger says so, by its Short
+		}
 		return nil, err
 	}
 	tasks = a.clearGone(ctx, tasks, live)

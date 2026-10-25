@@ -20,6 +20,9 @@ type Task struct {
 	Note  string // for needs_you: why
 	Since time.Time
 	Usage *Usage // nil: no usage cell (no session, or no reading)
+	// Stale: the row is the last good one, the query failed now; its state
+	// shows with a "?".
+	Stale bool `json:"-"`
 }
 
 // State keys.
@@ -211,6 +214,9 @@ func newEntry(t Task) entry {
 		state = st.text
 	}
 	state = clean(state)
+	if t.Stale {
+		state += "?"
+	}
 	if t.State == NeedsYou && t.Note != "" && t.Text == "" {
 		if r := shortReason(t.Note, reasonMax); r != "" {
 			state += " · " + r
@@ -506,6 +512,18 @@ func cell(e entry, w fields, f fit, now time.Time, p painter) line {
 		l = append(l, segment{"  ", ""}, segment{padLeft(Age(e.t.Since, now), w.age), "2"})
 	}
 	return l
+}
+
+// Notice is a row that stands for the ledger when it cannot be shown:
+// "▎ ? claude agents not answering — csquad status for details".
+func Notice(text string, columns int, noColor bool) string {
+	usable := columns - Margin
+	if usable < 1 {
+		return ""
+	}
+	p := painter{noColor}
+	l := line{p.fg(amber, "▎"), {" ", ""}, p.fg(amber, "?"), {" ", ""}, {clean(text), ""}, {" — csquad status for details", "2"}}
+	return l.clip(usable).render()
 }
 
 // overflow is "+7 more" followed by the hidden tasks: by id when they fit,

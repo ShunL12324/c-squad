@@ -66,26 +66,49 @@ type statusEntry struct {
 	Round     int         `json:"round,omitempty"`
 	MaxRounds int         `json:"maxRounds,omitempty"`
 	MergeInto string      `json:"mergeInto,omitempty"`
-	Hold      bool        `json:"hold,omitempty"`  // --no-merge / csquad hold: never merged for the tasks queued after it
-	Next      string      `json:"next,omitempty"`  // what to do for a task a hold blocks
-	Usage     *usageEntry `json:"usage,omitempty"` // working tasks
+	Hold      bool        `json:"hold,omitempty"`     // --no-merge / csquad hold: never merged for the tasks queued after it
+	Next      string      `json:"next,omitempty"`     // what to do for a task a hold blocks
+	LastSeen  string      `json:"lastSeen,omitempty"` // the session's last seen state, when its engine did not answer now
+	Usage     *usageEntry `json:"usage,omitempty"`    // working tasks
 }
 
 // Status lists this session's tasks (all: every task) with their state, age,
 // session, directory and latest message.
 func (a *App) Status(ctx context.Context, all, asJSON bool) error {
 	tasks, live, err := a.listed(ctx, all)
-	if err != nil && len(live) == 0 && len(tasks) > 0 {
+	// A service that does not answer hides nothing: the tasks show from
+	// the store, their sessions' states as last seen, unverified.
+	down := notAnswering(err)
+	if err != nil && len(live) == 0 && len(tasks) > 0 && down == nil {
 		return err
 	}
 	if err != nil {
-		a.warnf("csquad: %v\n", err)
+		if len(down) > 0 && !asJSON && len(tasks) > 0 {
+			a.printf("warning: %v. The states below are not verified.\n\n", err)
+		} else {
+			a.warnf("csquad: %v\n", err)
+		}
 	}
 	views := map[int]View{}
 	q := a.queued(ctx)
 	for _, t := range tasks {
 		l, ok := live[t.ID]
 		views[t.ID] = q.reviewView(view(t, l, ok), t, l, ok)
+	}
+	// unverified: the state a task's session was last seen in, for the
+	// tasks of an engine that did not answer.
+	unverified := map[int]string{}
+	for _, t := range tasks {
+		na := down[t.Engine]
+		if na == nil || views[t.ID].Key != "unknown" {
+			continue
+		}
+		text := "unknown: " + na.Service + " did not answer"
+		if l, ok := na.Last[t.SessionID]; ok && l.State != "" {
+			text += fmt.Sprintf("; last seen %s %s ago (unverified)", stateText(l.State), ago(a.Now().Sub(na.LastAt)))
+			unverified[t.ID] = l.State
+		}
+		views[t.ID] = View{"unknown", text}
 	}
 	sort.SliceStable(tasks, func(i, j int) bool {
 		ri, rj := rank(views[tasks[i].ID].Key), rank(views[tasks[j].ID].Key)
@@ -127,6 +150,9 @@ func (a *App) Status(ctx context.Context, all, asJSON bool) error {
 			e.Check, e.Round, e.MaxRounds = t.CheckSpec, t.Round, t.MaxRounds
 		}
 		e.MergeInto, e.Hold, e.Next = t.MergeInto, t.Hold, q.nextStep(t, views[t.ID])
+		if s, ok := unverified[t.ID]; ok {
+			e.LastSeen = s
+		}
 		var usage []string
 		if working(views[t.ID].Key) {
 			e.Usage, usage = a.usageOf(ctx, t)

@@ -542,7 +542,8 @@ Claude Code 任务从你本地的 `HEAD` 创建 worktree，所以能看到你还
   settings.json.bak  首次安装时 Claude Code settings.json 的副本（权限 600）
   settings/T12.json  任务存在期间的会话设置（权限 600）
   prompts/T12.md     太长、放不进命令行的提示
-  cache/             状态栏最近一次的输出和用量读数
+  cache/             状态栏最近一次的输出、用量读数、最近一次的 `claude agents`
+                     列表，以及正在运行的 `claude agents` 调用
   logs/              检查日志、events.jsonl（每次阶段变化一行）、advance.log、notify.log
 ~/.claude/skills/    create-task、task-status、message-task、watch-task、finish-task
 ```
@@ -621,6 +622,16 @@ csquad 3 不会迁移 1.x 的安装（`~/.claude/csquad/`）。
 
 **任务显示 `gone`。**
 任务的会话在 csquad 之外被删除了（例如在 agent view 里），但它的部分工作（worktree 或分支）还在。运行 `csquad cancel T7` 把任务从列表中移除；它会保留未合并的工作，并告诉你在哪里。`csquad cancel T7 --discard` 会删除这些工作。如果任务什么都没留下，csquad 会自动把它从列表中移除。带检查或合并的任务这时显示的是 `needs you · session gone`。
+
+**`csquad status` 卡住，或显示 “not answering”。**
+Claude Code 的后台服务不再应答，所以 `claude agents` 得不到回复。csquad 最多等它 8 秒，然后停止这次调用。`csquad status` 列出任务和它们最后一次看到的状态，并标明未经确认。状态栏显示 `claude agents not answering`。在服务恢复应答之前，`finish` 和 `cancel` 不做任何改动，`wait` 继续等待。要重启服务，运行：
+
+```sh
+claude daemon stop --any --keep-workers
+claude agents
+```
+
+第一条命令停止服务，正在运行的任务继续运行。第二条命令打开 agent view，它会启动一个新服务，新服务接管正在运行的任务。请在大约一分钟内运行它：没有服务的时间更长时，任务会以 `failed` 结束。不加 `--keep-workers` 时，`claude daemon stop` 也会结束正在运行的任务。
 
 **最多能同时运行多少个任务？**
 csquad 不设上限。每个任务用自己的会话和 token，跑多少由你决定。

@@ -337,7 +337,7 @@ func (a *App) finishOne(ctx context.Context, label, into string, all bool) error
 	}
 	live, err := a.observe(ctx, []store.Task{t})
 	if err != nil {
-		return err
+		return unobserved(t, err)
 	}
 	l := live[t.ID]
 	if l.State == engine.Working || l.State == engine.NeedsInput {
@@ -383,6 +383,16 @@ func (a *App) finishOne(ctx context.Context, label, into string, all bool) error
 	}
 	a.printIgnored(p.ignored)
 	return nil
+}
+
+// unobserved is finish's and cancel's error when the task's session cannot
+// be observed: whether it still works decides what they may remove, so
+// they change nothing.
+func unobserved(t store.Task, err error) error {
+	if notAnswering(err) != nil {
+		return fmt.Errorf("%s was left as it is: its session's state cannot be seen. %v", t.Label(), err)
+	}
+	return err
 }
 
 // mergedText says which branches are in the target, and which only by
@@ -441,7 +451,7 @@ func (a *App) Cancel(ctx context.Context, label string, discard, all bool) error
 		}
 		live, err := a.observe(ctx, []store.Task{t})
 		if err != nil {
-			return err
+			return unobserved(t, err)
 		}
 		l := live[t.ID]
 		if l.State == engine.Working || l.State == engine.NeedsInput || l.State == engine.Idle {
@@ -518,7 +528,7 @@ func (a *App) cancelAgain(ctx context.Context, t store.Task, discard bool) error
 		}
 		live, err := a.observe(ctx, []store.Task{t})
 		if err != nil {
-			return err
+			return unobserved(t, err)
 		}
 		l = live[t.ID]
 	}

@@ -33,6 +33,22 @@ type Live struct {
 	StartedAt time.Time
 }
 
+// NotAnswering is the error of an engine whose service did not answer in
+// time: the call was killed, nothing is known about the sessions now. Last
+// is what the engine saw of them before (at LastAt), when it remembers.
+type NotAnswering struct {
+	Service string // "Claude Code's background service"
+	Detail  string // "claude agents got no answer in 8s"
+	Short   string // a few words for the status line: "claude agents not answering"
+	Fix     string // what the user does about it
+	Last    map[string]Live
+	LastAt  time.Time
+}
+
+func (e *NotAnswering) Error() string {
+	return fmt.Sprintf("%s did not answer (%s); %s", e.Service, e.Detail, e.Fix)
+}
+
 // StartSpec is what Start needs.
 type StartSpec struct {
 	ID      int // 12 → "T12"
@@ -166,6 +182,9 @@ type Config struct {
 	// NoStart: never start a service an engine needs (the Codex daemon);
 	// for the status line, which must stay fast.
 	NoStart bool
+	// StatusLine: the status line refreshes every few seconds; it never
+	// starts a query while another csquad's query of the same service runs.
+	StatusLine bool
 }
 
 var factories = map[string]func(Config) Engine{}

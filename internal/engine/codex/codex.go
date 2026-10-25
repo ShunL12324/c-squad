@@ -30,7 +30,8 @@ type Engine struct {
 	// Version is the client version sent in initialize.
 	Version string
 	// Now is the clock for the young-turn rule.
-	Now func() time.Time
+	Now  func() time.Time
+	down down // a request that got no answer
 }
 
 // New returns a Codex engine.

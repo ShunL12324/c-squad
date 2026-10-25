@@ -101,7 +101,8 @@ func (a *App) Engine(name string) (engine.Engine, error) {
 	if e, ok := a.engines[name]; ok {
 		return e, nil
 	}
-	e, err := engine.New(name, engine.Config{Home: a.Home, ClaudeDir: a.ClaudeDir, Env: a.Env, NoStart: a.NoStart})
+	// NoStart is the status line's: it also shares a query in flight.
+	e, err := engine.New(name, engine.Config{Home: a.Home, ClaudeDir: a.ClaudeDir, Env: a.Env, NoStart: a.NoStart, StatusLine: a.NoStart})
 	if err != nil {
 		return nil, err
 	}
@@ -217,6 +218,29 @@ func engineErrors(err error) EngineErrors {
 		return e
 	}
 	return nil
+}
+
+// notAnswering returns the engines in err whose service did not answer, by
+// name (nil when none).
+func notAnswering(err error) map[string]*engine.NotAnswering {
+	var out map[string]*engine.NotAnswering
+	add := func(name string, err error) {
+		var na *engine.NotAnswering
+		if errors.As(err, &na) {
+			if out == nil {
+				out = map[string]*engine.NotAnswering{}
+			}
+			out[name] = na
+		}
+	}
+	if errs := engineErrors(err); errs != nil {
+		for name, err := range errs {
+			add(name, err)
+		}
+	} else {
+		add("", err)
+	}
+	return out
 }
 
 // observe returns the live state of each task with a session, one engine

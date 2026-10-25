@@ -32,6 +32,7 @@ type Engine struct {
 	cfg engine.Config
 	// PermissionMode is the default --permission-mode of a task.
 	PermissionMode string
+	down           down // a call that got no answer
 }
 
 // New returns a Claude Code engine.
@@ -83,31 +84,6 @@ func (e *Engine) run(ctx context.Context, dir string, args ...string) (string, e
 		return text, fmt.Errorf("cannot run claude: %w", err)
 	}
 	return text, nil
-}
-
-// Agents lists the sessions Claude Code knows, completed ones included.
-func (e *Engine) Agents(ctx context.Context) ([]Session, error) {
-	c, err := proc.Resolve("claude", []string{"agents", "--json", "--all"}, e.cfg.Env)
-	if err != nil {
-		return nil, err
-	}
-	cmd := c.Command(ctx)
-	cmd.Env = e.cfg.Env
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
-	if err != nil {
-		msg := strings.TrimSpace(ansi.ReplaceAllString(stderr.String(), ""))
-		if msg == "" {
-			msg = err.Error()
-		}
-		return nil, fmt.Errorf("claude agents failed: %s", firstLine(msg))
-	}
-	var list []Session
-	if err := json.Unmarshal(out, &list); err != nil {
-		return nil, fmt.Errorf("claude agents printed no JSON list: %v", err)
-	}
-	return list, nil
 }
 
 func firstLine(s string) string {
@@ -173,7 +149,7 @@ func match(list []Session, id string) (Session, bool) {
 func (e *Engine) States(ctx context.Context, ids []string) (map[string]engine.Live, error) {
 	list, err := e.Agents(ctx)
 	if err != nil {
-		return nil, err
+		return nil, e.withLast(err, ids)
 	}
 	return states(list, ids), nil
 }
@@ -215,12 +191,15 @@ var (
 // verified merged and already removed. Otherwise the refusal is returned.
 func (e *Engine) Remove(ctx context.Context, id string, merged []string) (string, error) {
 	var cwd string
+	var na *engine.NotAnswering
 	if list, err := e.Agents(ctx); err == nil {
 		if s, ok := match(list, id); ok {
 			cwd = s.Cwd
 		} else {
 			return "session " + id + " was already removed", nil
 		}
+	} else if errors.As(err, &na) {
+		return "", err // claude rm would wait for the same service
 	}
 	out, err := e.run(ctx, "", "rm", id)
 	if err == nil {

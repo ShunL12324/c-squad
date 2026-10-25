@@ -90,6 +90,33 @@
   the workspace trust from `$CLAUDE_CONFIG_DIR/.claude.json` instead of
   `~/.claude.json`. Detached processes now get `CLAUDE_CONFIG_DIR` only
   when the user set it.
+- csquad no longer hangs when Claude Code's background service stops
+  answering. Seen with Claude Code 2.1.295: `claude agents --json` waited
+  forever and ignored SIGTERM. `csquad status`, `peek` and `finish` then
+  hung, and each status line refresh started another `claude agents` that
+  never ended.
+  - Every `claude` call has a deadline: 8 seconds for `claude agents` in a
+    command, the status line's own budget there, 20 seconds for `claude
+    stop` and `claude rm`, a minute for a launch. When the deadline passes,
+    csquad kills the call with everything it started: SIGKILL to its own
+    process group, or its process tree on Windows.
+  - csquad records each `claude agents` call that runs in
+    `~/.csquad/cache/claude-agents/`. When a call is still running a minute
+    later because its csquad died, the next csquad kills it.
+  - The status line never starts a call while another one runs. It takes
+    that call's answer, or shows its last rows with a `?` after the state.
+    After 2 minutes it shows one row, `claude agents not answering — csquad
+    status for details`, instead of an empty ledger.
+  - `csquad status` lists the tasks from its own store. A task's state reads
+    `unknown: Claude Code's background service did not answer; last seen
+    working 3m ago (unverified)`. One line at the top names the fix: `claude
+    daemon stop --any --keep-workers`, then `claude agents`.
+  - `finish` and `cancel` change nothing and say why, because they must know
+    whether the session still works. `wait` says it once and goes on
+    waiting. `peek` reads the transcript as before.
+  - A request to the Codex app-server that gets no answer fails the same
+    way: after 8 seconds for a read or a removal, after a minute for other
+  requests.
 
 ## 3.0.3 - 2026-10-25
 

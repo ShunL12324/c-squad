@@ -22,3 +22,10 @@ func killGroup(cmd *exec.Cmd) {
 	cmd.SysProcAttr.Setpgid = true
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 }
+
+// killTree kills the process group pid leads (KillGroup's children lead
+// one), and pid itself should it lead none.
+func killTree(pid int) {
+	_ = syscall.Kill(-pid, syscall.SIGKILL)
+	_ = syscall.Kill(pid, syscall.SIGKILL)
+}

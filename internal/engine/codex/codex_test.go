@@ -3,6 +3,7 @@ package codex
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -391,6 +392,25 @@ func TestDialResolvesALinkedSocket(t *testing.T) {
 	}
 	if srv.DaemonStarts() != 0 {
 		t.Errorf("a running daemon was started again")
+	}
+}
+
+func TestADaemonThatDoesNotAnswer(t *testing.T) {
+	f := setup(t, true, "CSQUAD_OBSERVE_TIMEOUT_MS=300")
+	f.srv.Silent("thread/read")
+	start := time.Now()
+	_, err := f.eng.States(ctx(t), []string{"x"})
+	var na *engine.NotAnswering
+	if !errors.As(err, &na) || !strings.Contains(err.Error(), "thread/read got no answer in 300ms") || !strings.Contains(err.Error(), "codex app-server daemon restart") {
+		t.Fatalf("%v", err)
+	}
+	if took := time.Since(start); took > 3*time.Second {
+		t.Errorf("took %v", took)
+	}
+	// The next request fails at once instead of waiting again.
+	start = time.Now()
+	if _, err := f.eng.Last(ctx(t), "x", 1); !errors.As(err, &na) || time.Since(start) > 100*time.Millisecond {
+		t.Errorf("%v after %v", err, time.Since(start))
 	}
 }
 

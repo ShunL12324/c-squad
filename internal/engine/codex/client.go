@@ -10,12 +10,15 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
 
+	"github.com/ShunL12324/c-squad/internal/engine"
 	"github.com/ShunL12324/c-squad/internal/proc"
 )
 
@@ -50,8 +53,34 @@ func (e *unreachable) Unwrap() error { return e.err }
 
 // conn is one connection to the app-server; csquad opens one per command.
 type conn struct {
-	ws   *websocket.Conn
-	next atomic.Int64
+	ws      *websocket.Conn
+	next    atomic.Int64
+	observe time.Duration // how long a read may take; see limit
+	down    *down
+}
+
+// ObserveTimeout is how long the app-server may take to answer a read (the
+// handshake, initialize, thread/read, thread/turns/list) or a removal; other
+// requests start work and get a minute. A daemon that accepts the
+// connection and never answers would otherwise hold csquad forever.
+const ObserveTimeout = 8 * time.Second
+
+func (c *conn) limit(method string) time.Duration {
+	switch method {
+	case "initialize", "thread/read", "thread/turns/list", "thread/archive", "turn/interrupt":
+		return c.observe
+	}
+	return max(c.observe, time.Minute)
+}
+
+// notAnswering is the error of a request the app-server did not answer.
+func notAnswering(detail string) *engine.NotAnswering {
+	return &engine.NotAnswering{
+		Service: "the Codex app-server",
+		Detail:  detail,
+		Short:   "codex app-server not answering",
+		Fix:     "restart it: codex app-server daemon restart (it may interrupt running turns)",
+	}
 }
 
 // envelope is any message: a response (id + result/error), a notification
@@ -66,7 +95,7 @@ type envelope struct {
 
 // connect dials the socket at path (a link resolved first) and runs the
 // WebSocket handshake and initialize.
-func connect(ctx context.Context, path, version string) (*conn, error) {
+func connect(ctx context.Context, path, version string, observe time.Duration) (*conn, error) {
 	target, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		if _, lerr := os.Lstat(path); lerr == nil && !errors.Is(err, os.ErrNotExist) {
@@ -90,13 +119,18 @@ func connect(ctx context.Context, path, version string) (*conn, error) {
 			return nc, nil
 		},
 	}}
-	ws, _, err := websocket.Dial(ctx, "ws://localhost/", &websocket.DialOptions{HTTPClient: client})
+	hctx, cancel := context.WithTimeout(ctx, observe)
+	defer cancel()
+	ws, _, err := websocket.Dial(hctx, "ws://localhost/", &websocket.DialOptions{HTTPClient: client})
 	if err != nil {
 		nc.Close()
+		if errors.Is(hctx.Err(), context.DeadlineExceeded) {
+			return nil, notAnswering(fmt.Sprintf("the WebSocket handshake got no answer in %s", observe))
+		}
 		return nil, fmt.Errorf("the Codex app-server at %s refused the connection: %v", path, err)
 	}
 	ws.SetReadLimit(256 << 20) // thread reads carry whole turns
-	c := &conn{ws: ws}
+	c := &conn{ws: ws, observe: observe}
 	init := map[string]any{
 		"clientInfo":   map[string]any{"name": "csquad", "title": "csquad", "version": version},
 		"capabilities": map[string]any{"experimentalApi": true, "requestAttestation": false},
@@ -126,6 +160,49 @@ func (c *conn) write(ctx context.Context, m envelope) error {
 // requests of the server (approvals, questions) are left alone: the daemon
 // keeps such a request for a client that can answer it (`codex resume`).
 func (c *conn) call(ctx context.Context, method string, params, result any) error {
+	limit := c.limit(method)
+	ctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
+	err := c.exchange(ctx, method, params, result)
+	if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		err = notAnswering(fmt.Sprintf("%s got no answer in %s", method, limit))
+		if c.down != nil {
+			c.down.record(err)
+		}
+	}
+	return err
+}
+
+// downFor: after a request got no answer, this process's next requests fail
+// at once for this long instead of waiting again.
+const downFor = 30 * time.Second
+
+// down remembers a request the app-server did not answer.
+type down struct {
+	mu  sync.Mutex
+	err *engine.NotAnswering
+	at  time.Time
+}
+
+func (d *down) get() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.err != nil && time.Since(d.at) < downFor {
+		return d.err
+	}
+	return nil
+}
+
+func (d *down) record(err error) {
+	var na *engine.NotAnswering
+	if errors.As(err, &na) {
+		d.mu.Lock()
+		d.err, d.at = na, time.Now()
+		d.mu.Unlock()
+	}
+}
+
+func (c *conn) exchange(ctx context.Context, method string, params, result any) error {
 	id := c.next.Add(1)
 	raw, err := json.Marshal(params)
 	if err != nil {
@@ -186,8 +263,20 @@ func codexHome(env proc.Env) string {
 // app-server daemon start` (idempotent; it prints JSON with socketPath)
 // and connects again, unless NoStart.
 func (e *Engine) dial(ctx context.Context) (*conn, error) {
+	if err := e.down.get(); err != nil {
+		return nil, err
+	}
+	c, err := e.dialOnce(ctx)
+	e.down.record(err)
+	if c != nil {
+		c.down = &e.down
+	}
+	return c, err
+}
+
+func (e *Engine) dialOnce(ctx context.Context) (*conn, error) {
 	path := filepath.Join(codexHome(e.cfg.Env), SocketRel)
-	c, err := connect(ctx, path, e.version())
+	c, err := connect(ctx, path, e.version(), e.observeTimeout())
 	var u *unreachable
 	if err == nil || !errors.As(err, &u) || e.cfg.NoStart {
 		return c, err
@@ -201,7 +290,7 @@ func (e *Engine) dial(ctx context.Context) (*conn, error) {
 	}
 	deadline := time.Now().Add(10 * time.Second)
 	for wait := 50 * time.Millisecond; ; wait = min(2*wait, time.Second) {
-		c, err = connect(ctx, path, e.version())
+		c, err = connect(ctx, path, e.version(), e.observeTimeout())
 		if err == nil || !errors.As(err, &u) || time.Now().After(deadline) {
 			return c, err
 		}
@@ -211,6 +300,14 @@ func (e *Engine) dial(ctx context.Context) (*conn, error) {
 		case <-time.After(wait):
 		}
 	}
+}
+
+// observeTimeout is ObserveTimeout, or CSQUAD_OBSERVE_TIMEOUT_MS (tests).
+func (e *Engine) observeTimeout() time.Duration {
+	if ms, err := strconv.Atoi(e.cfg.Env.Get("CSQUAD_OBSERVE_TIMEOUT_MS")); err == nil && ms > 0 {
+		return time.Duration(ms) * time.Millisecond
+	}
+	return ObserveTimeout
 }
 
 func (e *Engine) version() string {
@@ -246,6 +343,7 @@ func (e *Engine) run(ctx context.Context, args ...string) (string, error) {
 	defer cancel()
 	cmd := c.Command(ctx)
 	cmd.Env = e.cfg.Env
+	proc.Bounded(cmd, time.Second)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {

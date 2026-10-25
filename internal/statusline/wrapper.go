@@ -6,6 +6,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ShunL12324/c-squad/internal/engine"
 	"github.com/ShunL12324/c-squad/internal/proc"
 )
 
@@ -146,12 +148,21 @@ func Run(o Options) string {
 		c.Own, c.OwnAt = own, now.UnixMilli()
 	}
 	var tasks []Task
-	if qerr == nil {
+	notice := ""
+	var na *engine.NotAnswering
+	switch {
+	case qerr == nil:
 		tasks = withSince(observed, &c, now)
 		withUsage(tasks, observed, readings, o.CacheDir, now)
 		c.Tasks, c.TasksAt = tasks, now.UnixMilli()
-	} else if now.UnixMilli()-c.TasksAt < Stale.Milliseconds() {
-		tasks = c.Tasks
+	case now.UnixMilli()-c.TasksAt < Stale.Milliseconds():
+		tasks = slices.Clone(c.Tasks)
+		for i := range tasks {
+			tasks[i].Stale = true
+		}
+	case errors.As(qerr, &na):
+		// Not nothing: the user would take an empty ledger for no tasks.
+		notice = Notice(na.Short, o.Columns, o.NoColor)
 	}
 	save(o.CacheDir, key, c)
 	parts := []string{}
@@ -159,6 +170,9 @@ func Run(o Options) string {
 		parts = append(parts, own)
 	}
 	parts = append(parts, Layout(tasks, o.Columns, now, o.NoColor)...)
+	if notice != "" {
+		parts = append(parts, notice)
+	}
 	if len(parts) == 0 {
 		return ""
 	}
@@ -268,7 +282,7 @@ func runOwn(command string, stdin []byte, env proc.Env, budget time.Duration) (s
 	cmd := proc.Shell(command, env).Command(ctx)
 	cmd.Env = env
 	cmd.Stdin = bytes.NewReader(stdin)
-	cmd.WaitDelay = 200 * time.Millisecond
+	proc.Bounded(cmd, 200*time.Millisecond)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", false

@@ -15,6 +15,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -151,6 +152,10 @@ func fakeClaude(args []string) int {
 		}
 		fmt.Println(v + " (Claude Code)")
 		return 0
+	case args[0] == "hang-child":
+		return hang(state, false)
+	case args[0] == "agents" && os.Getenv("FAKE_AGENTS_HANG") != "":
+		return hang(state, true)
 	case args[0] == "agents":
 		if ms, _ := strconv.Atoi(os.Getenv("FAKE_AGENTS_SLEEP")); ms > 0 {
 			time.Sleep(time.Duration(ms) * time.Millisecond)
@@ -244,6 +249,43 @@ func fakeClaude(args []string) int {
 	}
 	fmt.Fprintln(os.Stderr, "fake claude: unknown command", args)
 	return 1
+}
+
+// hang is a `claude agents` whose service never answers, as seen with
+// Claude Code 2.1.295: it ignores SIGTERM and waits forever. With child it
+// starts a second such process that holds its stdout, as a helper process
+// would. Each records its pid in the state's .hung file.
+func hang(state string, child bool) int {
+	signal.Ignore(syscall.SIGTERM, syscall.SIGINT)
+	if f, err := os.OpenFile(state+".hung", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+		fmt.Fprintln(f, os.Getpid())
+		f.Close()
+	}
+	if child {
+		if f, err := os.OpenFile(state+".calls", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+			f.WriteString("x")
+			f.Close()
+		}
+		exe, _ := os.Executable()
+		c := exec.Command(exe, "hang-child")
+		c.Args[0] = os.Args[0] // still "claude"
+		c.Stdout, c.Stderr = os.Stdout, os.Stderr
+		_ = c.Start()
+	}
+	time.Sleep(time.Hour)
+	return 0
+}
+
+// Hung lists the pids of the never-answering processes the fake started.
+func (h *Home) Hung() []int {
+	b, _ := os.ReadFile(h.State + ".hung")
+	var out []int
+	for _, f := range strings.Fields(string(b)) {
+		if n, err := strconv.Atoi(f); err == nil {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // Home is a temporary environment: HOME, CSQUAD_HOME, CLAUDE_CONFIG_DIR, a

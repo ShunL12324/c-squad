@@ -122,6 +122,7 @@ func (a *App) Wait(ctx context.Context, labels []string, timeoutMin float64, all
 	deadline := start.Add(time.Duration(timeoutMin * float64(time.Minute)))
 	var stopAt time.Time
 	firstFailure := map[string]time.Time{} // by engine
+	told := map[string]bool{}              // engines reported not answering
 	db, err := a.Store()
 	if err != nil {
 		return err
@@ -144,9 +145,19 @@ func (a *App) Wait(ctx context.Context, labels []string, timeoutMin float64, all
 				delete(firstFailure, name)
 			}
 		}
+		down := notAnswering(oerr)
 		for _, w := range ws {
 			err := failing[w.t.Engine]
 			if w.done || err == nil || w.t.SessionID == "" || store.Finished(w.t.Phase) {
+				continue
+			}
+			// A service that does not answer may come back (restarted):
+			// wait says so once and goes on waiting.
+			if na := down[w.t.Engine]; na != nil {
+				if !told[w.t.Engine] {
+					told[w.t.Engine] = true
+					a.warnf("csquad: %v. Still waiting.\n", na)
+				}
 				continue
 			}
 			if _, ok := firstFailure[w.t.Engine]; !ok {

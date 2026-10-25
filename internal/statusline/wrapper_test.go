@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ShunL12324/c-squad/internal/engine"
 )
 
 func TestRunFallsBackToTheLastGoodOutput(t *testing.T) {
@@ -78,5 +80,33 @@ func TestRunRemembersTheTimeInState(t *testing.T) {
 	o.CacheDir = t.TempDir()
 	if got := strip(Run(o)); !regexp.MustCompile(`idle +45m`).MatchString(got) {
 		t.Errorf("first seen idle: since its last activity: %q", got)
+	}
+}
+
+func TestRunWhenTheServiceDoesNotAnswer(t *testing.T) {
+	dir := t.TempDir()
+	clock := now
+	var qerr error
+	o := Options{
+		Stdin: []byte(`{"session_id":"abc"}`), CacheDir: dir, Columns: 80, NoColor: true,
+		Now: func() time.Time { return clock },
+		Query: func(context.Context, Input) ([]Observed, error) {
+			if qerr != nil {
+				return nil, qerr
+			}
+			return []Observed{{Task: Task{ID: 1, Title: "job", State: Working}, SessionID: "s", StartedAt: now}}, nil
+		},
+	}
+	if got := strip(Run(o)); !regexp.MustCompile(`^▎ ● T1 job +working +now\n$`).MatchString(got) {
+		t.Fatalf("%q", got)
+	}
+	qerr = &engine.NotAnswering{Service: "Claude Code's background service", Short: "claude agents not answering"}
+	clock = now.Add(time.Minute)
+	if got := strip(Run(o)); !regexp.MustCompile(`^▎ ● T1 job +working\? +1m\n$`).MatchString(got) {
+		t.Errorf("within 2 minutes the last rows show, marked: %q", got)
+	}
+	clock = now.Add(3 * time.Minute)
+	if got := strip(Run(o)); got != "▎ ? claude agents not answering — csquad status for details\n" {
+		t.Errorf("after 2 minutes one row says why: %q", got)
 	}
 }

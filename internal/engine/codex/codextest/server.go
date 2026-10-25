@@ -66,6 +66,7 @@ type Server struct {
 	order   []string
 	calls   []Call
 	fail    map[string]string // method → error message
+	silent  map[string]bool   // methods never answered
 	inits   int
 	srv     *http.Server
 }
@@ -129,6 +130,16 @@ func (s *Server) Fail(method, message string) {
 	} else {
 		s.fail[method] = message
 	}
+}
+
+// Silent makes method go unanswered, as a daemon that stopped answering.
+func (s *Server) Silent(method string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.silent == nil {
+		s.silent = map[string]bool{}
+	}
+	s.silent[method] = true
 }
 
 // Calls returns the requests answered so far.
@@ -270,6 +281,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			if m.Method == "initialized" {
 				initialized = true
 			}
+			continue
+		}
+		s.mu.Lock()
+		silent := s.silent[m.Method]
+		s.mu.Unlock()
+		if silent {
 			continue
 		}
 		var params map[string]any

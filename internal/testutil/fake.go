@@ -337,6 +337,14 @@ func NewHome(t testing.TB) *Home {
 		t.Fatal(err)
 	}
 	h.SetSessions(nil)
+	// A test that fails leaves no never-answering process behind.
+	t.Cleanup(func() {
+		for _, pid := range h.Hung() {
+			if p, err := os.FindProcess(pid); err == nil {
+				p.Kill()
+			}
+		}
+	})
 	return h
 }
 

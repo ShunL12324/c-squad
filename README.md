@@ -604,7 +604,8 @@ your settings, in the project settings, or after `--`.
   settings.json.bak  a copy of your Claude Code settings.json from the first install (mode 600)
   settings/T12.json  the session settings of a task while it exists (mode 600)
   prompts/T12.md     a prompt that is too long for the command line
-  cache/             the last status line output and the usage readings
+  cache/             the last status line output, the usage readings, the last
+                     `claude agents` list and the calls of it that run
   logs/              check logs, events.jsonl (one line per phase change), advance.log, notify.log
 ~/.claude/skills/    create-task, task-status, message-task, watch-task, finish-task
 ```
@@ -708,6 +709,23 @@ work (a worktree or a branch) is left. Run `csquad cancel T7` to remove the task
 keeps unmerged work and tells you where it is. `csquad cancel T7 --discard` deletes it. When
 nothing of the task is left, csquad removes it from the list without a command. A task with a
 check or a merge shows `needs you · session gone` instead.
+
+**`csquad status` hangs or shows "not answering".**
+Claude Code's background service stopped answering, so `claude agents` gets no reply. csquad
+waits 8 seconds for it, then stops the call. `csquad status` lists the tasks with their last
+seen state, marked as not verified. The status line shows `claude agents not answering`.
+`finish` and `cancel` change nothing until the service answers again, and `wait` keeps waiting.
+To restart the service, run:
+
+```sh
+claude daemon stop --any --keep-workers
+claude agents
+```
+
+The first command stops the service and keeps the running tasks running. The second command
+opens agent view, which starts a new service. The new service takes over the running tasks. Run
+it within about a minute: a task that has no service for longer ends as `failed`. Without
+`--keep-workers`, `claude daemon stop` also ends the running tasks.
 
 **How many tasks can run at the same time?**
 csquad sets no limit. Each task uses its own session and tokens, so you decide how many to run.

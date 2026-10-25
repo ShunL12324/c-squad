@@ -52,13 +52,14 @@ func xmlText(s string) string {
 
 // ToastScript shows ToastXML(m). The XML goes in as base64: no quoting
 // problem can occur. Windows shows no toast for an app ID that is not
-// registered, so the script registers it first when the key is missing: a
-// native and a WSL installation share it, and the uninstall of one removes
-// it.
+// registered, and no icon for one whose icon file is missing, so the script
+// repairs both first: a native and a WSL installation share the app ID,
+// and the uninstall of one removes it.
 func ToastScript(m Message) string {
 	return `$ErrorActionPreference = 'Stop'
 $key = ` + psQuote(`HKCU:\`+AppIDKey) + `
-if (-not (Test-Path -LiteralPath $key)) {
+$want = Join-Path (Join-Path $env:LOCALAPPDATA 'csquad') 'csquad.png'
+if (-not (Test-Path -LiteralPath $key) -or -not (Test-Path -LiteralPath $want) -or (Get-ItemProperty -LiteralPath $key).IconUri -ne $want) {
 ` + registerBody(PNG(256)) + `}
 $null = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
 $null = [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]

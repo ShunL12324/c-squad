@@ -102,18 +102,29 @@ type Bundle struct {
 	App string
 	Env proc.Env
 	// Wait is how long post waits for the user's answer to the permission
-	// request; 0 = 15 s.
+	// request; 0 = PermissionWait. macOS removes the question when post
+	// ends, and does not ask again.
 	Wait time.Duration
+}
+
+// PermissionWait is how long the first notification waits for the user to
+// allow csquad's notifications.
+const PermissionWait = 5 * time.Minute
+
+// Timeout is how long Send may take.
+func (b Bundle) Timeout() time.Duration { return b.wait() + 20*time.Second }
+
+func (b Bundle) wait() time.Duration {
+	if b.Wait == 0 {
+		return PermissionWait
+	}
+	return b.Wait
 }
 
 func (b Bundle) Name() string { return "macOS notification (" + b.App + ")" }
 
 func (b Bundle) Send(ctx context.Context, m Message) error {
-	wait := b.Wait
-	if wait == 0 {
-		wait = 15 * time.Second
-	}
-	cmd := exec.CommandContext(ctx, BundleExe(b.App), "notify", "post", "--title", m.Title, "--body", m.Body, "--wait", fmt.Sprint(wait.Milliseconds()))
+	cmd := exec.CommandContext(ctx, BundleExe(b.App), "notify", "post", "--title", m.Title, "--body", m.Body, "--wait", fmt.Sprint(b.wait().Milliseconds()))
 	cmd.Env = b.Env
 	return run(ctx, cmd, "csquad.app")
 }

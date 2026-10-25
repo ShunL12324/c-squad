@@ -177,7 +177,19 @@ func (a *App) NotifySend(ctx context.Context, label, class string) error {
 	if !notify.Wants(notify.Mode(a.Env, a.Home), class) {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(ctx, a.envMs("CSQUAD_NOTIFY_TIMEOUT_MS", 20*time.Second))
+	b, err := notify.Select(notify.Local(a.Env, a.Home))
+	if errors.Is(err, notify.ErrNone) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	timeout := a.envMs("CSQUAD_NOTIFY_TIMEOUT_MS", 20*time.Second)
+	if tb, ok := b.(interface{ Timeout() time.Duration }); ok {
+		// macOS: the first notification waits for the user's permission.
+		timeout = max(timeout, tb.Timeout())
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	db, err := a.Store()
 	if err != nil {
@@ -193,13 +205,6 @@ func (a *App) NotifySend(ctx context.Context, label, class string) error {
 		// right after its start.
 		a.logNotify("%s: no final message yet; nothing sent", t.Label())
 		return nil
-	}
-	b, err := notify.Select(notify.Local(a.Env, a.Home))
-	if errors.Is(err, notify.ErrNone) {
-		return nil
-	}
-	if err != nil {
-		return err
 	}
 	if err := b.Send(ctx, m); err != nil {
 		return fmt.Errorf("%s: %s: %v", t.Label(), b.Name(), err)
@@ -288,10 +293,13 @@ func (a *App) notifyTest(ctx context.Context) error {
 			a.printf("App ID %s: registered, icon %s\n", notify.AppID, r.Icon)
 		}
 	case notify.Bundle:
-		tb.Wait = time.Minute // the user may answer macOS's permission request now
-		b = tb
+		a.printf("If macOS asks whether csquad may send notifications, choose Allow (this waits up to %s).\n", ago(tb.Timeout()-20*time.Second))
 	}
-	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	timeout := 90 * time.Second
+	if tb, ok := b.(interface{ Timeout() time.Duration }); ok {
+		timeout = max(timeout, tb.Timeout())
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	m := notify.Message{Title: "csquad · test", Body: "Notifications work. Mode: " + mode}
 	if err := b.Send(ctx, m); err != nil {

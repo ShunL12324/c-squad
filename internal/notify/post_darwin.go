@@ -55,9 +55,31 @@ func errorText(err objc.ID) string {
 	return goString(err.Send(sel("localizedDescription")))
 }
 
+// UNAuthorizationStatus values.
+const (
+	notDetermined = 0
+	denied        = 1
+)
+
+// authorizationStatus reads csquad's notification permission.
+func authorizationStatus(center objc.ID) (int, error) {
+	status := make(chan int, 1)
+	blk := objc.NewBlock(func(_ objc.Block, settings objc.ID) { status <- objc.Send[int](settings, sel("authorizationStatus")) })
+	defer blk.Release()
+	center.Send(sel("getNotificationSettingsWithCompletionHandler:"), blk)
+	select {
+	case s := <-status:
+		return s, nil
+	case <-time.After(10 * time.Second):
+		return 0, fmt.Errorf("the notification center did not answer")
+	}
+}
+
 // Post shows m with UNUserNotificationCenter. It must run inside
 // csquad.app (the bundle's csquad). The first time, macOS asks the user
-// for permission; Post waits for the answer up to wait.
+// for permission; Post waits for the answer up to wait. The question stays
+// on screen only while this process runs: macOS removes it when the
+// process ends, and does not ask again.
 func Post(m Message, wait time.Duration) error {
 	if err := loadFrameworks(); err != nil {
 		return err
@@ -69,6 +91,16 @@ func Post(m Message, wait time.Duration) error {
 	center := objc.ID(objc.GetClass("UNUserNotificationCenter")).Send(sel("currentNotificationCenter"))
 	if center == 0 {
 		return fmt.Errorf("no notification center")
+	}
+	status, err := authorizationStatus(center)
+	if err != nil {
+		return err
+	}
+	if status == denied {
+		return fmt.Errorf("notifications for csquad are off: turn them on in System Settings › Notifications › csquad")
+	}
+	if status != notDetermined {
+		wait = 10 * time.Second // already answered: no question shows
 	}
 	type result struct {
 		ok  bool

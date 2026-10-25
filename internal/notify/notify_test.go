@@ -183,7 +183,7 @@ func TestToast(t *testing.T) {
 	}
 	// Without the app ID Windows shows nothing: the toast registers it
 	// first when the key is missing, with the one icon path.
-	for _, want := range []string{`$key = 'HKCU:\Software\Classes\AppUserModelId\csquad'`, "if (-not (Test-Path -LiteralPath $key)) {",
+	for _, want := range []string{`$key = 'HKCU:\Software\Classes\AppUserModelId\csquad'`, "if (-not (Test-Path -LiteralPath $key) -or -not (Test-Path -LiteralPath $want) -or (Get-ItemProperty -LiteralPath $key).IconUri -ne $want) {",
 		"Join-Path $env:LOCALAPPDATA 'csquad'", base64.StdEncoding.EncodeToString(PNG(256))} {
 		if !strings.Contains(script, want) {
 			t.Errorf("the toast script lacks %q", want)

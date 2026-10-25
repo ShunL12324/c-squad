@@ -351,7 +351,11 @@ func (a *App) spawn(log string, args ...string) error {
 	defer f.Close()
 	fmt.Fprintf(f, "--- %s csquad %s\n", a.Now().Format(time.RFC3339), strings.Join(args, " "))
 	cmd := exec.Command(exe, args...)
-	cmd.Env = a.Env.Base().With("CSQUAD_HOME", a.Home).With("CLAUDE_CONFIG_DIR", a.ClaudeDir)
+	// CLAUDE_CONFIG_DIR only as the user set it (Base keeps it): set, Claude
+	// Code reads its global config, with the workspace trust, from
+	// $CLAUDE_CONFIG_DIR/.claude.json instead of ~/.claude.json, and a
+	// queued task would not start ("Workspace not trusted").
+	cmd.Env = a.Env.Base().With("CSQUAD_HOME", a.Home)
 	cmd.Dir = a.Home
 	cmd.Stdout, cmd.Stderr = f, f
 	proc.Detach(cmd)

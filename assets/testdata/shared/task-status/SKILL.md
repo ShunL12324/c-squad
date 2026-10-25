@@ -24,7 +24,12 @@ their state (needs input, failed, done, idle, working, stopped, gone), age,
 session, directory and latest message. Tasks with a check, a merge or an
 order show csquad's flow instead: `waiting T3`, `checking 1/3`,
 `fixing 2/3`, `merging`, `ready` (the check passed), `needs you` with a
-`note:` line saying why (`csquad retry T12` resumes it). A `gone` row means
+`note:` line saying why (`csquad retry T12` resumes it). A task that others
+wait for is merged by csquad when its work is complete, unless the user
+holds it for review: then it shows `done · finish to start T18` and the task
+waiting for it `waiting T17 · review`, each with a `next:` line. T18 starts
+only when the user has reviewed T17 and either runs `csquad release T17`
+(csquad merges it) or merges it and finishes it (finish-task). A `gone` row means
 the session was removed outside csquad, and some of its work (a worktree or
 branch) is left; `csquad cancel T12` clears it and keeps unmerged work. A gone
 task with nothing left leaves the list by itself. `status` cuts a long
@@ -39,7 +44,9 @@ Report in this order, briefly:
    Codex task, or through message-task); for needs you, the note.
 2. **Failed**: what went wrong.
 3. **Done or idle**: the result in a line or two (branch, verification,
-   anything left unresolved), and that it is ready to merge and finish.
+   anything left unresolved), and that it is ready to merge and finish. For
+   `done · finish to start T18`, say that T18 waits for the user's review
+   of it.
 4. **Working**: one line each on what it is doing now. `status` also shows
    its token usage and last activity; mention a long quiet spell.
 

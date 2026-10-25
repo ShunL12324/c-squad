@@ -130,7 +130,7 @@ func TestSchemaHasEveryColumnAndRefusesNewer(t *testing.T) {
 		cols = append(cols, c)
 	}
 	rows.Close()
-	want := []string{"id", "title", "cwd", "engine", "model", "engine_args", "session_id", "parent_session", "in_place", "prompt", "after", "check_spec", "max_rounds", "round", "merge_into", "phase", "last_check", "note", "created_at", "updated_at", "worker_rules", "outcome", "step", "notified", "notified_at", "notified_phase"}
+	want := []string{"id", "title", "cwd", "engine", "model", "engine_args", "session_id", "parent_session", "in_place", "prompt", "after", "check_spec", "max_rounds", "round", "merge_into", "phase", "last_check", "note", "created_at", "updated_at", "worker_rules", "outcome", "step", "notified", "notified_at", "notified_phase", "hold"}
 	if len(cols) != len(want) {
 		t.Fatalf("columns %v", cols)
 	}
@@ -142,5 +142,53 @@ func TestSchemaHasEveryColumnAndRefusesNewer(t *testing.T) {
 	db.Exec(`PRAGMA user_version = 99`)
 	if _, err := Open(path); err == nil {
 		t.Error("a newer schema must be refused")
+	}
+}
+
+// A hold is stored, does not move the version, and a compare-and-set from
+// the row as it was before the hold changed loses: a flow move decided
+// without the hold is not written.
+func TestHoldIsComparedBySet(t *testing.T) {
+	ctx := context.Background()
+	s := open(t, filepath.Join(t.TempDir(), "csquad.db"))
+	t1, _ := s.Insert(ctx, Task{Title: "a", Cwd: "/", Engine: "claude", Prompt: "p", Phase: Running, Hold: true})
+	if got, _ := s.Get(ctx, t1.ID); !got.Hold {
+		t.Fatalf("%+v", got)
+	}
+	if err := s.SetHold(ctx, t1.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	released, _ := s.Get(ctx, t1.ID)
+	if released.Hold || released.UpdatedAt != t1.UpdatedAt {
+		t.Fatalf("%+v", released)
+	}
+	next := t1
+	next.Phase = Merging
+	if _, err := s.Transition(ctx, t1, next); !errors.Is(err, ErrConflict) {
+		t.Errorf("a move decided while held was written: %v", err)
+	}
+	next.Hold = true // Transition never writes the hold
+	stored, err := s.Transition(ctx, released, next)
+	if err != nil || stored.Phase != Merging || stored.Hold {
+		t.Errorf("%+v %v", stored, err)
+	}
+}
+
+// A 3.0 database (schema 2) gains the hold column, every task unheld.
+func TestMigrationAddsHold(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "csquad.db")
+	db, _ := sql.Open("sqlite", path)
+	for _, m := range migrations[:2] {
+		if _, err := db.Exec(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Exec(`INSERT INTO tasks (id, title, cwd, engine, prompt, phase, created_at, updated_at) VALUES (17, 'x', '/', 'claude', 'p', 'running', 1, 1)`)
+	db.Exec(`PRAGMA user_version = 2`)
+	db.Close()
+	s := open(t, path)
+	got, err := s.Get(context.Background(), 17)
+	if err != nil || got.Hold || got.Phase != Running {
+		t.Errorf("%+v %v", got, err)
 	}
 }

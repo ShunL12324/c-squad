@@ -54,15 +54,44 @@ func (a *App) mover() *flow.Mover {
 }
 
 // needsObservation: the flow reads these tasks' live session state.
-func needsObservation(t store.Task) bool {
-	if t.SessionID == "" || !flow.Orchestrated(t) {
+// dependents holds the waiting tasks by the task they wait for.
+func needsObservation(t store.Task, dependents map[int][]int) bool {
+	if t.SessionID == "" || !flow.Orchestrated(t) && !flow.Implicit(t, dependents[t.ID]) {
 		return false
 	}
 	switch t.Phase {
-	case store.Running, store.Fixing, store.Merging, store.NeedsYou, store.Failed:
+	case store.Running, store.Fixing, store.Merging, store.NeedsYou, store.Failed, store.Ready:
 		return true
 	}
 	return false
+}
+
+// waitingOn maps each task to the waiting tasks among tasks that list it in
+// their After.
+func waitingOn(tasks []store.Task) map[int][]int {
+	out := map[int][]int{}
+	for _, t := range tasks {
+		if t.Phase != store.Waiting {
+			continue
+		}
+		for _, id := range t.After {
+			out[id] = append(out[id], t.ID)
+		}
+	}
+	return out
+}
+
+// dependents are the waiting tasks queued after task id.
+func (a *App) dependents(ctx context.Context, id int) []int {
+	db, err := a.Store()
+	if err != nil {
+		return nil
+	}
+	tasks, err := db.List(ctx, store.Filter{})
+	if err != nil {
+		return nil
+	}
+	return waitingOn(tasks)[id]
 }
 
 // observation gathers what Next needs about t. live holds the engine states
@@ -71,6 +100,10 @@ func (a *App) observation(ctx context.Context, t store.Task, live map[int]engine
 	o := flow.Obs{Now: a.Now(), Settle: a.settle(), Grace: a.grace(), Stopped: stopped[t.ID]}
 	o.Live, o.Observed = live[t.ID]
 	db, _ := a.Store()
+	if t.MergeInto == "" && !t.Hold && (t.Phase == store.Running || t.Phase == store.Checking || t.Phase == store.Ready) {
+		// Whether the work merges for the tasks queued after it.
+		o.Dependents = a.dependents(ctx, t.ID)
+	}
 	switch t.Phase {
 	case store.Waiting:
 		o.Deps = map[int]store.Task{}
@@ -172,8 +205,9 @@ func (a *App) AdvanceAll(ctx context.Context, stopped map[int]time.Time) {
 			return
 		}
 		var watched []store.Task
+		dependents := waitingOn(tasks)
 		for _, t := range tasks {
-			if needsObservation(t) {
+			if needsObservation(t, dependents) {
 				watched = append(watched, t)
 			}
 		}
@@ -319,7 +353,11 @@ func (a *App) spawn(log string, args ...string) error {
 	defer f.Close()
 	fmt.Fprintf(f, "--- %s csquad %s\n", a.Now().Format(time.RFC3339), strings.Join(args, " "))
 	cmd := exec.Command(exe, args...)
-	cmd.Env = a.Env.Base().With("CSQUAD_HOME", a.Home).With("CLAUDE_CONFIG_DIR", a.ClaudeDir)
+	// CLAUDE_CONFIG_DIR only as the user set it (Base keeps it): set, Claude
+	// Code reads its global config, with the workspace trust, from
+	// $CLAUDE_CONFIG_DIR/.claude.json instead of ~/.claude.json, and a
+	// queued task would not start ("Workspace not trusted").
+	cmd.Env = a.Env.Base().With("CSQUAD_HOME", a.Home)
 	cmd.Dir = a.Home
 	cmd.Stdout, cmd.Stderr = f, f
 	proc.Detach(cmd)
@@ -374,8 +412,13 @@ func (a *App) Advance(ctx context.Context, stopped string) error {
 // maybeAdvance spawns a detached advance when some task would move and no
 // advance runs: the status line observes, it does not act.
 func (a *App) maybeAdvance(ctx context.Context, tasks []store.Task, live map[int]engine.Live) {
+	var dependents map[int][]int
+	if db, err := a.Store(); err == nil {
+		all, _ := db.List(ctx, store.Filter{})
+		dependents = waitingOn(all)
+	}
 	for _, t := range tasks {
-		if t.Phase != store.Waiting && !flow.Orchestrated(t) {
+		if t.Phase != store.Waiting && !flow.Orchestrated(t) && !flow.Implicit(t, dependents[t.ID]) {
 			continue
 		}
 		o := a.observation(ctx, t, live, nil)
@@ -435,9 +478,14 @@ func (a *App) Check(ctx context.Context, label string) error {
 		}
 	}
 	a.printf("verdict: %s\n", verdictLine(v))
-	o := flow.Obs{Now: a.Now(), Settle: a.settle(), Grace: a.grace(), Verdict: &v}
-	if _, _, err := a.mover().Apply(ctx, t, flow.Next(t, o)); err != nil {
+	o := flow.Obs{Now: a.Now(), Settle: a.settle(), Grace: a.grace(), Verdict: &v, Dependents: a.dependents(ctx, t.ID)}
+	m := flow.Next(t, o)
+	if _, _, err := a.mover().Apply(ctx, t, m); err != nil {
 		a.printf("not applied (%v); the next csquad command applies it\n", err)
+	}
+	if m.Effect.Kind == flow.Land {
+		// A merge that landed releases the tasks queued after it.
+		a.AdvanceAll(ctx, nil)
 	}
 	return nil
 }
@@ -533,6 +581,9 @@ func (a *App) land(ctx context.Context, t store.Task) {
 
 // landing rebases the task's branch onto the target in its worktree,
 // fast-forwards the target, verifies the merge and cleans up as finish does.
+// The target is --merge's, else (a merge for the tasks queued after it) the
+// branch of the main checkout. A task in place has nothing to merge: it is
+// done as finish does it.
 func (a *App) landing(ctx context.Context, t store.Task) flow.Landing {
 	res := flow.Landing{Target: t.MergeInto}
 	problem := func(format string, args ...any) flow.Landing {
@@ -554,6 +605,9 @@ func (a *App) landing(ctx context.Context, t store.Task) flow.Landing {
 			return problem("the session is %s", stateText(l.State))
 		}
 	}
+	if t.InPlace {
+		return a.landed(ctx, eng, t, l, plan{}, nil)
+	}
 	g := gitx.Git{Env: a.Env}
 	p, err := a.inspect(t, t.MergeInto, l)
 	if err != nil {
@@ -562,6 +616,8 @@ func (a *App) landing(ctx context.Context, t store.Task) flow.Landing {
 	if p.repo == "" {
 		return problem("%s is not in a git repository", t.Cwd)
 	}
+	into := p.target
+	res.Target = into
 	for _, w := range p.worktrees {
 		if dirty, err := g.Dirty(w.Path); err != nil || dirty != "" {
 			return problem("worktree %s has uncommitted changes", w.Path)
@@ -569,12 +625,12 @@ func (a *App) landing(ctx context.Context, t store.Task) flow.Landing {
 	}
 	var unmerged []string
 	for _, b := range p.branches {
-		if b == t.MergeInto {
+		if b == into {
 			return problem("branch %s is the target itself", b)
 		}
 		// A branch whose commits are all in the target by patch has
 		// nothing to land; the cleanup deletes it.
-		ok, _, _, err := g.Merged(p.repo, "refs/heads/"+b, "refs/heads/"+t.MergeInto)
+		ok, _, _, err := g.Merged(p.repo, "refs/heads/"+b, "refs/heads/"+into)
 		if err != nil {
 			return problem("%v", err)
 		}
@@ -598,13 +654,13 @@ func (a *App) landing(ctx context.Context, t store.Task) flow.Landing {
 			}
 		}
 		if wt == nil {
-			based, err := g.IsAncestor(p.repo, "refs/heads/"+t.MergeInto, "refs/heads/"+b)
+			based, err := g.IsAncestor(p.repo, "refs/heads/"+into, "refs/heads/"+b)
 			if err != nil || !based {
-				return problem("branch %s is not based on %s and has no worktree to rebase in", b, t.MergeInto)
+				return problem("branch %s is not based on %s and has no worktree to rebase in", b, into)
 			}
 		} else {
 			res.Dir = wt.Path
-			if out, err := g.Run(wt.Path, "rebase", t.MergeInto); err != nil {
+			if out, err := g.Run(wt.Path, "rebase", into); err != nil {
 				_, _ = g.Run(wt.Path, "rebase", "--abort")
 				res.Conflict = strings.TrimSpace(out + "\n" + err.Error())
 				return res
@@ -617,22 +673,22 @@ func (a *App) landing(ctx context.Context, t store.Task) flow.Landing {
 		}
 		var target *gitx.Worktree
 		for i := range all {
-			if all[i].Branch == t.MergeInto {
+			if all[i].Branch == into {
 				target = &all[i]
 			}
 		}
 		if target != nil {
 			if _, err := g.Run(target.Path, "merge", "--ff-only", "-q", b); err != nil {
-				return problem("fast-forward of %s in %s refused: %s", t.MergeInto, target.Path, firstLineOf(err.Error()))
+				return problem("fast-forward of %s in %s refused: %s", into, target.Path, firstLineOf(err.Error()))
 			}
-		} else if _, err := g.Run(p.repo, "fetch", "-q", ".", "refs/heads/"+b+":refs/heads/"+t.MergeInto); err != nil {
-			return problem("fast-forward of %s refused: %s", t.MergeInto, firstLineOf(err.Error()))
+		} else if _, err := g.Run(p.repo, "fetch", "-q", ".", "refs/heads/"+b+":refs/heads/"+into); err != nil {
+			return problem("fast-forward of %s refused: %s", into, firstLineOf(err.Error()))
 		}
 	} else {
 		res.Branch = strings.Join(p.branches, ", ")
 	}
 	// The same verification and cleanup as finish.
-	p, err = a.inspect(t, t.MergeInto, l)
+	p, err = a.inspect(t, into, l)
 	if err != nil {
 		return problem("%v", err)
 	}
@@ -643,6 +699,14 @@ func (a *App) landing(ctx context.Context, t store.Task) flow.Landing {
 	if err != nil {
 		return problem("merged, but the cleanup stopped: %v", err)
 	}
+	done := a.landed(ctx, eng, t, l, p, removed)
+	done.Branch, done.Dir = res.Branch, res.Dir
+	return done
+}
+
+// landed ends a landing as finish ends: the worker's final message, then
+// the session goes.
+func (a *App) landed(ctx context.Context, eng engine.Engine, t store.Task, l engine.Live, p plan, removed []string) flow.Landing {
 	final := ""
 	if t.SessionID != "" {
 		if msgs, err := eng.Last(ctx, t.SessionID, 0); err == nil {
@@ -655,8 +719,7 @@ func (a *App) landing(ctx context.Context, t store.Task) flow.Landing {
 		}
 	}
 	b, _ := json.Marshal(flow.Outcome{Target: p.target, Branches: p.branches, Final: final})
-	res.Done, res.Outcome = true, string(b)
-	return res
+	return flow.Landing{Done: true, Outcome: string(b), Target: p.target}
 }
 
 // Retry resumes a task that needs you where it stopped.
@@ -673,6 +736,10 @@ func (a *App) Retry(ctx context.Context, label string, all bool) error {
 		return fmt.Errorf("%s: %v", t.Label(), err)
 	}
 	a.printf("%s · %s\n", t.Name(), m.Reason)
+	if m.Effect.Kind == flow.Land {
+		// A merge that landed releases the tasks queued after it.
+		a.AdvanceAll(ctx, nil)
+	}
 	return nil
 }
 
@@ -710,10 +777,11 @@ func (a *App) Hook(ctx context.Context, which string) error {
 		return nil
 	}
 	// A task without a flow has nothing to advance, but its end of turn is
-	// a notification (done).
+	// a notification (done), and a task others wait for is merged for them.
 	notifying := notify.Mode(a.Env, a.Home) != notify.Off
+	dependents := waitingOn(tasks)
 	for _, t := range tasks {
-		if t.Engine != engineName || t.SessionID == "" || !flow.Orchestrated(t) && !notifying {
+		if t.Engine != engineName || t.SessionID == "" || !flow.Orchestrated(t) && !flow.Implicit(t, dependents[t.ID]) && !notifying {
 			continue
 		}
 		if t.SessionID == in.SessionID || strings.HasPrefix(in.SessionID, t.SessionID) {

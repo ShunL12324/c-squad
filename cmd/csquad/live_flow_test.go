@@ -14,8 +14,9 @@ import (
 )
 
 // TestLiveFlow runs csquad's flow with the real claude (haiku): a worker
-// with --check 'cmd:test -f hello.txt' --merge, and a task queued --after
-// it that starts once the merge has landed. Opt-in: CSQUAD_E2E_LIVE=1, with
+// with --check 'cmd:test -f hello.txt' and no --merge, and a task queued
+// --after it: csquad merges the first task for it once the check passes,
+// and it starts once the merge has landed. Opt-in: CSQUAD_E2E_LIVE=1, with
 // CSQUAD_E2E_REPO a disposable repository Claude Code trusts (see TestLive).
 // The first task's commit is merged into the repository's current branch.
 // The test removes every session, worktree and branch it made, also when it
@@ -88,7 +89,7 @@ func TestLiveFlow(t *testing.T) {
 	}
 
 	r := run("Create a file hello.txt containing the single line hi, commit it, and finish with a one-line result. Do nothing else.",
-		"launch", "--title", "csquad live flow", "--cwd", repo, "--check", "cmd:test -f hello.txt", "--merge", "--", "--model", "haiku")
+		"launch", "--title", "csquad live flow", "--cwd", repo, "--check", "cmd:test -f hello.txt", "--", "--model", "haiku")
 	m := launchedRe.FindStringSubmatch(r.stdout)
 	if r.code != 0 || m == nil {
 		t.Fatalf("launch failed (an untrusted repository? see CSQUAD_E2E_REPO)")
@@ -99,6 +100,9 @@ func TestLiveFlow(t *testing.T) {
 	q := regexp.MustCompile(`^queued T(\d+) `).FindStringSubmatch(r.stdout)
 	if r.code != 0 || q == nil {
 		t.Fatalf("queueing the dependent failed")
+	}
+	if !strings.Contains(r.stdout, "T"+first+" merges into "+target+" when it is done, then T") {
+		t.Errorf("launch does not say that T%s merges: %q", first, r.stdout)
 	}
 	second := q[1]
 	sessions := []string{session}
@@ -147,7 +151,7 @@ func TestLiveFlow(t *testing.T) {
 	}
 	ev, _ := os.ReadFile(filepath.Join(home, "logs", "events.jsonl"))
 	t.Logf("events:\n%s", ev)
-	for _, want := range []string{`"from":"running","reason":"the worker stopped; check 1 of 3"`, `"to":"merging"`, `"from":"merging","reason":"merged `} {
+	for _, want := range []string{`"from":"running","reason":"the worker stopped; check 1 of 3"`, `"reason":"check 1 passed; merging for T` + second + `"`, `"from":"merging","reason":"merged `} {
 		if !strings.Contains(string(ev), want) {
 			t.Errorf("events lack %s", want)
 		}

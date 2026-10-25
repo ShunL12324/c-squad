@@ -187,10 +187,10 @@ PROMPT
 
 ```text
 you     /create-task after T1，在文档里写清重试选项
-claude  已排队 T4 · document retry options，T1 完成后开始。
+claude  已排队 T4 · document retry options。T1 完成后会自动合并，然后 T4 开始。
 ```
 
-状态栏显示 `waiting T1`。T1 合并并结束后，T4 才开始，它的提示里会带上已合并的分支和 T1 的最后一条消息。T1 只是 `ready` 时，T4 不会开始。
+状态栏显示 `waiting T1`。T1 的工作完成后（它的 worker 停下，或它的检查通过），csquad 像 `--merge` 一样把 T1 合并到主 checkout 所在的分支，然后 T4 从这个分支开始。它的提示里会带上已合并的分支和 T1 的最后一条消息。T1 已经完成后才排队 T4，也是这样。T1 带 `--merge BRANCH` 时，它合并到 BRANCH。合并冲突时 T1 停在 `needs you · merge conflict`，T4 继续等待。`--isolation none` 的任务没有可合并的内容：它的 worker 停下时它就完成了。
 
 ```sh
 csquad launch --title "document retry options" --after T1 <<'PROMPT'
@@ -200,7 +200,17 @@ PROMPT
 
 ```text
 queued T4 · document retry options · after T1 · ~/demo/httpclient
+  T1 merges into main when it is done, then T4 starts
 ```
+
+想在 T4 开始前先审查 T1，就直接说：
+
+```text
+you     /create-task after T1，在文档里写清重试选项。等我审查完 T1。
+claude  已排队 T4 · document retry options。T1 留给你审查：你结束 T1 后 T4 开始。
+```
+
+Claude 启动 T1 时加上 `--no-merge`；T1 已存在时，运行 `csquad hold T1`。这样 csquad 不合并 T1。T1 的工作完成后，它那一行用绿色粗体显示 `done · finish to start T4`，T4 那一行显示 `waiting T1 · review`。审查之后，合并并结束 T1（`/finish-task T1`），或者运行 `csquad release T1` 让 csquad 合并它。然后 T4 开始。
 
 ### 让 Codex 审查任务，然后合并
 
@@ -337,12 +347,14 @@ csquad 在每个任务的设置里写入 `"crossSessionInbound": "accept"`，所
 | `✗` | `failed` | 会话失败。 | 用 `csquad peek T7` 查看。 |
 | `✓` | `done` | 任务做完了。 | 合并并结束它。 |
 | `✓` | `ready` | 任务通过了检查。 | 合并并结束它。 |
+| `✓` | `done · finish to start T8` | 任务做完了，T8 在等它。你要求先审查它（`--no-merge`、`csquad hold`）。文字是粗体。 | 审查它，然后合并并结束它，或运行 `csquad release T7`。 |
 | `⇡` | `merging` | csquad 正在合并任务的分支。 | 等待。 |
 | `◑` | `fixing 2/3` | 检查没通过，任务在第 2 轮（共 3 轮）修复问题。 | 等待。 |
 | `◐` | `checking 1/3` | 检查在运行，第 1 轮（共 3 轮）。 | 等待。 |
 | `●` | `working` | 任务在工作。 | 等待。 |
 | `◇` | `idle` | 任务结束了这一轮，在等待。 | 看看结果，然后发消息或结束它。 |
-| `◌` | `waiting T5` | 任务在等 T5，还没有会话。 | 结束 T5。 |
+| `◌` | `waiting T5` | 任务在等 T5，还没有会话。T5 的工作完成后 csquad 合并它。 | 等待。 |
+| `◌` | `waiting T5 · review` | 任务在等 T5，T5 在等你审查。 | 审查 T5，然后结束它或运行 `csquad release T5`。 |
 | `■` | `stopped` | 会话没做完就停了。 | 发一条消息让它重新开始，或取消它。 |
 | `□` | `gone` | 会话在 csquad 之外被删除，但它的部分工作还在。 | 运行 `csquad cancel T7`。 |
 
@@ -441,6 +453,8 @@ csquad notify off       # 关闭通知；csquad notify on 重新打开
 | `finish T12 [T13...] [--into BRANCH]` | 确认工作已合并且干净，然后删除 worktree、分支和会话。 |
 | `cancel T12 [--discard]` | 停止任务并把它从列表中移除。未合并的工作保留，除非加 `--discard`；`--discard` 对已取消的任务也有效。 |
 | `retry T12` | 让需要你处理的任务从停下的地方继续。 |
+| `hold T12` | 先审查任务：csquad 不为等它的任务合并它。等同于 `launch --no-merge`。 |
+| `release T12` | 撤销 `hold`：任务的工作完成后 csquad 合并它，然后等它的任务开始。 |
 | `statusline` | 状态栏命令，从 stdin 读取 Claude Code 的 JSON。 |
 | `install` | 把二进制文件装到 `~/.csquad/bin`，并安装 skill 和状态栏包装。 |
 | `update` | 对已有的安装做同样的事。 |
@@ -459,10 +473,11 @@ csquad notify off       # 关闭通知；csquad notify on 重新打开
 | `--cwd DIR` | 在 DIR 里运行任务。默认是当前目录。 |
 | `--engine claude\|codex` | 引擎。默认是 `claude`。 |
 | `--model M` | 任务使用的模型。 |
-| `--after T3,T4` | 等这些任务完成后再开始。 |
+| `--after T3,T4` | 等这些任务完成后再开始。T3 和 T4 的工作完成后 csquad 合并它们，除非它们带 `--no-merge`。 |
 | `--check SPEC` | 任务停下时检查工作：`codex[:MODEL]`、`claude[:MODEL]` 或 `cmd:COMMAND`。 |
 | `--max N` | 检查的最大轮数。默认是 3。 |
 | `--merge [BRANCH]` | 工作完成并通过检查后合并。默认是主 checkout 所在的分支。 |
+| `--no-merge` | 不为等它的任务合并它，由你先审查。不能和 `--merge` 一起用。 |
 | `--isolation none` | 直接在工作目录里改。不建 worktree，不建分支，不提交。 |
 | `--fork` | 从当前对话 fork 出任务。不能和 `--after` 一起用。 |
 | `--prompt-file F [--rm-prompt]` | 从 F 读取提示。`--rm-prompt` 在读取后删除 F。 |
@@ -611,7 +626,7 @@ csquad 3 不会迁移 1.x 的安装（`~/.claude/csquad/`）。
 csquad 不设上限。每个任务用自己的会话和 token，跑多少由你决定。
 
 **任务会自己合并吗？**
-不会。只有加了 `--merge`，也就是你要求时（“通过后合并”），任务才会合并。否则由你让 Claude 去合并。
+只有两种情况：加了 `--merge`（“通过后合并”），或有其他任务在等它（`--after`）。`--no-merge` 或 `csquad hold T12` 关掉第二种情况：由你先审查。否则由你让 Claude 去合并。
 
 **任务的历史在哪里？**
 `~/.csquad/logs/events.jsonl` 每次阶段变化记一行。`csquad peek T12` 显示任务的对话。

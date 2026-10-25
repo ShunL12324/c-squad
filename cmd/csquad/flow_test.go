@@ -301,6 +301,35 @@ func TestCheckEnvironmentIsAllowlisted(t *testing.T) {
 	}
 }
 
+// A detached csquad (here the check advance spawns) gets CLAUDE_CONFIG_DIR
+// only when the user set it: set, Claude Code would read its global config
+// (the workspace trust) from another file than the user's sessions do.
+func TestDetachedProcessesKeepClaudeConfigDirUnset(t *testing.T) {
+	h, repo := flowRepo(t)
+	out := filepath.Join(h.Root, "env.txt")
+	sh := out
+	if runtime.GOOS == "windows" {
+		sh = filepath.ToSlash(out)
+	}
+	n := launchIn(t, h, repo, "fix", "--check", "cmd:env > "+sh)
+	work(t, h, repo, n, map[string]string{"b.txt": "b\n"})
+	exe, _ := os.Executable()
+	cmd := exec.Command(exe, "advance")
+	for _, kv := range h.Env("CSQUAD_TEST_MAIN=1", "CSQUAD_SETTLE_MS=0") {
+		if !strings.HasPrefix(kv, "CLAUDE_CONFIG_DIR=") {
+			cmd.Env = append(cmd.Env, kv)
+		}
+	}
+	if b, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("advance: %v\n%s", err, b)
+	}
+	waitPhase(t, h, n, store.Ready)
+	b, _ := os.ReadFile(out)
+	if env := string(b); !strings.Contains(env, "CSQUAD_HOME="+h.Csquad) || strings.Contains(env, "CLAUDE_CONFIG_DIR") {
+		t.Errorf("environment:\n%s", env)
+	}
+}
+
 // A Claude reviewer's verdict drives the loop; at max rounds the task needs
 // you, and retry runs one more round.
 func TestReviewerMaxRoundsAndRetry(t *testing.T) {
@@ -516,7 +545,8 @@ func TestUnprovenMergeNeedsYou(t *testing.T) {
 // ---- dependencies ---------------------------------------------------------------
 
 // T2 --after T1 waits; when T1's merge lands, T2 starts with what T1 left.
-// ready does not release it, finish does; a cancelled dependency stops it.
+// A held task's ready does not release it, finish does; a cancelled
+// dependency stops it.
 func TestDependencyRelease(t *testing.T) {
 	h, repo := flowRepo(t)
 	t1 := launchIn(t, h, repo, "first", "--merge")
@@ -554,8 +584,8 @@ func TestDependencyRelease(t *testing.T) {
 		t.Errorf("prompt %q", prompt)
 	}
 
-	// ready does not release; finish does.
-	t3 := launchIn(t, h, repo, "third", "--check", "cmd:true")
+	// Held for review: ready does not release; finish does.
+	t3 := launchIn(t, h, repo, "third", "--check", "cmd:true", "--no-merge")
 	launchIn(t, h, repo, "fourth", "--after", fmt.Sprintf("T%d", t3))
 	work(t, h, repo, t3, map[string]string{"c.txt": "c\n"})
 	advance(t, h)

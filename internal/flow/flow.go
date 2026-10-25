@@ -67,6 +67,8 @@ type Obs struct {
 	Replied  bool      // the conversation shows the worker's answer to csquad's message, after the task entered its step
 	// Deps are the tasks of t.After as stored; a missing one does not exist.
 	Deps map[int]store.Task
+	// Dependents are the waiting tasks that list t in their After.
+	Dependents []int
 	// Busy: a process holds the task's lock (starting, landing) or the
 	// current round's check lock.
 	Busy bool
@@ -96,6 +98,38 @@ func (m Move) Acts(t store.Task) bool { return m.Changed(t) || m.Effect.Kind != 
 // Orchestrated reports whether a task has a flow beyond 1.x's: a check or
 // a merge. Other tasks keep their phase until finish or cancel.
 func Orchestrated(t store.Task) bool { return t.CheckSpec != "" || t.MergeInto != "" }
+
+// Implicit reports whether t is merged without --merge: tasks are queued
+// after it (dependents) and the user did not hold it for review. It merges
+// into the branch of the main checkout, as finish does; a task in place has
+// nothing to merge and is done. It is decided on each observation, so a
+// dependent queued after t's worker stopped still counts.
+func Implicit(t store.Task, dependents []int) bool {
+	return t.MergeInto == "" && !t.Hold && len(dependents) > 0
+}
+
+// merges reports whether t lands once its work is complete.
+func merges(t store.Task, o Obs) bool { return t.MergeInto != "" || Implicit(t, o.Dependents) }
+
+// mergeText says where a landing goes, for the event log.
+func mergeText(t store.Task, o Obs) string {
+	switch {
+	case t.MergeInto != "":
+		return "merging into " + t.MergeInto
+	case t.InPlace:
+		return "done in place for " + Labels(o.Dependents)
+	}
+	return "merging for " + Labels(o.Dependents)
+}
+
+// Labels names tasks: T3,T4.
+func Labels(ids []int) string {
+	var s []string
+	for _, id := range ids {
+		s = append(s, "T"+strconv.Itoa(id))
+	}
+	return strings.Join(s, ",")
+}
 
 func entered(t store.Task) time.Time { return time.UnixMilli(t.UpdatedAt) }
 
@@ -145,7 +179,7 @@ func Next(t store.Task, o Obs) Move {
 			}
 			return stay
 		}
-		if !Orchestrated(t) {
+		if !Orchestrated(t) && !Implicit(t, o.Dependents) {
 			return stay
 		}
 		if m, ok := lost(t, o); ok {
@@ -154,7 +188,7 @@ func Next(t store.Task, o Obs) Move {
 		if !finished(t, o) {
 			return stay
 		}
-		return afterWork(t)
+		return afterWork(t, o)
 	case store.Checking:
 		if o.Verdict != nil {
 			return verdict(t, *o.Verdict, o)
@@ -184,6 +218,12 @@ func Next(t store.Task, o Obs) Move {
 			return Move{Next: t, Effect: Effect{Kind: Land}, Reason: "landing again: the last attempt stopped"}
 		}
 		return stay
+	case store.Ready:
+		// A task queued after it: the check passed before it was queued,
+		// or the hold was released.
+		if Implicit(t, o.Dependents) && o.Observed && (o.Live.State == engine.Idle || o.Live.State == engine.Done) {
+			return Move{Next: to(t, store.Merging, ""), Effect: Effect{Kind: Land}, Reason: "the check passed; " + mergeText(t, o)}
+		}
 	case store.NeedsYou, store.Failed:
 		// Back to work only when the session works again (the user took
 		// over), not when it merely reads as needing input.
@@ -215,14 +255,14 @@ func lost(t store.Task, o Obs) (Move, bool) {
 
 // afterWork is where a task goes when its worker finished: the check, else
 // the merge.
-func afterWork(t store.Task) Move {
+func afterWork(t store.Task, o Obs) Move {
 	switch {
 	case t.CheckSpec != "":
 		n := to(t, store.Checking, "")
 		n.Round = max(n.Round, 1)
 		return Move{Next: n, Effect: Effect{Kind: Check}, Reason: fmt.Sprintf("the worker stopped; check %d of %d", n.Round, n.MaxRounds)}
-	case t.MergeInto != "":
-		return Move{Next: to(t, store.Merging, ""), Effect: Effect{Kind: Land}, Reason: "the worker stopped; merging into " + t.MergeInto}
+	case merges(t, o):
+		return Move{Next: to(t, store.Merging, ""), Effect: Effect{Kind: Land}, Reason: "the worker stopped; " + mergeText(t, o)}
 	}
 	return Move{Next: t}
 }
@@ -317,9 +357,9 @@ func verdict(t store.Task, v check.Verdict, o Obs) Move {
 	case v.Error != "":
 		return needsYou(n, ResumeCheck, "no verdict: "+v.Error+"; csquad retry runs the check again")
 	case v.Pass():
-		if t.MergeInto != "" {
+		if merges(t, o) {
 			m := to(n, store.Merging, "")
-			return Move{Next: m, Effect: Effect{Kind: Land}, Reason: fmt.Sprintf("check %d passed; merging into %s", t.Round, t.MergeInto)}
+			return Move{Next: m, Effect: Effect{Kind: Land}, Reason: fmt.Sprintf("check %d passed; %s", t.Round, mergeText(t, o))}
 		}
 		return Move{Next: to(n, store.Ready, ""), Reason: fmt.Sprintf("check %d passed", t.Round)}
 	case t.Round >= t.MaxRounds:
@@ -391,6 +431,9 @@ func landed(t store.Task, l Landing) Move {
 	case l.Done:
 		n := to(t, store.Done, "")
 		n.Outcome = l.Outcome
+		if t.InPlace {
+			return Move{Next: n, Reason: "done in place: nothing to merge"}
+		}
 		return Move{Next: n, Reason: fmt.Sprintf("merged %s into %s", l.Branch, l.Target)}
 	case l.Conflict != "" && t.Step != Asked:
 		return Move{Next: to(t, store.Merging, Asked), Effect: Effect{Kind: Send, Text: MergeRequest(l)}, Reason: "rebase conflict; the worker was asked to rebase"}

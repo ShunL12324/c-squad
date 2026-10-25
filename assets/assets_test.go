@@ -158,7 +158,7 @@ func TestCreateTaskIsACorePlusReference(t *testing.T) {
 	if words := len(strings.Fields(regexp.MustCompile(`(?s)^---\n.*?\n---\n`).ReplaceAllString(core, ""))); words > 470 {
 		t.Errorf("the create-task core has %d words", words)
 	}
-	for _, flag := range []string{"--after", "--check", "--merge", "--isolation none", "--fork", "--no-worker-rules", "-c/--config"} {
+	for _, flag := range []string{"--after", "--no-merge", "hold T", "release T", "--check", "--merge", "--isolation none", "--fork", "--no-worker-rules", "-c/--config"} {
 		if !strings.Contains(ref, flag) {
 			t.Errorf("reference.md does not explain %s", flag)
 		}

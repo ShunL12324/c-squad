@@ -34,6 +34,18 @@
   sends only needs input and needs you.
 - `install` prints the backend it set up (`Notifications: ...`);
   `uninstall` removes the app ID, the icon and `csquad.app`.
+- `launch --no-merge`, `csquad hold T17` and `csquad release T17`: the user
+  reviews T17 first. csquad never merges a held task for its dependents.
+  When its work is complete its row reads `done · finish to start T18` (a
+  green tick, the text bold, sorted after the urgent rows) and T18 reads
+  `waiting T17 · review`; `status` shows the same with a `next:` line, and
+  `status --json` has `hold` and `next`. Finishing T17 or `csquad release
+  T17` starts T18. `hold` refuses a task launched with `--merge`.
+- The skills: create-task tells the user that T17 is merged when it is done
+  and adds `--no-merge` (or runs `hold`) only when the user wants to review
+  it first; task-status and finish-task explain the held row.
+- The database gains a `hold` column (migration 4). An older csquad refuses
+  the upgraded database.
 
 ### Changed
 
@@ -47,6 +59,37 @@
   line (a Codex master session). `CSQUAD_NOTIFY=off` turns this off.
 - The detached processes csquad starts also get `DBUS_SESSION_BUS_ADDRESS`,
   `WSL_DISTRO_NAME` and `WSL_INTEROP`.
+- "T18 after T17" starts T18 by itself. A task that a waiting task lists in
+  `--after` is merged when its work is complete (its worker stopped, or its
+  check passed), as if it had `--merge`: into the branch of the main
+  checkout, the target `finish` uses, through the same rebase and
+  fast-forward. T18 then starts from the updated branch. Before, a task
+  without `--merge` stayed `running` after its worker stopped (its row
+  showed `✓ done`) and T18 stayed `waiting T17` until the user merged and
+  finished T17, and nothing said so. A merge conflict stops T17 with
+  `needs you · merge conflict` and T18 keeps waiting, as with `--merge`.
+- It is decided each time csquad looks at the tasks, not at launch: a task
+  queued after a task whose worker stopped long ago starts too, and chains
+  queued with 3.0 move on after the upgrade (the status line spawns the
+  merge). A task whose dependents were all cancelled is not merged.
+- A task launched with `--isolation none` has nothing to merge: when tasks
+  wait for it, it is done when its worker stops (its session is removed, as
+  `finish` does), and they start.
+- `launch` says how each dependency of a queued task gets done, for example
+  `T17 merges into main when it is done, then T18 starts`. `status` shows
+  the merge in the `flow:` line.
+- `--merge BRANCH` keeps its target. A check's own process and `retry` that
+  land a merge now start the tasks queued after it at once.
+
+### Fixed
+
+- A queued task started by a detached csquad (the advance the Stop hook or
+  the status line spawns) could fail with `needs you · did not start:
+  Workspace not trusted`. csquad set `CLAUDE_CONFIG_DIR` for its detached
+  processes even when the user had not, and with it set Claude Code reads
+  the workspace trust from `$CLAUDE_CONFIG_DIR/.claude.json` instead of
+  `~/.claude.json`. Detached processes now get `CLAUDE_CONFIG_DIR` only
+  when the user set it.
 
 ## 3.0.3 - 2026-10-25
 

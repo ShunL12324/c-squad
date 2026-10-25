@@ -24,16 +24,28 @@ default model runs, whatever the routing meant.
 ## Flags
 
 - `--after T3,T4`: existing tasks only. The task is queued
-  (`queued T5 · ...`) and starts once all of them are done (merged, or
-  finished with finish-task); its prompt then gets what they left (merged
-  branch, final message). A task that is only ready does not release it.
+  (`queued T5 · ...`) and starts once all of them are done; its prompt then
+  gets what they left (merged branch, final message). A task that others
+  wait for is merged by csquad when its work is complete (its worker
+  stopped, or its check passed), as with `--merge`, into the branch of the
+  main checkout; a task in place (`--isolation none`) has nothing to merge
+  and is done when its worker stops. launch prints how each one gets done.
+  A conflict stops the merge with `needs you · merge conflict`, and the
+  queued task keeps waiting.
+- `--no-merge`: the user reviews this task first. csquad never merges it
+  for the tasks queued after it: when its work is complete its row reads
+  `done · finish to start T5`, theirs `waiting T4 · review`, until the user
+  merges it and runs finish-task, or runs `{{CSQUAD}} release T4` to let
+  csquad merge it. For a task that exists, `{{CSQUAD}} hold T4` sets the
+  same and `{{CSQUAD}} release T4` clears it. Not with `--merge`.
 - `--check codex|claude[:MODEL]|cmd:COMMAND`, `--max N` (default 3): each
   time the worker stops, a fresh read-only reviewer (or the command, in the
   task's worktree; exit 0 passes) checks the work. Findings go back to the
   worker until the check passes or the rounds run out.
 - `--merge [BRANCH]`: when the work is done (and checked), the worker
   rebases its branch onto BRANCH (default: the branch of the main checkout)
-  and csquad fast-forwards it and cleans up. Not with `--isolation none`.
+  and csquad fast-forwards it and cleans up, whether or not tasks wait for
+  it. Not with `--isolation none`.
 - `--isolation none`: the task edits its working directory in place (to see
   its changes live, e.g. through a running dev server), makes no branches and
   leaves its changes uncommitted. One in-place task per checkout at a time.

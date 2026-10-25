@@ -297,6 +297,32 @@ func TestWideTerminal(t *testing.T) {
 	}
 }
 
+// A held task that tasks wait for: after the urgent rows, before ready and
+// done; a green tick, its state bold (still bold under NO_COLOR), no badge.
+func TestReviewRow(t *testing.T) {
+	tasks := []Task{
+		T(3, "Add --json", Done, 65),
+		{ID: 17, Title: "Store migration", State: Review, Text: "done · finish to start T18", Since: now.Add(-20 * time.Minute)},
+		{ID: 18, Title: "Use the new column", State: Waiting, Text: "waiting T17 · review", Since: now.Add(-20 * time.Minute)},
+		{ID: 9, Title: "Install", State: NeedsYou, Note: "merge conflict: a.go", Since: now.Add(-5 * time.Minute)},
+	}
+	rows := Layout(tasks, 80, now, false)
+	if len(rows) != 4 {
+		t.Fatalf("%q", rows)
+	}
+	for i, re := range []string{`^▎ ◆ T9 `, `^▎ ✓ T17 Store migration[ ·]+done · finish to start T18\s+20m$`, `^▎ ✓ T3 `, `^▎ ◌ T18 .*waiting T17 · review\s+20m$`} {
+		if !regexp.MustCompile(re).MatchString(strip(rows[i])) {
+			t.Errorf("row %d = %q, want %s", i, strip(rows[i]), re)
+		}
+	}
+	if !strings.Contains(rows[1], "\x1b[1;38;2;"+green+"mdone · finish to start T18\x1b[0m") || strings.Contains(rows[1], "48;2;") {
+		t.Errorf("review row %q", rows[1])
+	}
+	if plain := Layout(tasks, 80, now, true)[1]; !strings.Contains(plain, "\x1b[1mdone · finish to start T18\x1b[0m") {
+		t.Errorf("NO_COLOR review row %q", plain)
+	}
+}
+
 func TestOrderAndOverflow(t *testing.T) {
 	tasks := twelve()[:6]
 	// Input order must not matter.

@@ -35,7 +35,10 @@ IDs, then do not poll or wait.
 
 Only when the user asks for them, never on your own:
 
-- "T2 after T1": `--after T1` (queued until T1 is done).
+- "T2 after T1": `--after T1`. Tell the user T1 will be merged
+  automatically when it is done, then T2 starts. Only if they want to review
+  T1 first ("wait for me to review T1", "don't merge it yet"): `--no-merge`
+  on T1, or `{{CSQUAD}} hold T1` if T1 exists.
 - "let codex review it", "at most 3 rounds": `--check codex` or
   `--check claude[:MODEL]`, `--max 3`; "run the tests on it":
   `--check 'cmd:go test ./...'`.

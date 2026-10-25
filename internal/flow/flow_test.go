@@ -45,6 +45,9 @@ func withLand(l Landing) func(*Obs) { return func(o *Obs) { o.Land = &l } }
 func round(n int) func(*store.Task) { return func(t *store.Task) { t.Round = n } }
 func merge(t *store.Task)           { t.MergeInto = "main" }
 func noCheck(t *store.Task)         { t.CheckSpec = "" }
+func held(t *store.Task)            { t.Hold = true }
+func inPlace(t *store.Task)         { t.InPlace = true }
+func queued(o *Obs)                 { o.Dependents = []int{18} }
 func step(s string) func(*store.Task) {
 	return func(t *store.Task) { t.Step = s }
 }
@@ -116,6 +119,25 @@ func TestNext(t *testing.T) {
 		{"needs you, works again", task(store.NeedsYou, step(ResumeRound)), obs(time.Minute, engine.Working), store.Running, "", "", 0},
 		{"failed, works again", task(store.Failed), obs(time.Minute, engine.Working), store.Running, "", "", 0},
 		{"ready stays", task(store.Ready), obs(time.Hour, engine.Idle), store.Ready, "", "", 0},
+		// a task queued after it: the merge is implicit
+		{"dependent: worker stopped → merging", task(store.Running, noCheck), obs(10*time.Second, engine.Idle, queued), store.Merging, "", Land, 0},
+		{"dependent: worker stopped long ago", task(store.Running, noCheck), obs(72*time.Hour, engine.Done, queued), store.Merging, "", Land, 0},
+		{"dependent: hook event", task(store.Running, noCheck), obs(time.Second, engine.Idle, queued, stopped(500*time.Millisecond)), store.Merging, "", Land, 0},
+		{"dependent: still working", task(store.Running, noCheck), obs(time.Hour, engine.Working, queued), store.Running, "", "", 0},
+		{"dependent: not settled", task(store.Running, noCheck), obs(5*time.Second, engine.Idle, queued), store.Running, "", "", 0},
+		{"dependent: session gone", task(store.Running, noCheck), obs(time.Minute, engine.Gone, queued), store.NeedsYou, "", "", 0},
+		{"dependent: held stays", task(store.Running, noCheck, held), obs(time.Hour, engine.Idle, queued), store.Running, "", "", 0},
+		{"dependent: the check first", task(store.Running), obs(time.Minute, engine.Idle, queued), store.Checking, "", Check, 1},
+		{"dependent: pass → merging", task(store.Checking, round(1)), obs(time.Minute, "", withVerdict(pass), queued), store.Merging, "", Land, 1},
+		{"dependent: held, pass → ready", task(store.Checking, round(1), held), obs(time.Minute, "", withVerdict(pass), queued), store.Ready, "", "", 1},
+		{"dependent: ready → merging", task(store.Ready, round(1)), obs(time.Hour, engine.Idle, queued), store.Merging, "", Land, 1},
+		{"dependent: ready, the user talks to it", task(store.Ready, round(1)), obs(time.Hour, engine.Working, queued), store.Ready, "", "", 1},
+		{"dependent: ready, not observed", task(store.Ready, round(1)), obs(time.Hour, "", queued), store.Ready, "", "", 1},
+		{"dependent: ready held stays", task(store.Ready, round(1), held), obs(time.Hour, engine.Idle, queued), store.Ready, "", "", 1},
+		{"dependent: in place → done by the landing", task(store.Running, noCheck, inPlace), obs(time.Minute, engine.Idle, queued), store.Merging, "", Land, 0},
+		{"dependent: in place, held stays", task(store.Running, noCheck, inPlace, held), obs(time.Minute, engine.Idle, queued), store.Running, "", "", 0},
+		{"landed in place", task(store.Merging, noCheck, inPlace), obs(time.Second, "", withLand(Landing{Done: true, Outcome: "{}"})), store.Done, "", "", 0},
+		{"--merge with a dependent", task(store.Running, noCheck, merge, held), obs(time.Minute, engine.Idle, queued), store.Merging, "", Land, 0},
 	}
 	for _, c := range cases {
 		m := Next(c.t, c.o)
@@ -126,6 +148,29 @@ func TestNext(t *testing.T) {
 		if (m.Next.Phase != c.t.Phase || m.Effect.Kind != "") && m.Reason == "" {
 			t.Errorf("%s: no reason", c.name)
 		}
+	}
+}
+
+// The event log says where an implicit merge goes; --merge keeps its target.
+func TestImplicitMergeReasons(t *testing.T) {
+	deps := func(o *Obs) { o.Dependents = []int{18, 19} }
+	for _, c := range []struct {
+		t    store.Task
+		o    Obs
+		want string
+	}{
+		{task(store.Running, noCheck), obs(time.Minute, engine.Idle, deps), "the worker stopped; merging for T18,T19"},
+		{task(store.Running, noCheck, func(t *store.Task) { t.MergeInto = "release" }), obs(time.Minute, engine.Idle, deps), "the worker stopped; merging into release"},
+		{task(store.Running, noCheck, inPlace), obs(time.Minute, engine.Idle, deps), "the worker stopped; done in place for T18,T19"},
+		{task(store.Checking, round(2)), obs(time.Minute, "", withVerdict(pass), deps), "check 2 passed; merging for T18,T19"},
+		{task(store.Merging, noCheck, inPlace), obs(time.Second, "", withLand(Landing{Done: true})), "done in place: nothing to merge"},
+	} {
+		if m := Next(c.t, c.o); m.Reason != c.want {
+			t.Errorf("%s: reason %q, want %q", c.t.Phase, m.Reason, c.want)
+		}
+	}
+	if Implicit(task(store.Running), nil) || !Implicit(task(store.Running), []int{3}) || Implicit(task(store.Running, held), []int{3}) || Implicit(task(store.Running, merge), []int{3}) {
+		t.Error("Implicit")
 	}
 }
 

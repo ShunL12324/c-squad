@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/ShunL12324/c-squad/assets"
@@ -33,6 +32,7 @@ type LaunchArgs struct {
 	Max           int      // 0 = the default (3)
 	Merge         bool
 	MergeInto     string // "" with Merge = the main checkout's branch
+	NoMerge       bool   // never merged for the tasks queued after it: the user reviews it first
 	Fork          bool   // start as a fork of the dispatching session
 }
 
@@ -156,6 +156,9 @@ func (a *App) Launch(ctx context.Context, la LaunchArgs) error {
 			return err
 		}
 	}
+	if la.Merge && la.NoMerge {
+		return fmt.Errorf("--merge and --no-merge exclude each other")
+	}
 	if la.Merge {
 		if inPlace {
 			return fmt.Errorf("--merge needs a worktree task; an in-place task (--isolation none) leaves its changes uncommitted")
@@ -208,7 +211,7 @@ func (a *App) Launch(ctx context.Context, la LaunchArgs) error {
 	t, err := db.Insert(ctx, store.Task{
 		Title: la.Title, Cwd: cwd, Engine: la.Engine, Model: la.Model, EngineArgs: args,
 		ParentSession: a.SessionKey(), InPlace: inPlace, Prompt: prompt, WorkerRules: rules, Phase: phase,
-		After: after, CheckSpec: la.Check, MaxRounds: la.Max, MergeInto: la.MergeInto,
+		After: after, CheckSpec: la.Check, MaxRounds: la.Max, MergeInto: la.MergeInto, Hold: la.NoMerge,
 	})
 	if err != nil {
 		return err
@@ -232,7 +235,7 @@ func (a *App) Launch(ctx context.Context, la LaunchArgs) error {
 				a.warnf("%s\n", n)
 			}
 		}
-		a.printf("queued %s · after %s · %s%s\n", t.Name(), labels(after), cwd, flowPlan(t))
+		a.printf("queued %s · after %s · %s%s%s\n", t.Name(), flow.Labels(after), cwd, a.dependencyPlan(ctx, t), flowPlan(t))
 		if la.PromptFile != "" && la.RmPrompt {
 			os.Remove(la.PromptFile)
 		}
@@ -266,14 +269,6 @@ func (a *App) Launch(ctx context.Context, la LaunchArgs) error {
 	return nil
 }
 
-func labels(ids []int) string {
-	var s []string
-	for _, id := range ids {
-		s = append(s, "T"+strconv.Itoa(id))
-	}
-	return strings.Join(s, ",")
-}
-
 // flowPlan is what the flow will do with a task, for launch's output.
 func flowPlan(t store.Task) string {
 	var parts []string
@@ -282,6 +277,9 @@ func flowPlan(t store.Task) string {
 	}
 	if t.MergeInto != "" {
 		parts = append(parts, "merge into "+t.MergeInto)
+	}
+	if t.Hold {
+		parts = append(parts, "your review (--no-merge): csquad does not merge it")
 	}
 	if len(parts) == 0 {
 		return ""

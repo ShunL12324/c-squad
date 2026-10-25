@@ -29,6 +29,7 @@ const (
 	Failed     = "failed"
 	Ready      = "ready"
 	Done       = "done"
+	Review     = "review" // done, held for the user's review while tasks wait for it
 	Merging    = "merging"
 	Fixing     = "fixing"
 	Checking   = "checking"
@@ -46,6 +47,7 @@ type style struct {
 	urgent bool
 	faint  bool // the title is faint
 	text   string
+	bold   bool // the state is bold: it waits for the user, not urgently
 }
 
 const (
@@ -60,19 +62,20 @@ const (
 )
 
 var styles = map[string]style{
-	NeedsInput: {"◆", amber, 0, true, false, "needs input"},
-	NeedsYou:   {"◆", amber, 0, true, false, "needs you"},
-	Failed:     {"✗", red, 1, false, false, "failed"},
-	Ready:      {"✓", green, 2, false, false, "ready"},
-	Done:       {"✓", green, 2, false, false, "done"},
-	Merging:    {"⇡", violet, 3, false, false, "merging"},
-	Fixing:     {"◑", orange, 3, false, false, "fixing"},
-	Checking:   {"◐", cyan, 3, false, false, "checking"},
-	Working:    {"●", blue, 3, false, false, "working"},
-	Idle:       {"◇", gray, 4, false, true, "idle"},
-	Waiting:    {"◌", gray, 5, false, true, "waiting"},
-	Stopped:    {"■", gray, 5, false, true, "stopped"},
-	Gone:       {"□", gray, 5, false, true, "gone"},
+	NeedsInput: {"◆", amber, 0, true, false, "needs input", false},
+	NeedsYou:   {"◆", amber, 0, true, false, "needs you", false},
+	Failed:     {"✗", red, 1, false, false, "failed", false},
+	Review:     {"✓", green, 1, false, false, "done", true},
+	Ready:      {"✓", green, 2, false, false, "ready", false},
+	Done:       {"✓", green, 2, false, false, "done", false},
+	Merging:    {"⇡", violet, 3, false, false, "merging", false},
+	Fixing:     {"◑", orange, 3, false, false, "fixing", false},
+	Checking:   {"◐", cyan, 3, false, false, "checking", false},
+	Working:    {"●", blue, 3, false, false, "working", false},
+	Idle:       {"◇", gray, 4, false, true, "idle", false},
+	Waiting:    {"◌", gray, 5, false, true, "waiting", false},
+	Stopped:    {"■", gray, 5, false, true, "stopped", false},
+	Gone:       {"□", gray, 5, false, true, "gone", false},
 }
 
 func styleOf(key string) style {
@@ -489,7 +492,11 @@ func cell(e entry, w fields, f fit, now time.Time, p painter) line {
 		l = append(l, segment{badge, sgr}, spaces(w.block-width(badge)))
 	} else {
 		text := truncate(e.state, f.state)
-		l = append(l, p.fg(st.rgb, text), spaces(w.state-width(text)))
+		seg := p.fg(st.rgb, text)
+		if st.bold {
+			seg.sgr = strings.TrimSuffix("1;"+seg.sgr, ";")
+		}
+		l = append(l, seg, spaces(w.state-width(text)))
 		if w.span() > 0 {
 			l = append(append(l, segment{"  ", ""}), usageCell(e, w, f.usage >= 2, now, p)...)
 		}

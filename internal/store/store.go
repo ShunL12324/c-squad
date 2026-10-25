@@ -58,6 +58,7 @@ type Task struct {
 	MaxRounds     int
 	Round         int
 	MergeInto     string // '' = do not merge automatically; else the target branch
+	Hold          bool   // --no-merge: the user reviews it first; never merged for the tasks queued after it
 	Phase         string
 	LastCheck     string // JSON {verdict, summary, findings, at}
 	Note          string // why the task stopped for the human, last error
@@ -114,6 +115,8 @@ ALTER TABLE tasks ADD COLUMN notified_at INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE tasks ADD COLUMN notified_phase INTEGER NOT NULL DEFAULT 0;
 UPDATE tasks SET notified = phase, notified_phase = updated_at WHERE phase IN ('ready', 'needs_you', 'failed');
 UPDATE tasks SET notified = 'done' WHERE phase = 'running' AND check_spec = '' AND merge_into = '';`,
+	// A task the user reviews first: never merged for its dependents.
+	`ALTER TABLE tasks ADD COLUMN hold INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // Store is an open database.
@@ -173,20 +176,20 @@ func (s *Store) migrate() error {
 }
 
 const columns = `id, title, cwd, engine, model, engine_args, session_id, parent_session, in_place, prompt,
-  worker_rules, after, check_spec, max_rounds, round, merge_into, phase, last_check, note, outcome, created_at, updated_at, step, notified, notified_phase`
+  worker_rules, after, check_spec, max_rounds, round, merge_into, phase, last_check, note, outcome, created_at, updated_at, step, notified, notified_phase, hold`
 
 type scanner interface{ Scan(...any) error }
 
 func scan(r scanner) (Task, error) {
 	var t Task
 	var args, after string
-	var inPlace int
+	var inPlace, hold int
 	err := r.Scan(&t.ID, &t.Title, &t.Cwd, &t.Engine, &t.Model, &args, &t.SessionID, &t.ParentSession, &inPlace, &t.Prompt,
-		&t.WorkerRules, &after, &t.CheckSpec, &t.MaxRounds, &t.Round, &t.MergeInto, &t.Phase, &t.LastCheck, &t.Note, &t.Outcome, &t.CreatedAt, &t.UpdatedAt, &t.Step, &t.Notified, &t.NotifiedPhase)
+		&t.WorkerRules, &after, &t.CheckSpec, &t.MaxRounds, &t.Round, &t.MergeInto, &t.Phase, &t.LastCheck, &t.Note, &t.Outcome, &t.CreatedAt, &t.UpdatedAt, &t.Step, &t.Notified, &t.NotifiedPhase, &hold)
 	if err != nil {
 		return t, err
 	}
-	t.InPlace = inPlace != 0
+	t.InPlace, t.Hold = inPlace != 0, hold != 0
 	_ = json.Unmarshal([]byte(args), &t.EngineArgs)
 	_ = json.Unmarshal([]byte(after), &t.After)
 	return t, nil
@@ -221,9 +224,9 @@ func (s *Store) Insert(ctx context.Context, t Task) (Task, error) {
 	if t.MaxRounds == 0 {
 		t.MaxRounds = 3
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO tasks (`+columns+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	_, err = tx.ExecContext(ctx, `INSERT INTO tasks (`+columns+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		t.ID, t.Title, t.Cwd, t.Engine, t.Model, jsonOf(t.EngineArgs), t.SessionID, t.ParentSession, b2i(t.InPlace), t.Prompt,
-		t.WorkerRules, jsonOf(t.After), t.CheckSpec, t.MaxRounds, t.Round, t.MergeInto, t.Phase, t.LastCheck, t.Note, t.Outcome, t.CreatedAt, t.UpdatedAt, t.Step, t.Notified, t.NotifiedPhase)
+		t.WorkerRules, jsonOf(t.After), t.CheckSpec, t.MaxRounds, t.Round, t.MergeInto, t.Phase, t.LastCheck, t.Note, t.Outcome, t.CreatedAt, t.UpdatedAt, t.Step, t.Notified, t.NotifiedPhase, b2i(t.Hold))
 	if err != nil {
 		return t, err
 	}
@@ -299,6 +302,14 @@ func (s *Store) SetEngineArgs(ctx context.Context, id int, args []string) error 
 	return err
 }
 
+// SetHold sets or clears a task's hold (csquad hold, csquad release). Like
+// SetSession it does not move updated_at; a compare-and-set from the row as
+// it was before loses (Transition compares the hold too).
+func (s *Store) SetHold(ctx context.Context, id int, hold bool) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE tasks SET hold = ? WHERE id = ?`, b2i(hold), id)
+	return err
+}
+
 // Delete removes a task that never started (a failed launch), so its number
 // is free again.
 func (s *Store) Delete(ctx context.Context, id int) error {
@@ -306,12 +317,12 @@ func (s *Store) Delete(ctx context.Context, id int) error {
 	return err
 }
 
-// Transition writes next over old when the row still holds old's phase and
-// updated_at (compare-and-set), inside one immediate transaction: every flow
-// field (phase, step, round, max_rounds, last_check, note, outcome), never
-// session_id. updated_at moves only when the phase or the step changes: it
-// is the time the task entered them. It returns the row as stored, or
-// ErrConflict when another writer got there first.
+// Transition writes next over old when the row still holds old's phase,
+// updated_at and hold (compare-and-set), inside one immediate transaction:
+// every flow field (phase, step, round, max_rounds, last_check, note,
+// outcome), never session_id or hold. updated_at moves only when the phase
+// or the step changes: it is the time the task entered them. It returns the
+// row as stored, or ErrConflict when another writer got there first.
 func (s *Store) Transition(ctx context.Context, old, next Task) (Task, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -324,8 +335,8 @@ func (s *Store) Transition(ctx context.Context, old, next Task) (Task, error) {
 		next.UpdatedAt = old.UpdatedAt
 	}
 	res, err := tx.ExecContext(ctx, `UPDATE tasks SET phase = ?, step = ?, round = ?, max_rounds = ?, last_check = ?, note = ?, outcome = ?, updated_at = ?
-  WHERE id = ? AND phase = ? AND updated_at = ?`,
-		next.Phase, next.Step, next.Round, next.MaxRounds, next.LastCheck, next.Note, next.Outcome, next.UpdatedAt, old.ID, old.Phase, old.UpdatedAt)
+  WHERE id = ? AND phase = ? AND updated_at = ? AND hold = ?`,
+		next.Phase, next.Step, next.Round, next.MaxRounds, next.LastCheck, next.Note, next.Outcome, next.UpdatedAt, old.ID, old.Phase, old.UpdatedAt, b2i(old.Hold))
 	if err != nil {
 		return next, err
 	}

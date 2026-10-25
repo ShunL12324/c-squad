@@ -75,10 +75,11 @@ func (a *App) statusQuery(ctx context.Context, in statusline.Input) ([]statuslin
 	a.prune(ctx, gone(tasks, live))
 	a.maybeAdvance(ctx, tasks, live)
 	marks := len(engine.Names()) > 1
+	q := a.queued(ctx)
 	var out []statusline.Observed
 	for _, t := range tasks {
 		l, ok := live[t.ID]
-		v := view(t, l, ok)
+		v := q.reviewView(view(t, l, ok), t, l, ok)
 		key := v.Key
 		if key == "starting" {
 			key = "stopped"

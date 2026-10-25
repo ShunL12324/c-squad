@@ -4,6 +4,7 @@ package notify
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -85,7 +86,7 @@ func Post(m Message, wait time.Duration) error {
 		return err
 	}
 	bundle := objc.ID(objc.GetClass("NSBundle")).Send(sel("mainBundle"))
-	if id := goString(bundle.Send(sel("bundleIdentifier"))); id != BundleID {
+	if id := goString(bundle.Send(sel("bundleIdentifier"))); !strings.HasPrefix(id, BundleID) {
 		return fmt.Errorf("not running inside csquad.app (bundle id %q)", id)
 	}
 	center := objc.ID(objc.GetClass("UNUserNotificationCenter")).Send(sel("currentNotificationCenter"))

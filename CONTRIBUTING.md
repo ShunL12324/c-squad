@@ -110,6 +110,8 @@ go test ./...
 
 `README.md` has a Chinese version, `README.zh-CN.md`. When you change one,
 change the other in the same commit. The README is also the npm package page,
-so use absolute `https://` URLs for images and links to other files.
+so use absolute `https://` URLs for images and links to other files. The
+banner, `docs/assets/banner.png`, is `docs/assets/banner.svg` rendered at
+3200x1000; change the SVG, then render it again.
 
 Contributions are provided under the project's [MIT license](LICENSE).

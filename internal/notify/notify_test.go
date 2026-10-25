@@ -175,10 +175,25 @@ func TestToast(t *testing.T) {
 	if !strings.Contains(script, "CreateToastNotifier('csquad')") || strings.Contains(script, "fix") {
 		t.Errorf("the texts must go in as base64:\n%s", script)
 	}
-	b64 := script[strings.Index(script, "FromBase64String('")+18:]
+	marker := "LoadXml([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"
+	b64 := script[strings.Index(script, marker)+len(marker):]
 	b64 = b64[:strings.Index(b64, "'")]
 	if b, _ := base64.StdEncoding.DecodeString(b64); string(b) != x {
 		t.Errorf("the script holds %s", b)
+	}
+	// Without the app ID Windows shows nothing: the toast registers it
+	// first when the key is missing, with the one icon path.
+	for _, want := range []string{`$key = 'HKCU:\Software\Classes\AppUserModelId\csquad'`, "if (-not (Test-Path -LiteralPath $key)) {",
+		"Join-Path $env:LOCALAPPDATA 'csquad'", base64.StdEncoding.EncodeToString(PNG(256))} {
+		if !strings.Contains(script, want) {
+			t.Errorf("the toast script lacks %q", want)
+		}
+	}
+	if strings.Index(script, "Test-Path") > strings.Index(script, "CreateToastNotifier") {
+		t.Error("the toast shows before the app ID is registered")
+	}
+	if got := AppIDIcon(proc.Env{`LOCALAPPDATA=C:\Users\u\AppData\Local`}); got != filepath.Join(`C:\Users\u\AppData\Local`, "csquad", "csquad.png") {
+		t.Errorf("AppIDIcon %s", got)
 	}
 	if got := decodeUTF16(t, EncodeCommand(script)); got != script {
 		t.Errorf("EncodeCommand does not round-trip")
@@ -281,6 +296,22 @@ func TestPowerShellAppID(t *testing.T) {
 	}
 	if q := psQuote("a’b"); q != "'a’’b'" {
 		t.Errorf("psQuote %s", q)
+	}
+	out = `<Objs Version="1.1.0.1"><Obj S="progress" RefId="0"></Obj></Objs>`
+	if _, err := p.Register(PNG(32)); err == nil {
+		t.Error("CLIXML taken for an icon path")
+	}
+}
+
+func TestCLIXMLErrors(t *testing.T) {
+	stderr := "#< CLIXML\r\n<Objs Version=\"1.1.0.1\" xmlns=\"http://schemas.microsoft.com/powershell/2004/04\"><Obj S=\"progress\" RefId=\"0\"></Obj>" +
+		"<S S=\"Error\">Cannot find type [Windows.UI.Notifications.ToastNotificationManager]: _x000D__x000A_</S>" +
+		"<S S=\"Error\">At line:3 char:1 &amp; more_x000D__x000A_</S></Objs>"
+	if got := CLIXMLErrors(stderr); got != "Cannot find type [Windows.UI.Notifications.ToastNotificationManager]: \nAt line:3 char:1 & more" {
+		t.Errorf("%q", got)
+	}
+	if got := CLIXMLErrors("plain error\n"); got != "plain error" {
+		t.Errorf("%q", got)
 	}
 }
 
@@ -419,7 +450,7 @@ func TestSetup(t *testing.T) {
 		r := &fakeRegistrar{}
 		s := Setup{Sys: System{OS: "windows", Home: home, Env: proc.Env{"SystemRoot=" + sysRoot}}, Registrar: r}
 		m, err := s.Install()
-		if err != nil || r.registered != 1 || m.AppID == nil || m.WSL || m.Backend != "Windows toast (app ID csquad)" || len(m.Files) != 1 || m.Files[0] != IconFile(home) {
+		if err != nil || r.registered != 1 || m.AppID == nil || m.WSL || m.Backend != "Windows toast (app ID csquad)" || len(m.Files) != 0 {
 			t.Fatalf("%+v %v", m, err)
 		}
 		s.Uninstall(m)

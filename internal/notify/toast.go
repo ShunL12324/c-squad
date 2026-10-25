@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"unicode/utf16"
 
@@ -50,9 +51,15 @@ func xmlText(s string) string {
 }
 
 // ToastScript shows ToastXML(m). The XML goes in as base64: no quoting
-// problem can occur.
+// problem can occur. Windows shows no toast for an app ID that is not
+// registered, so the script registers it first when the key is missing: a
+// native and a WSL installation share it, and the uninstall of one removes
+// it.
 func ToastScript(m Message) string {
 	return `$ErrorActionPreference = 'Stop'
+$key = ` + psQuote(`HKCU:\`+AppIDKey) + `
+if (-not (Test-Path -LiteralPath $key)) {
+` + registerBody(PNG(256)) + `}
 $null = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
 $null = [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]
 $doc = New-Object Windows.Data.Xml.Dom.XmlDocument
@@ -72,26 +79,47 @@ func EncodeCommand(script string) string {
 	return base64.StdEncoding.EncodeToString(b)
 }
 
-// RunPowerShell runs a script with a hidden powershell.exe and returns its
-// output.
+// psPrelude: no progress records (with redirected output PowerShell writes
+// them to stderr as CLIXML), and UTF-8 output.
+const psPrelude = "$ProgressPreference = 'SilentlyContinue'\n[Console]::OutputEncoding = [Text.Encoding]::UTF8\n"
+
+// RunPowerShell runs a script with a hidden powershell.exe and returns what
+// it wrote to stdout.
 func RunPowerShell(ctx context.Context, ps string, env proc.Env, script string) (string, error) {
-	c := proc.Cmd{Path: ps, Args: []string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", EncodeCommand(script)}}
+	c := proc.Cmd{Path: ps, Args: []string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", EncodeCommand(psPrelude + script)}}
 	cmd := c.Command(ctx)
 	cmd.Env = env
-	var out bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &out
+	var out, errOut bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errOut
 	err := cmd.Run()
 	text := strings.TrimSpace(out.String())
 	if err != nil {
 		if ctx.Err() != nil {
 			return text, fmt.Errorf("powershell.exe did not finish in time")
 		}
-		if text == "" {
-			return "", fmt.Errorf("powershell.exe: %v", err)
+		msg := CLIXMLErrors(errOut.String())
+		if msg == "" {
+			msg = err.Error()
 		}
-		return text, fmt.Errorf("powershell.exe: %s", firstLines(text))
+		return text, fmt.Errorf("powershell.exe: %s", firstLines(msg))
 	}
 	return text, nil
+}
+
+var clixmlError = regexp.MustCompile(`<S S="Error">(.*?)</S>`)
+
+// CLIXMLErrors is the error text of PowerShell's stderr, which is CLIXML
+// when the output is redirected.
+func CLIXMLErrors(s string) string {
+	if !strings.Contains(s, "#< CLIXML") {
+		return strings.TrimSpace(s)
+	}
+	var b strings.Builder
+	for _, m := range clixmlError.FindAllStringSubmatch(s, -1) {
+		b.WriteString(m[1])
+	}
+	r := strings.NewReplacer("_x000D_", "", "_x000A_", "\n", "&lt;", "<", "&gt;", ">", "&quot;", `"`, "&apos;", "'", "&amp;", "&")
+	return strings.TrimSpace(r.Replace(b.String()))
 }
 
 func firstLines(s string) string {
@@ -153,6 +181,17 @@ type Registrar interface {
 	Unregister(r Registration) (bool, error)
 }
 
+// AppIDIcon is the app ID's icon on Windows: %LOCALAPPDATA%\csquad\csquad.png
+// for a native and a WSL installation alike. Windows caches the icon of an
+// app ID by the first IconUri it saw, so the path must never change; a
+// toast after a change of the path shows no icon.
+func AppIDIcon(env proc.Env) string {
+	if dir := env.Get("LOCALAPPDATA"); dir != "" {
+		return filepath.Join(dir, AppID, "csquad.png")
+	}
+	return ""
+}
+
 // RegistryAppID registers the app ID with the registry API (Windows): the
 // icon is a file csquad writes itself.
 type RegistryAppID struct {
@@ -195,6 +234,9 @@ func (r RegistryAppID) Unregister(reg Registration) (bool, error) {
 		if err := os.Remove(reg.Icon); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return removed, err
 		}
+		if dir := filepath.Dir(reg.Icon); filepath.Base(dir) == AppID {
+			os.Remove(dir) // when empty
+		}
 	}
 	return removed, nil
 }
@@ -218,18 +260,24 @@ func psQuote(s string) string {
 
 func (p PowerShellAppID) psKey() string { return psQuote(`HKCU:\` + p.Key) }
 
-// RegisterScript writes the icon and the key; it prints the icon's path.
-func (p PowerShellAppID) RegisterScript(icon []byte) string {
-	return `$ErrorActionPreference = 'Stop'
-$dir = Join-Path $env:LOCALAPPDATA 'csquad'
+// registerBody writes the icon to %LOCALAPPDATA%\csquad (AppIDIcon) and
+// the key named by $key; $icon is then the icon's path.
+func registerBody(icon []byte) string {
+	return `$dir = Join-Path $env:LOCALAPPDATA 'csquad'
 $null = New-Item -ItemType Directory -Force -Path $dir
 $icon = Join-Path $dir 'csquad.png'
 [IO.File]::WriteAllBytes($icon, [Convert]::FromBase64String('` + base64.StdEncoding.EncodeToString(icon) + `'))
-$key = ` + p.psKey() + `
 if (-not (Test-Path -LiteralPath $key)) { $null = New-Item -Path $key -Force }
 $null = New-ItemProperty -LiteralPath $key -Name DisplayName -Value ` + psQuote(AppID) + ` -PropertyType String -Force
 $null = New-ItemProperty -LiteralPath $key -Name IconUri -Value $icon -PropertyType String -Force
-Write-Output $icon
+`
+}
+
+// RegisterScript writes the icon and the key; it prints the icon's path.
+func (p PowerShellAppID) RegisterScript(icon []byte) string {
+	return `$ErrorActionPreference = 'Stop'
+$key = ` + p.psKey() + `
+` + registerBody(icon) + `Write-Output $icon
 `
 }
 
@@ -260,8 +308,8 @@ func (p PowerShellAppID) Register(icon []byte) (Registration, error) {
 		return Registration{}, err
 	}
 	path := lastLine(out)
-	if path == "" {
-		return Registration{}, fmt.Errorf("powershell.exe printed no icon path")
+	if !strings.Contains(path, `:\`) || strings.ContainsAny(path, "<>\"") {
+		return Registration{}, fmt.Errorf("powershell.exe printed no icon path: %q", clip(path, 80))
 	}
 	return Registration{Key: p.Key, Icon: path}, nil
 }

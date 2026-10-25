@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -50,7 +51,11 @@ func (s Setup) AppIDRegistrar(wsl bool) Registrar {
 		}}
 	}
 	if reg := SystemRegistry(); reg != nil {
-		return RegistryAppID{Reg: reg, Key: AppIDKey, Icon: IconFile(s.Sys.Home)}
+		icon := AppIDIcon(s.Sys.Env)
+		if icon == "" {
+			icon = IconFile(s.Sys.Home)
+		}
+		return RegistryAppID{Reg: reg, Key: AppIDKey, Icon: icon}
 	}
 	return nil
 }
@@ -84,9 +89,6 @@ func (s Setup) Install() (m Installed, err error) {
 	switch {
 	case s.Sys.OS == "windows", s.Sys.WSL:
 		wsl := s.Sys.OS != "windows"
-		if !wsl {
-			m.Files = append(m.Files, IconFile(s.Sys.Home))
-		}
 		r := s.AppIDRegistrar(wsl)
 		if r == nil {
 			return m, errors.New("no registry to register the app ID in")
@@ -118,6 +120,29 @@ func (s Setup) Install() (m Installed, err error) {
 	return m, nil
 }
 
+// RemoveStale removes the files an older install made that this one did not
+// (csquad.png in $CSQUAD_HOME before the Windows icon moved to
+// %LOCALAPPDATA%).
+func (s Setup) RemoveStale(old, cur Installed) {
+	for _, f := range old.Files {
+		if !slices.Contains(cur.Files, f) {
+			s.remove(f)
+		}
+	}
+}
+
+// remove removes a file or directory inside $CSQUAD_HOME, never outside.
+func (s Setup) remove(f string) error {
+	rel, err := filepath.Rel(s.Sys.Home, f)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+		return nil
+	}
+	if strings.HasSuffix(f, ".app") && s.Sys.OS == "darwin" {
+		_ = s.exec(Lsregister, "-u", f)
+	}
+	return os.RemoveAll(f)
+}
+
 // Uninstall removes what Install made and returns what to tell the user.
 // The app ID goes only while it still names this installation's icon: a
 // Windows and a WSL installation can share it.
@@ -133,14 +158,7 @@ func (s Setup) Uninstall(m Installed) []string {
 		}
 	}
 	for _, f := range m.Files {
-		rel, err := filepath.Rel(s.Sys.Home, f)
-		if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
-			continue // never outside $CSQUAD_HOME
-		}
-		if strings.HasSuffix(f, ".app") && s.Sys.OS == "darwin" {
-			_ = s.exec(Lsregister, "-u", f)
-		}
-		if err := os.RemoveAll(f); err != nil {
+		if err := s.remove(f); err != nil {
 			notes = append(notes, fmt.Sprintf("Notifications: could not remove %s: %v", f, err))
 		}
 	}

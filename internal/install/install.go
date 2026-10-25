@@ -298,6 +298,9 @@ func Install(o Options, update bool) error {
 	}
 	// Notifications never stop an install: a failed step is a warning.
 	nm, nerr := o.notifySetup().Install()
+	if old.Notify != nil {
+		o.notifySetup().RemoveStale(*old.Notify, nm)
+	}
 	m.Notify = &nm
 	if err := writeJSON(o.manifestFile(), m); err != nil {
 		return err

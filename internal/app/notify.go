@@ -283,7 +283,7 @@ func (a *App) notifyTest(ctx context.Context) error {
 		if r, ok, err := setup.AppIDRegistrar(tb.WSL).Registered(); err != nil {
 			a.printf("Warning: cannot read the app ID %s: %v\n", notify.AppID, err)
 		} else if !ok {
-			a.printf("Warning: the app ID %s is not registered, and Windows shows no toast without it; run csquad install.\n", notify.AppID)
+			a.printf("App ID %s: not registered; the toast registers it (csquad install does too)\n", notify.AppID)
 		} else {
 			a.printf("App ID %s: registered, icon %s\n", notify.AppID, r.Icon)
 		}

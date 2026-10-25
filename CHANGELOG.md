@@ -41,6 +41,16 @@
 - The database gains a `hold` column (schema 3). An older csquad refuses
   the upgraded database.
 
+### Fixed
+
+- A queued task started by a detached csquad (the advance the Stop hook or
+  the status line spawns) could fail with `needs you · did not start:
+  Workspace not trusted`. csquad set `CLAUDE_CONFIG_DIR` for its detached
+  processes even when the user had not, and with it set Claude Code reads
+  the workspace trust from `$CLAUDE_CONFIG_DIR/.claude.json` instead of
+  `~/.claude.json`. Detached processes now get `CLAUDE_CONFIG_DIR` only
+  when the user set it.
+
 ## 3.0.3 - 2026-10-25
 
 ### Changed

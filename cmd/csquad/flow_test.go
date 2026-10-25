@@ -516,7 +516,8 @@ func TestUnprovenMergeNeedsYou(t *testing.T) {
 // ---- dependencies ---------------------------------------------------------------
 
 // T2 --after T1 waits; when T1's merge lands, T2 starts with what T1 left.
-// ready does not release it, finish does; a cancelled dependency stops it.
+// A held task's ready does not release it, finish does; a cancelled
+// dependency stops it.
 func TestDependencyRelease(t *testing.T) {
 	h, repo := flowRepo(t)
 	t1 := launchIn(t, h, repo, "first", "--merge")
@@ -554,8 +555,8 @@ func TestDependencyRelease(t *testing.T) {
 		t.Errorf("prompt %q", prompt)
 	}
 
-	// ready does not release; finish does.
-	t3 := launchIn(t, h, repo, "third", "--check", "cmd:true")
+	// Held for review: ready does not release; finish does.
+	t3 := launchIn(t, h, repo, "third", "--check", "cmd:true", "--no-merge")
 	launchIn(t, h, repo, "fourth", "--after", fmt.Sprintf("T%d", t3))
 	work(t, h, repo, t3, map[string]string{"c.txt": "c\n"})
 	advance(t, h)

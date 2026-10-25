@@ -34,7 +34,7 @@ func (a *App) listed(ctx context.Context, all bool) ([]store.Task, map[int]engin
 }
 
 // order is status's order: what needs the user first.
-var order = []string{engine.NeedsInput, "needs_you", engine.Failed, engine.Done, "ready", engine.Idle, engine.Working, engine.Stopped}
+var order = []string{engine.NeedsInput, "needs_you", engine.Failed, Review, engine.Done, "ready", engine.Idle, engine.Working, engine.Stopped}
 
 func rank(key string) int {
 	for i, k := range order {
@@ -66,6 +66,8 @@ type statusEntry struct {
 	Round     int         `json:"round,omitempty"`
 	MaxRounds int         `json:"maxRounds,omitempty"`
 	MergeInto string      `json:"mergeInto,omitempty"`
+	Hold      bool        `json:"hold,omitempty"`  // --no-merge / csquad hold: never merged for the tasks queued after it
+	Next      string      `json:"next,omitempty"`  // what to do for a task a hold blocks
 	Usage     *usageEntry `json:"usage,omitempty"` // working tasks
 }
 
@@ -80,9 +82,10 @@ func (a *App) Status(ctx context.Context, all, asJSON bool) error {
 		a.warnf("csquad: %v\n", err)
 	}
 	views := map[int]View{}
+	q := a.queued(ctx)
 	for _, t := range tasks {
 		l, ok := live[t.ID]
-		views[t.ID] = view(t, l, ok)
+		views[t.ID] = q.reviewView(view(t, l, ok), t, l, ok)
 	}
 	sort.SliceStable(tasks, func(i, j int) bool {
 		ri, rj := rank(views[tasks[i].ID].Key), rank(views[tasks[j].ID].Key)
@@ -123,7 +126,7 @@ func (a *App) Status(ctx context.Context, all, asJSON bool) error {
 		if t.CheckSpec != "" {
 			e.Check, e.Round, e.MaxRounds = t.CheckSpec, t.Round, t.MaxRounds
 		}
-		e.MergeInto = t.MergeInto
+		e.MergeInto, e.Hold, e.Next = t.MergeInto, t.Hold, q.nextStep(t, views[t.ID])
 		var usage []string
 		if working(views[t.ID].Key) {
 			e.Usage, usage = a.usageOf(ctx, t)
@@ -144,7 +147,10 @@ func (a *App) Status(ctx context.Context, all, asJSON bool) error {
 			if e.Hint != "" {
 				a.printf("hint: %s\n", e.Hint)
 			}
-			if p := strings.TrimPrefix(flowPlan(t), "\n  then: "); p != "" {
+			if e.Next != "" {
+				a.printf("next: %s\n", e.Next)
+			}
+			if p := strings.TrimPrefix(flowPlan(t)+a.implicitPlan(q, t), "\n  then: "); p != "" {
 				a.printf("flow: %s\n", p)
 			}
 			// The message is indented, so its own "## " headings never read

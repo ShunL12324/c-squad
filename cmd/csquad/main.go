@@ -38,8 +38,8 @@ var errUsage = errors.New("usage")
 var commands = []command{
 	{
 		name:  "launch",
-		usage: "launch --title T [--cwd DIR] [--engine claude|codex] [--model M] [--isolation none] [--fork] [--after T3,T4] [--check codex|claude[:MODEL]|cmd:COMMAND] [--max 3] [--merge [BRANCH]] [--prompt-file F [--rm-prompt]] [--no-worker-rules] [-- ENGINE_ARGS...]  (prompt on stdin)",
-		flags: []string{"--title=", "--cwd=", "--engine=", "--model=", "--isolation=", "--fork", "--prompt-file=", "--rm-prompt", "--no-worker-rules", "--after=", "--check=", "--max=", "--merge?"},
+		usage: "launch --title T [--cwd DIR] [--engine claude|codex] [--model M] [--isolation none] [--fork] [--after T3,T4] [--check codex|claude[:MODEL]|cmd:COMMAND] [--max 3] [--merge [BRANCH] | --no-merge] [--prompt-file F [--rm-prompt]] [--no-worker-rules] [-- ENGINE_ARGS...]  (prompt on stdin)",
+		flags: []string{"--title=", "--cwd=", "--engine=", "--model=", "--isolation=", "--fork", "--prompt-file=", "--rm-prompt", "--no-worker-rules", "--after=", "--check=", "--max=", "--merge?", "--no-merge"},
 		run: func(ctx context.Context, a *app.App, p *parsed) error {
 			if len(p.args) > 0 {
 				return fmt.Errorf("unexpected argument %q (the prompt comes on stdin or with --prompt-file)", p.args[0])
@@ -56,7 +56,7 @@ var commands = []command{
 				Isolation: p.values["isolation"], PromptFile: p.values["prompt-file"], RmPrompt: p.bools["rm-prompt"],
 				NoWorkerRules: p.bools["no-worker-rules"], EngineArgs: p.rest,
 				After: p.values["after"], Check: p.values["check"], Max: max, Merge: p.has("merge"), MergeInto: p.values["merge"],
-				Fork: p.bools["fork"],
+				Fork: p.bools["fork"], NoMerge: p.bools["no-merge"],
 			})
 		},
 	},
@@ -151,6 +151,28 @@ var commands = []command{
 		},
 	},
 	{
+		name:  "hold",
+		usage: "hold T12 [--all]   review it first: csquad does not merge it for the tasks queued after it (launch --no-merge)",
+		flags: []string{"--all"},
+		run: func(ctx context.Context, a *app.App, p *parsed) error {
+			if len(p.args) != 1 {
+				return errUsage
+			}
+			return a.Hold(ctx, p.args[0], true, p.bools["all"])
+		},
+	},
+	{
+		name:  "release",
+		usage: "release T12 [--all]   undo hold: csquad merges it when its work is done, then the tasks queued after it start",
+		flags: []string{"--all"},
+		run: func(ctx context.Context, a *app.App, p *parsed) error {
+			if len(p.args) != 1 {
+				return errUsage
+			}
+			return a.Hold(ctx, p.args[0], false, p.bools["all"])
+		},
+	},
+	{
 		name:  "hook",
 		usage: "hook [--home DIR] claude-stop|codex-stop   (internal: Stop hook entry points, the hook's JSON on stdin)",
 		flags: []string{"--home="},
@@ -217,7 +239,7 @@ var commands = []command{
 
 // advancing are the commands that move the flow first. The hook and the
 // status line are fast paths; advance and check move it themselves.
-var advancing = map[string]bool{"launch": true, "status": true, "peek": true, "wait": true, "send": true, "finish": true, "cancel": true, "retry": true}
+var advancing = map[string]bool{"launch": true, "status": true, "peek": true, "wait": true, "send": true, "finish": true, "cancel": true, "retry": true, "hold": true, "release": true}
 
 func find(name string) *command {
 	for i := range commands {

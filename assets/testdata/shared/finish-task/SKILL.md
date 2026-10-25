@@ -12,9 +12,15 @@ Only finish tasks this session launched (`{{CSQUAD}} status` lists them).
 Touch another session's task only if the user names it explicitly (then pass
 `--all`).
 
-A task launched with `--merge` is merged and cleaned up by csquad itself and
-leaves the list; one whose check passed shows `ready` and is finished like any
-other.
+A task launched with `--merge`, or one that tasks queued `--after` it wait
+for, is merged and cleaned up by csquad itself and leaves the list; one whose
+check passed shows `ready` and is finished like any other.
+
+A task the user held for review (`--no-merge` or `csquad hold`) shows
+`done · finish to start T18`: T18 waits until it is finished. Finish it as
+below once the user has reviewed it and wants it merged; or, when the user
+says to let csquad merge it, run `{{CSQUAD}} release T17` instead: csquad
+merges it into the branch of the main checkout and T18 starts.
 
 Which tasks: the ones the user names. If they name none ("finish", "merge
 them", "wrap up"), finish every task of this session that is done, idle or ready, one

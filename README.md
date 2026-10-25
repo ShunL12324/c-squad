@@ -214,11 +214,16 @@ PROMPT
 
 ```text
 you     /create-task after T1, document the retry options
-claude  Queued T4 · document retry options. It starts when T1 is done.
+claude  Queued T4 · document retry options. T1 is merged automatically when it is done,
+        then T4 starts.
 ```
 
-The status line shows `waiting T1`. T4 starts when T1 is merged and finished. Its prompt then
-gets the merged branch and the last message of T1. A task that is only `ready` does not start T4.
+The status line shows `waiting T1`. When the work of T1 is done (its worker stops, or its check
+passes), csquad merges T1 into the branch of the main checkout, as with `--merge`. Then T4 starts
+from that branch. Its prompt gets the merged branch and the last message of T1. This also occurs
+when you queue T4 after T1 is already done. With `--merge BRANCH`, T1 merges into BRANCH. A merge
+conflict stops T1 with `needs you · merge conflict`, and T4 continues to wait. A task with
+`--isolation none` has nothing to merge: it is done when its worker stops.
 
 ```sh
 csquad launch --title "document retry options" --after T1 <<'PROMPT'
@@ -228,7 +233,21 @@ PROMPT
 
 ```text
 queued T4 · document retry options · after T1 · ~/demo/httpclient
+  T1 merges into main when it is done, then T4 starts
 ```
+
+To review T1 before T4 starts, say so:
+
+```text
+you     /create-task after T1, document the retry options. Wait for me to review T1.
+claude  Queued T4 · document retry options. T1 is held for your review: T4 starts when you
+        finish T1.
+```
+
+Claude adds `--no-merge` when it launches T1, or runs `csquad hold T1` when T1 exists. csquad
+then does not merge T1. When its work is done, its row shows `done · finish to start T4` in bold
+green, and the row of T4 shows `waiting T1 · review`. After your review, merge T1 and finish it
+(`/finish-task T1`), or run `csquad release T1` to let csquad merge it. Then T4 starts.
 
 ### Let Codex review a task, then merge it
 
@@ -382,12 +401,14 @@ The time stays in its column:
 | `✗` | `failed` | The session failed. | Read it with `csquad peek T7`. |
 | `✓` | `done` | The task finished its work. | Merge and finish it. |
 | `✓` | `ready` | The task passed its check. | Merge and finish it. |
+| `✓` | `done · finish to start T8` | The task is done and T8 waits for it. You asked to review it first (`--no-merge`, `csquad hold`). The text is bold. | Review it. Then merge and finish it, or run `csquad release T7`. |
 | `⇡` | `merging` | csquad merges the branch of the task. | Wait. |
 | `◑` | `fixing 2/3` | The check failed. The task fixes the findings in round 2 of 3. | Wait. |
 | `◐` | `checking 1/3` | The check runs, round 1 of 3. | Wait. |
 | `●` | `working` | The task works. | Wait. |
 | `◇` | `idle` | The task ended its turn and waits. | Read it, then send a message or finish it. |
-| `◌` | `waiting T5` | The task waits for T5. It has no session yet. | Finish T5. |
+| `◌` | `waiting T5` | The task waits for T5. It has no session yet. csquad merges T5 when its work is done. | Wait. |
+| `◌` | `waiting T5 · review` | The task waits for T5, and T5 waits for your review. | Review T5. Then finish it or run `csquad release T5`. |
 | `■` | `stopped` | The session stopped before the end. | Send a message to start it again, or cancel it. |
 | `□` | `gone` | The session was removed outside csquad, and some of its work is left. | Run `csquad cancel T7`. |
 
@@ -474,6 +495,8 @@ tasks".
 | `finish T12 [T13...] [--into BRANCH]` | Make sure that the work is merged and clean, then remove worktrees, branches and the session. |
 | `cancel T12 [--discard]` | Stop a task and remove it from the list. Unmerged work stays unless `--discard`; `--discard` also works on a task that is already cancelled. |
 | `retry T12` | Continue a task that needs you, where it stopped. |
+| `hold T12` | Review the task first: csquad does not merge it for the tasks that wait for it. The same as `launch --no-merge`. |
+| `release T12` | Undo `hold`: csquad merges the task when its work is done, then the tasks that wait for it start. |
 | `statusline` | The status line command. It reads the JSON of Claude Code on stdin. |
 | `install` | Install the binary to `~/.csquad/bin`, the skills, and the status line wrapper. |
 | `update` | Do the same for an existing installation. |
@@ -492,10 +515,11 @@ Flags of `launch`:
 | `--cwd DIR` | Run the task in DIR. The default is the current directory. |
 | `--engine claude\|codex` | The engine. The default is `claude`. |
 | `--model M` | The model of the task. |
-| `--after T3,T4` | Wait until these tasks are done, then start. |
+| `--after T3,T4` | Wait until these tasks are done, then start. csquad merges T3 and T4 when their work is done, unless they have `--no-merge`. |
 | `--check SPEC` | Check the work when the task stops: `codex[:MODEL]`, `claude[:MODEL]` or `cmd:COMMAND`. |
 | `--max N` | The maximum number of check rounds. The default is 3. |
 | `--merge [BRANCH]` | Merge the work when it is done and checked. The default is the branch of the main checkout. |
+| `--no-merge` | Do not merge the task for the tasks that wait for it. You review it first. Not with `--merge`. |
 | `--isolation none` | Edit the working directory in place. No worktree, no branch, no commit. |
 | `--fork` | Start as a fork of the current conversation. Not with `--after`. |
 | `--prompt-file F [--rm-prompt]` | Read the prompt from F. `--rm-prompt` deletes F after it is read. |
@@ -673,8 +697,9 @@ check or a merge shows `needs you · session gone` instead.
 csquad sets no limit. Each task uses its own session and tokens, so you decide how many to run.
 
 **Does a task merge by itself?**
-No. A task merges only with `--merge`, that is, when you ask for it ("merge it when it passes").
-Otherwise you ask Claude to merge it.
+Only with `--merge` ("merge it when it passes"), or when other tasks wait for it (`--after`).
+`--no-merge` or `csquad hold T12` stops the second case: you review the task first. Otherwise you
+ask Claude to merge it.
 
 **Where is the history of a task?**
 `~/.csquad/logs/events.jsonl` has one line for each phase change. `csquad peek T12` shows the

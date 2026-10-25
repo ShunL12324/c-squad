@@ -162,6 +162,11 @@ csquad selects one backend at run time.
     answer;
   - denied: it fails at once and names System Settings › Notifications;
   - allowed: it posts.
+- Open problem: in the real check, a bundle id that macOS recorded as
+  declined did not show in System Settings › Notifications, so the user
+  could not turn it on there. macOS does not ask again. `notify post`
+  accepts a bundle id that starts with `io.github.shunl12324.csquad`, so a
+  test bundle can use a fresh id.
 - Fallback, when there is no bundle (no install): `osascript` with
   `display notification`. It shows as Script Editor.
 

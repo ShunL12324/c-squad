@@ -481,7 +481,7 @@ process that sees it: the status line, a Stop hook or a command. A task that wor
 | --- | --- |
 | Windows | A toast from "csquad", with its icon. `install` registers the app ID `csquad` for your user (no admin rights) and writes the icon to `%LOCALAPPDATA%\csquad`. |
 | WSL | The same Windows toast, through `powershell.exe`. |
-| macOS | A notification from `~/.csquad/csquad.app`, a small app bundle that `install` writes and signs. macOS asks once for permission: choose **Allow**. If you missed the question, turn on csquad in System Settings › Notifications. |
+| macOS | A notification from `~/.csquad/csquad.app`, a small app bundle that `install` writes and signs. macOS asks once for permission, at the first notification or at `csquad notify test`: choose **Allow**. csquad keeps the question open for 5 minutes. |
 | Linux | The notification service of the desktop, over D-Bus. Without a session bus, nothing shows. |
 
 ```sh

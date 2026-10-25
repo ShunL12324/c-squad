@@ -416,7 +416,7 @@ usage: 51.8k fresh · +0 since the last refresh (0 s) · last activity 13s ago
 | --- | --- |
 | Windows | 来自 “csquad” 的 toast，带图标。`install` 为当前用户注册应用 ID `csquad`（不需要管理员权限），并把图标写到 `%LOCALAPPDATA%\csquad`。 |
 | WSL | 同样的 Windows toast，通过 `powershell.exe` 发出。 |
-| macOS | 来自 `~/.csquad/csquad.app` 的通知。这是 `install` 写入并签名的一个小应用包。macOS 会问一次权限：选 **允许**。如果错过了，在 系统设置 › 通知 里打开 csquad。 |
+| macOS | 来自 `~/.csquad/csquad.app` 的通知。这是 `install` 写入并签名的一个小应用包。macOS 只问一次权限，在第一条通知或 `csquad notify test` 时：选 **允许**。csquad 让这个问题保留 5 分钟。 |
 | Linux | 桌面的通知服务，通过 D-Bus。没有会话总线时不显示。 |
 
 ```sh

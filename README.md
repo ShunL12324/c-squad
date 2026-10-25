@@ -26,6 +26,7 @@ Codex use when you ask for tasks, and it adds the task rows to your own status l
 - [Quick start](#quick-start)
 - [Examples](#examples)
 - [Read the status line](#read-the-status-line)
+- [Notifications](#notifications)
 - [Command reference](#command-reference)
 - [Configuration](#configuration)
 - [Update and uninstall](#update-and-uninstall)
@@ -459,6 +460,39 @@ conversation, so earlier tasks go from the status line, but they continue to run
 tasks, open agent view (`claude agents`), run `csquad status --all`, or ask Claude to "show all
 tasks".
 
+## Notifications
+
+csquad shows a native notification when a task needs you or is finished. You hear about it while
+you work in your session.
+
+| Event | When |
+| --- | --- |
+| `needs input` | The task asks a question, shows a permission prompt or holds a message. The body is the first line of its last message. |
+| `needs you` | The task stopped for you. The body gives the reason. |
+| `ready` | The check passed. |
+| `done` | A task without a check or a merge ended its turn. The body is the first line of its final message. |
+| `failed` | The session failed. |
+| `merged` | `--merge` landed the work. |
+
+The title is the task: `T2 · fix login redirect`. Each change notifies once, from the first csquad
+process that sees it: the status line, a Stop hook or a command. A task that works sends nothing.
+
+| OS | How it shows |
+| --- | --- |
+| Windows | A toast from "csquad", with its icon. `install` registers the app ID `csquad` for your user (no admin rights) and writes the icon to `%LOCALAPPDATA%\csquad`. |
+| WSL | The same Windows toast, through `powershell.exe`. |
+| macOS | A notification from `~/.csquad/csquad.app`, a small app bundle that `install` writes and signs. macOS asks once for permission: choose **Allow**. If you missed the question, turn on csquad in System Settings › Notifications. |
+| Linux | The notification service of the desktop, over D-Bus. Without a session bus, nothing shows. |
+
+```sh
+csquad notify test      # send a test notification; it prints the backend, or why there is none
+csquad notify input     # only needs input and needs you
+csquad notify off       # no notifications; csquad notify on turns them on again
+```
+
+`CSQUAD_NOTIFY=on|input|off` in the environment wins over this setting. A notification that fails
+never stops a command; the error goes to `~/.csquad/logs/notify.log`.
+
 ## Command reference
 
 `csquad COMMAND --help` shows the usage of one command. `T12` is a task ID. Most commands accept
@@ -479,6 +513,7 @@ tasks".
 | `update` | Do the same for an existing installation. |
 | `uninstall` | Restore the status line and remove what `install` wrote. Keeps `csquad.db` and `models.md`. |
 | `status-install` | Show what is installed. |
+| `notify [test\|on\|input\|off]` | Show the notification setting and backend, send a test notification, or choose what to send. |
 | `version`, `help` | Show the version or the usage. |
 
 The commands `hook`, `check` and `advance` are internal. The Stop hooks and the status line use
@@ -533,6 +568,7 @@ create-task skill. Use it for your own trigger phrases. Run `csquad update` afte
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | The Claude Code configuration. The skills go into its `skills` directory. |
 | `CODEX_HOME` | `~/.codex` | The Codex configuration. If it exists, `install` also sets up Codex. |
 | `NO_COLOR` | not set | Any value removes the colors from the status line. |
+| `CSQUAD_NOTIFY` | `on` | `input`: only the notifications needs input and needs you. `off`: no notifications. Wins over `csquad notify`. |
 
 Claude Code's background service does not see your shell environment. So `csquad launch` copies
 these variables from the current session into the settings of the task:
@@ -560,13 +596,16 @@ your settings, in the project settings, or after `--`.
   bin/csquad         the binary that the skills and the status line run
   csquad.db          the task database (SQLite)
   models.md          your model routing (optional, never written by csquad)
+  notify             the notification setting (csquad notify on|input|off)
+  csquad.app/        macOS: the app bundle that shows the notifications
+  csquad.png         Linux: the notification icon
   manifest.json      what install wrote
   statusline.json    your original status line
   settings.json.bak  a copy of your Claude Code settings.json from the first install (mode 600)
   settings/T12.json  the session settings of a task while it exists (mode 600)
   prompts/T12.md     a prompt that is too long for the command line
   cache/             the last status line output and the usage readings
-  logs/              check logs, events.jsonl (one line per phase change), advance.log
+  logs/              check logs, events.jsonl (one line per phase change), advance.log, notify.log
 ~/.claude/skills/    create-task, task-status, message-task, watch-task, finish-task
 ```
 
@@ -611,8 +650,9 @@ a skill, `update` saves your version as a `.bak` file next to it and tells you.
 ```
 
 `uninstall` restores your status line and removes the skills, the binary and the Codex hook. It
-also removes the logs, settings, prompts and cache in `~/.csquad`. It keeps
-`~/.csquad/csquad.db` and `~/.csquad/models.md`. Running tasks continue to run.
+also removes the logs, settings, prompts and cache in `~/.csquad`, and the notification setup: the
+app ID and its icon (Windows, WSL) or `csquad.app` (macOS). It keeps `~/.csquad/csquad.db`,
+`~/.csquad/models.md` and the notification setting. Running tasks continue to run.
 
 ### Move from csquad 1.x
 

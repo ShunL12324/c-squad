@@ -481,6 +481,16 @@ func TestSetup(t *testing.T) {
 		if b, _ := os.ReadFile(IconFile(home)); !bytes.Equal(b, PNG(256)) {
 			t.Error("the icon")
 		}
+		// An update removes what an older install made and this one did not.
+		stale := filepath.Join(home, "old-icon.png")
+		os.WriteFile(stale, nil, 0o644)
+		s.RemoveStale(Installed{Files: []string{stale, IconFile(home)}}, m)
+		if _, err := os.Stat(stale); !errors.Is(err, os.ErrNotExist) {
+			t.Error("the stale file is left")
+		}
+		if _, err := os.Stat(IconFile(home)); err != nil {
+			t.Error("removed a file the new install made")
+		}
 		// Uninstall never removes a file outside $CSQUAD_HOME.
 		outside := filepath.Join(root, "keep.txt")
 		os.WriteFile(outside, nil, 0o644)

@@ -1,5 +1,53 @@
 # Changelog
 
+## 3.1.0 - unreleased
+
+### Added
+
+- Native notifications. A task that needs you or is finished shows a
+  notification titled with the task (`T2 · fix login redirect`): `needs
+  input` (a question, a permission prompt, a held message, with the first
+  line of the last message), `needs you` (with the reason), `ready` (the
+  check passed), `done` (a task without a check or a merge ended its turn,
+  with the first line of its final message), `failed`, and `merged` (a
+  landing of `--merge`). Each change notifies once, from the first csquad
+  process that sees it: the status line, a Stop hook, `wait` or any
+  command. A task that works sends nothing. See
+  `docs/design/notifications.md`.
+  - Windows: a toast from the app ID `csquad`, which `install` registers for
+    the user in `HKCU\Software\Classes\AppUserModelId\csquad` (no admin
+    rights), with the icon in `%LOCALAPPDATA%\csquad\csquad.png`. It is
+    shown through a hidden Windows PowerShell. WSL shows the same toast
+    through `powershell.exe`. A native and a WSL installation share the app
+    ID; each toast registers it again when the key or the icon is missing.
+  - macOS: `install` writes `~/.csquad/csquad.app` (an agent app bundle
+    with the icon and a copy of csquad), signs it ad hoc and registers it
+    with LaunchServices. The bundle posts through UNUserNotificationCenter,
+    called through purego, so the build stays without cgo. macOS asks once
+    for permission. Without the bundle, csquad falls back to `osascript`
+    (shown as Script Editor).
+  - Linux: `org.freedesktop.Notifications.Notify` on the D-Bus session bus;
+    nothing without a session bus.
+- `csquad notify test` sends a test notification and prints the backend, or
+  why there is none. `csquad notify on|input|off` keeps the setting in
+  `~/.csquad/notify`; `CSQUAD_NOTIFY=on|input|off` wins over it. `input`
+  sends only needs input and needs you.
+- `install` prints the backend it set up (`Notifications: ...`);
+  `uninstall` removes the app ID, the icon and `csquad.app`.
+
+### Changed
+
+- The database gets migration 3: the columns `notified`, `notified_at` and
+  `notified_phase` record what was announced, with a compare-and-set, so
+  concurrent processes never send the same notification twice. Tasks that
+  are ready, need you, failed or are done (without a flow) at the update
+  count as announced.
+- The Stop hook of a task without a check or a merge now also starts a
+  detached `csquad advance --stopped`, so its `done` comes without a status
+  line (a Codex master session). `CSQUAD_NOTIFY=off` turns this off.
+- The detached processes csquad starts also get `DBUS_SESSION_BUS_ADDRESS`,
+  `WSL_DISTRO_NAME` and `WSL_INTEROP`.
+
 ## 3.0.3 - 2026-10-25
 
 ### Changed

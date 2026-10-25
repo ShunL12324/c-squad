@@ -21,6 +21,7 @@ csquad 是一个二进制文件，没有自己的后台服务。它安装五个 
 - [快速开始](#快速开始)
 - [示例](#示例)
 - [看懂状态栏](#看懂状态栏)
+- [通知](#通知)
 - [命令参考](#命令参考)
 - [配置](#配置)
 - [更新和卸载](#更新和卸载)
@@ -396,6 +397,36 @@ usage: 51.8k fresh · +0 since the last refresh (0 s) · last activity 13s ago
 
 状态栏只显示当前对话创建的任务。`/clear` 会开始一个新对话，之前的任务就从状态栏消失了，但它们仍在运行。要看全部任务，打开 agent view（`claude agents`）、运行 `csquad status --all`，或者让 Claude “显示所有任务”。
 
+## 通知
+
+任务需要你或者完成时，csquad 会弹出系统通知。你在会话里工作时也能知道。
+
+| 事件 | 什么时候 |
+| --- | --- |
+| `needs input` | 任务提了问题、显示了权限请求，或有一条消息在等你批准。正文是它最后一条消息的第一行。 |
+| `needs you` | 任务停下来等你。正文写明原因。 |
+| `ready` | 检查通过了。 |
+| `done` | 没有检查也没有合并的任务结束了这一轮。正文是它最后一条消息的第一行。 |
+| `failed` | 会话失败了。 |
+| `merged` | `--merge` 合并了工作。 |
+
+标题是任务：`T2 · fix login redirect`。每次变化只通知一次，由最先看到它的 csquad 进程发出：状态栏、Stop hook 或某个命令。任务在工作时不发通知。
+
+| 系统 | 显示方式 |
+| --- | --- |
+| Windows | 来自 “csquad” 的 toast，带图标。`install` 为当前用户注册应用 ID `csquad`（不需要管理员权限），并把图标写到 `%LOCALAPPDATA%\csquad`。 |
+| WSL | 同样的 Windows toast，通过 `powershell.exe` 发出。 |
+| macOS | 来自 `~/.csquad/csquad.app` 的通知。这是 `install` 写入并签名的一个小应用包。macOS 会问一次权限：选 **允许**。如果错过了，在 系统设置 › 通知 里打开 csquad。 |
+| Linux | 桌面的通知服务，通过 D-Bus。没有会话总线时不显示。 |
+
+```sh
+csquad notify test      # 发一条测试通知；它显示用的后端，或者为什么没有
+csquad notify input     # 只通知 needs input 和 needs you
+csquad notify off       # 关闭通知；csquad notify on 重新打开
+```
+
+环境变量 `CSQUAD_NOTIFY=on|input|off` 优先于这个设置。通知失败不会让命令失败；错误写到 `~/.csquad/logs/notify.log`。
+
 ## 命令参考
 
 `csquad COMMAND --help` 显示单个命令的用法。`T12` 是任务 ID。大多数命令接受 `--all`，用于操作其他会话的任务。
@@ -415,6 +446,7 @@ usage: 51.8k fresh · +0 since the last refresh (0 s) · last activity 13s ago
 | `update` | 对已有的安装做同样的事。 |
 | `uninstall` | 恢复状态栏，删除 `install` 写入的内容。保留 `csquad.db` 和 `models.md`。 |
 | `status-install` | 显示安装了什么。 |
+| `notify [test\|on\|input\|off]` | 显示通知设置和后端，发一条测试通知，或选择发哪些通知。 |
 | `version`、`help` | 显示版本或用法。 |
 
 `hook`、`check` 和 `advance` 是内部命令，供 Stop hook 和状态栏使用。
@@ -465,6 +497,7 @@ Also use it when I say "farm this out" or "background this".
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | Claude Code 的配置。skill 装到它的 `skills` 目录。 |
 | `CODEX_HOME` | `~/.codex` | Codex 的配置。如果它存在，`install` 也会设置 Codex。 |
 | `NO_COLOR` | 未设置 | 设为任意值即可去掉状态栏的颜色。 |
+| `CSQUAD_NOTIFY` | `on` | `input`：只通知 needs input 和 needs you。`off`：不通知。优先于 `csquad notify`。 |
 
 Claude Code 的后台服务看不到你的 shell 环境。所以 `csquad launch` 会把当前会话的以下变量复制到任务的设置里：
 
@@ -486,13 +519,16 @@ Claude Code 任务从你本地的 `HEAD` 创建 worktree，所以能看到你还
   bin/csquad         skill 和状态栏运行的二进制文件
   csquad.db          任务数据库（SQLite）
   models.md          你的模型路由（可选，csquad 从不写它）
+  notify             通知设置（csquad notify on|input|off）
+  csquad.app/        macOS：显示通知的应用包
+  csquad.png         Linux：通知图标
   manifest.json      install 写入了什么
   statusline.json    你原来的状态栏
   settings.json.bak  首次安装时 Claude Code settings.json 的副本（权限 600）
   settings/T12.json  任务存在期间的会话设置（权限 600）
   prompts/T12.md     太长、放不进命令行的提示
   cache/             状态栏最近一次的输出和用量读数
-  logs/              检查日志、events.jsonl（每次阶段变化一行）、advance.log
+  logs/              检查日志、events.jsonl（每次阶段变化一行）、advance.log、notify.log
 ~/.claude/skills/    create-task、task-status、message-task、watch-task、finish-task
 ```
 
@@ -528,7 +564,7 @@ npx csquad@latest update
 ~/.csquad/bin/csquad uninstall
 ```
 
-`uninstall` 恢复你的状态栏，删除 skill、二进制文件和 Codex hook，也删除 `~/.csquad` 里的日志、设置、提示和缓存。它保留 `~/.csquad/csquad.db` 和 `~/.csquad/models.md`。正在运行的任务继续运行。
+`uninstall` 恢复你的状态栏，删除 skill、二进制文件和 Codex hook，也删除 `~/.csquad` 里的日志、设置、提示和缓存，以及通知的设置：应用 ID 和它的图标（Windows、WSL）或 `csquad.app`（macOS）。它保留 `~/.csquad/csquad.db`、`~/.csquad/models.md` 和通知设置。正在运行的任务继续运行。
 
 ### 从 csquad 1.x 迁移
 

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"math/rand/v2"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -93,11 +94,14 @@ func TestClaimNoticeConcurrentObserversSendOnce(t *testing.T) {
 		var wg sync.WaitGroup
 		var mu sync.Mutex
 		sent := 0
+		// Observation times in a random order: whichever runs first, a later
+		// observation of the same change must not send again.
+		order := rand.Perm(len(stores))
 		for i, s := range stores {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				ok, err := s.ClaimNotice(ctx, task, class, int64(100*round+i+1), false)
+				ok, err := s.ClaimNotice(ctx, task, class, int64(100*round+order[i]+1), false)
 				if err != nil {
 					t.Error(err)
 				}
